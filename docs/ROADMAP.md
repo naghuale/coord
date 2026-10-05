@@ -3,6 +3,11 @@
 Это план работ, а не список реализованных функций. Приоритеты учитывают текущие
 границы ядра; оценки готовности production здесь намеренно не присваиваются.
 
+Проверенные process-level сценарии вынесены в [эксперименты](EXPERIMENTS.md):
+реальный MCP round-trip, P0 owner/fence transfer после остановки writer,
+P1 coordinator restart и P2/P3 recovery тестового Python worker. Это не закрывает
+production bridge, произвольные legacy subprocess или весь chaos checklist.
+
 | Приоритет | Работа | Критерий завершения |
 |---|---|---|
 | P0 | Реальный Telepathy byte bridge | Проверен доступный API; TASK/ACK/heartbeat проходят между реальными сессиями |

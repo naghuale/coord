@@ -11,6 +11,7 @@
 - [Настройка, control API и эксплуатация](docs/OPERATIONS.md)
 - [Разработка, проверки и Git](docs/DEVELOPMENT.md)
 - [Дальнейшее развитие](docs/ROADMAP.md)
+- [Реальные Telepathy-эксперименты P0–P3](docs/EXPERIMENTS.md)
 - [История изменений](CHANGELOG.md) и [авторство](AUTHORS.md)
 
 ## Запуск и проверка

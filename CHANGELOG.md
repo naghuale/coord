@@ -1,5 +1,17 @@
 # История изменений
 
+## 2026-10-06 — fence diagnostics и live crash experiments
+
+- Существующая точная проверка fence выделена перед проверкой owner/deduplication.
+  Добавлены ErrStaleFence, stale/future rejection counters и защита от uint64 overflow.
+- Unit tests подтверждают отклонение старого/будущего поколения, ABORT correlation,
+  неизменность canonical run и сохранение owner/fence при failed recovery commit.
+- Версионируемый test-only harness использует реальный Telepathy MCP 0.8.0.
+  Проверены owner transfer после SIGKILL/flock release, coordinator restart,
+  queued heartbeat во время outage и Python subprocess resume с SQLite idempotency.
+- Добавлены `make test-telepathy`, инструкции воспроизведения и границы доказательств.
+  Production bridge/watchdog/новые transports/lease enforcement не добавлялись.
+
 ## Начальная локальная версия — 2026-10-06
 
 ### Реализовано
