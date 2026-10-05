@@ -1,0 +1,21 @@
+# Local builds and verification artifacts.
+/bin/
+/coverage.out
+/coverage.html
+*.test
+*.prof
+
+# Runtime state and credentials stay outside version control.
+/state/
+/data/
+*.log
+.env
+.env.*
+!.env.example
+
+# Local editor / OS files.
+.DS_Store
+.idea/
+.vscode/
+go.work
+go.work.sum

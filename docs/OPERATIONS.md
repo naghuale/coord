@@ -1,0 +1,145 @@
+# Эксплуатация и команды
+
+Текущая поставка содержит библиотеку coordinator, локальное демо и отдельный
+watchdog CLI. Готового production coordinator daemon ещё нет: приложение-хост
+предоставляет transport, создаёт coordinator и запускает его loop/listeners.
+
+## Значения по умолчанию
+
+| Настройка | Значение | Где задаётся |
+|---|---|---|
+| ACK timeout | 30 секунд | `Config.AckTimeout` |
+| PING retry minimum wait | 5 секунд | `Config.ProbeTimeout` |
+| Transport send timeout | 5 секунд | `Config.SendTimeout` |
+| Coordinator tick | 1 секунда | `Config.TickInterval` |
+| Retry base / cap | 5 / 60 секунд | `Config.Retry` |
+| Retry multiplier / count | 2 / 5 | `Config.Retry` |
+| Jitter | включён | `Config.Retry.Jitter` |
+| Watchdog polling | 10 секунд | `-interval` |
+| Control API URL | `http://127.0.0.1:8090` | `-coordinator` |
+| Supervisor command timeout | 30 секунд | `watchdog.CommandBackend` |
+| Watchdog HTTP timeout | 30 секунд | watchdog CLI |
+| Control token | обязательный, default отсутствует | `COORD_CONTROL_TOKEN` |
+
+`ProbeTimeout` задаёт минимальное ожидание между recovery probes, а не отдельный
+blocking таймер ожидания PONG. `next_update_by` каждого run определяется ACK/heartbeat.
+Executor задаёт собственные `UpdateInterval` и `SendTimeout` явно.
+
+## Встраивание control и metrics
+
+Фрагмент для приложения, в котором `c` уже создан через `coord.New`:
+
+```go
+// token одинаков в приложении и в окружении внешнего watchdog.
+controlServer := &http.Server{
+    Addr: "127.0.0.1:8090",
+    Handler: c.ControlHandler(token),
+    ReadHeaderTimeout: 5 * time.Second,
+}
+metricsServer := &http.Server{
+    Addr: "127.0.0.1:9091",
+    Handler: c.Metrics,
+    ReadHeaderTimeout: 5 * time.Second,
+}
+```
+
+Host-приложение запускает `ListenAndServe`, обрабатывает ошибки, останавливает
+listeners через `Shutdown`, отменяет coordinator context и после завершения
+loop закрывает Store. Пример — integration fragment, не самостоятельный main.
+Для удалённых listeners предусмотрите TLS и сетевую политику доступа.
+
+## Сборка и watchdog
+
+```sh
+make build
+./bin/coord-watchdog -help
+export COORD_CONTROL_TOKEN='replace-with-your-local-control-token'
+./bin/coord-watchdog \
+  -coordinator http://127.0.0.1:8090 \
+  -interval 10s \
+  -fence-command /absolute/path/to/fence-writer \
+  -spawn-command /absolute/path/to/spawn-session \
+  -stop-command /absolute/path/to/stop-session
+```
+
+Замените три executable на supervisor вашей установки. Каждый flag принимает
+путь к executable, а не строку shell-команды с аргументами. Supervisor executable
+может быть собственным wrapper с фиксированной конфигурацией.
+Контракты входных аргументов перечислены в README.
+
+Перед запуском должны работать host coordinator/control API и соответствующий
+transport bridge. Watchdog сам не устанавливает plugin и не запускает coordinator.
+
+## Control API
+
+Все запросы требуют `Authorization: Bearer ...`. GET /runs возвращает только
+STALLED runs с RecoveryNeeded, а не полный список задач.
+
+| Метод и путь | JSON body | Успех |
+|---|---|---|
+| `GET /runs` | нет | 200, массив кандидатов |
+| `POST /claim` | `run`, `fence`, `claim` | 204 |
+| `POST /release` | `run`, `fence`, `claim` | 204 |
+| `POST /transfer` | `run`, `fence`, `claim`, `owner` | 204 |
+| `POST /fail` | `run`, `fence`, `claim`, `reason` | 204 |
+
+Ошибки: 401 — token не совпал; 400 — неверный JSON; 409 — операция отклонена,
+в том числе при stale fence/claim; 404 — неизвестный путь; 405 — неверный метод.
+
+```sh
+# Прочитать кандидатов на recovery после запуска host-приложения.
+curl --fail-with-body \
+  -H "Authorization: Bearer ${COORD_CONTROL_TOKEN}" \
+  http://127.0.0.1:8090/runs
+
+# Прочитать Prometheus endpoint после запуска metrics listener.
+curl --fail http://127.0.0.1:9091/
+```
+
+Пример POST для существующего stalled run с fence=1:
+
+```sh
+curl --fail-with-body -X POST \
+  -H "Authorization: Bearer ${COORD_CONTROL_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d '{"run":"CF-009-run-1","fence":1,"claim":"manual-recovery-1"}' \
+  http://127.0.0.1:8090/claim
+```
+
+Claim получает конкретный watchdog/оператор. Transfer разрешён только после
+подтверждённого fencing и проверки worktree. Это API для trusted supervisor;
+сервер проверяет claim/fence, но не может самостоятельно доказать остановку процесса.
+Manual claim не освобождается по времени. Перед ручным release убедитесь,
+что процесс, получивший claim, больше не может продолжить recovery.
+
+## Snapshot, backup и restart
+
+Canonical runs, roles и executor checkpoint размещайте в отдельных файлах,
+например `state/runs.json`, `state/roles.json`, `state/executor-agent-1.json`.
+Не включайте runtime state или token в commits: `state/` и `.env*` игнорируются.
+
+Для согласованной резервной копии остановите host и writers штатно, дождитесь
+закрытия Store и скопируйте state directory. Восстановление выполняйте до старта
+host из копии вместе с нужным worktree и артефактами. Живой writer нельзя
+подменять старым checkpoint; сначала supervisor подтверждает его остановку.
+
+При штатном рестарте coordinator загружает snapshot и повторяет outbox.
+Executor использует собственный checkpoint. После recovery он получает TASK
+с новым owner/fence и отвечает ACK; старый owner отклоняется.
+
+## Диагностика
+
+| Симптом | Проверка и действие |
+|---|---|
+| `snapshot already owned` | Найти coordinator, удерживающий flock; остановить его штатно, не запускать второй writer |
+| `transport closed` | Восстановить transport и создать новый Adapter/loop; Receive одноразовый |
+| TASK доставлен, ACK нет | Проверить executor wrapper и application protocol; delivery не означает acceptance |
+| PONG есть, run STALLED | Проверить генерацию heartbeat, next_update_by и task correlation |
+| `stale role revision` | Получить текущую revision и подготовить update повторно с новым message_id |
+| Role/profile mismatch | Проверить registration, availability роли и все требуемые capabilities |
+| Auditor conflict | Назначить отдельный agent_id; новый session address прежнего агента не решает конфликт |
+| Claim остался после crash | Подтвердить остановку watchdog/старого writer, затем выполнить контролируемый release |
+| Worktree verification failed | Сохранить состояние для анализа; supervisor помечает run FAILED и не запускает замену |
+
+Runtime alerts находятся в `prometheus-alerts.yml`. Их нужно подключить
+к вашей конфигурации Prometheus; наличие файла само по себе не включает алерты.
