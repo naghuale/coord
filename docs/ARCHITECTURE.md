@@ -78,6 +78,23 @@ worktree, запускает replacement и передаёт владение ч
 и исключительный writer lock. При захваченном recovery claim прежние heartbeat
 уже не изменяют canonical run.
 
+Проверка поколения выполняется до проверки owner и deduplication: fence меньше
+канонического отклоняется как stale, больше — как недопустимый future fence.
+Допускается только точное совпадение fence и остальных полей identity. Счётчик
+`uint64` не оборачивается при переполнении: recovery возвращает ErrFenceExhausted.
+
+Fence не секретен. Старый процесс может узнать новое значение, но это не делает
+его canonical owner. Проверка сообщений coordinator не запрещает запись в файлы
+или внешнее API: ресурс должен сам проверять поколение, либо supervisor должен
+подтвердить остановку writer до передачи владения. Очищать owner как замену
+fencing нельзя. Lease deadline без правил renewal и контроля writer также
+не даёт этой гарантии.
+
+Метрики различают `coord_stale_fence_rejections_total`,
+`coord_invalid_fence_rejections_total` и `coord_split_brain_events_total`.
+Позднее сообщение старого поколения после recovery учитывается в stale counter,
+а не как новый конфликт владельцев текущего поколения.
+
 ## Динамические роли
 
 Registry хранит revision, profiles, capabilities и audit events. ROLE_UPDATE

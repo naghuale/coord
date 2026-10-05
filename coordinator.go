@@ -11,12 +11,19 @@ import (
 	"coord/transport"
 	"errors"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 )
 
 var ErrTransportClosed = errors.New("transport closed")
 var ErrStale = errors.New("noncanonical identity")
+
+// ErrStaleFence also matches ErrStale for callers rejecting any stale identity.
+var ErrStaleFence = fmt.Errorf("%w: stale fence", ErrStale)
+
+// ErrFenceExhausted prevents a generation counter from wrapping to an old value.
+var ErrFenceExhausted = errors.New("fence generation exhausted")
 
 type Config struct {
 	AckTimeout, ProbeTimeout, SendTimeout, TickInterval time.Duration
@@ -189,13 +196,21 @@ func (c *Coordinator) Handle(ctx context.Context, e envelope.Envelope) error {
 	if !ok {
 		return fmt.Errorf("unknown run")
 	}
-	if r.OwnerSession != e.From || r.Attempt != e.Attempt || r.TargetSHA != e.TargetSHA || r.Task != e.Task || r.Fence != e.Fence {
+	// Fence is not secret. Both older and purported future generations are invalid,
+	// regardless of the sender or whether its message_id has been seen before.
+	if e.Fence < r.Fence {
+		c.Metrics.Inc("stale_fence_rejections_total")
+		c.rejectIdentity(ctx, r, e, "stale fence")
+		return ErrStaleFence
+	}
+	if e.Fence > r.Fence {
+		c.Metrics.Inc("invalid_fence_rejections_total")
+		c.rejectIdentity(ctx, r, e, "future fence")
+		return ErrStale
+	}
+	if r.OwnerSession == "" || r.OwnerSession != e.From || r.Attempt != e.Attempt || r.TargetSHA != e.TargetSHA || r.Task != e.Task {
 		c.Metrics.Inc("split_brain_events_total")
-		a := c.base(envelope.Abort, r)
-		a.To = e.From
-		a.InReplyTo = e.MessageID
-		a.AbortPayload = &envelope.AbortPayload{Reason: "not canonical owner/attempt/fence"}
-		_ = c.send(ctx, a)
+		c.rejectIdentity(ctx, r, e, "not canonical owner/attempt/task/SHA")
 		return ErrStale
 	}
 	if r.Seen[e.MessageID] {
@@ -244,6 +259,15 @@ func (c *Coordinator) Handle(ctx context.Context, e envelope.Envelope) error {
 		c.Metrics.Inc("heartbeat_received_total")
 	}
 	return nil
+}
+
+// An ABORT is a cooperative request; the trusted supervisor still fences writes.
+func (c *Coordinator) rejectIdentity(ctx context.Context, r fsm.Run, e envelope.Envelope, reason string) {
+	a := c.base(envelope.Abort, r)
+	a.To = e.From
+	a.InReplyTo = e.MessageID
+	a.AbortPayload = &envelope.AbortPayload{Reason: reason}
+	_ = c.send(ctx, a)
 }
 
 // Tick performs bounded retries. Transport retries preserve the attempt and owner.
@@ -328,6 +352,9 @@ func (c *Coordinator) recover(ctx context.Context, id, owner string, expectedFen
 	r, ok := c.store.Get(id)
 	if !ok || !r.RecoveryNeeded || r.Status != fsm.Stalled || r.Fence != expectedFence || claim == "" || r.RecoveryClaim != claim || owner == "" || owner == r.OwnerSession {
 		return fmt.Errorf("invalid recovery")
+	}
+	if r.Fence == math.MaxUint64 {
+		return ErrFenceExhausted
 	}
 	r.OwnerSession = owner
 	if err := c.selectRole(&r); err != nil {

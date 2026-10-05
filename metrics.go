@@ -42,7 +42,7 @@ type Metrics struct {
 
 func NewMetrics() *Metrics {
 	m := &Metrics{counters: map[string]uint64{}}
-	for _, name := range []string{"heartbeat_received_total", "heartbeat_miss_total", "stall_total", "split_brain_events_total", "watchdog_restarts_total", "fsm_errors_total", "malformed_messages_total", "send_errors_total", "ack_timeouts_total", "duplicate_messages_total", "rejected_messages_total", "role_updates_total"} {
+	for _, name := range []string{"heartbeat_received_total", "heartbeat_miss_total", "stall_total", "split_brain_events_total", "stale_fence_rejections_total", "invalid_fence_rejections_total", "watchdog_restarts_total", "fsm_errors_total", "malformed_messages_total", "send_errors_total", "ack_timeouts_total", "duplicate_messages_total", "rejected_messages_total", "role_updates_total"} {
 		m.counters[name] = 0
 	}
 	return m
