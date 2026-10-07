@@ -90,6 +90,35 @@ var invalidInput = func(format string, args ...any) error {
 	return fmt.Errorf("invalid_input: "+format, args...)
 }
 
+func writeResponse(w http.ResponseWriter, response Response, status int, err error) {
+	if err != nil {
+		response.Error = err.Error()
+		if status == http.StatusOK {
+			status = http.StatusConflict
+		}
+		// Плохой payload — не конфликт состояния: повтор того же запроса
+		// не поможет, поэтому это отдельный класс ответа.
+		if strings.HasPrefix(response.Error, "invalid_input: ") {
+			response.Code = "invalid_input"
+			response.Error = strings.TrimPrefix(response.Error, "invalid_input: ")
+			status = http.StatusBadRequest
+		}
+		if errors.Is(err, rooms.ErrInvalidRequest) {
+			response.Code = "invalid_input"
+			status = http.StatusBadRequest
+		}
+		if errors.Is(err, ErrNotConnected) {
+			response.Code = "not_connected"
+		}
+		if errors.Is(err, ErrNotConfirmed) {
+			response.Code = "not_confirmed"
+			status = http.StatusRequestTimeout
+		}
+	}
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(response)
+}
+
 // Handler serves only the private Unix socket; no TCP listener is created.
 func (s *Service) Handler(stop func()) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -122,8 +151,8 @@ func (s *Service) Handler(stop func()) http.Handler {
 				}
 			}
 			if err != nil {
-				w.WriteHeader(http.StatusBadRequest)
-				_ = json.NewEncoder(w).Encode(Response{Error: err.Error()})
+				err = invalidInput("%v", err)
+				writeResponse(w, response, status, err)
 				return
 			}
 		}
@@ -306,32 +335,7 @@ func (s *Service) Handler(stop func()) http.Handler {
 			status = http.StatusNotFound
 			err = fmt.Errorf("неизвестная команда")
 		}
-		if err != nil {
-			response.Error = err.Error()
-			if status == http.StatusOK {
-				status = http.StatusConflict
-			}
-			// Плохой payload — не конфликт состояния: повтор того же запроса
-			// не поможет, поэтому это отдельный класс ответа.
-			if strings.HasPrefix(response.Error, "invalid_input: ") {
-				response.Code = "invalid_input"
-				response.Error = strings.TrimPrefix(response.Error, "invalid_input: ")
-				status = http.StatusBadRequest
-			}
-			if errors.Is(err, rooms.ErrInvalidRequest) {
-				response.Code = "invalid_input"
-				status = http.StatusBadRequest
-			}
-			if errors.Is(err, ErrNotConnected) {
-				response.Code = "not_connected"
-			}
-			if errors.Is(err, ErrNotConfirmed) {
-				response.Code = "not_confirmed"
-				status = http.StatusRequestTimeout
-			}
-		}
-		w.WriteHeader(status)
-		_ = json.NewEncoder(w).Encode(response)
+		writeResponse(w, response, status, err)
 	})
 }
 

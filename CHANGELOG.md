@@ -19,6 +19,9 @@
   раньше поздний heartbeat возвращал run в работу с сохранённой точкой
   продолжения, а RESULT после пропущенного probe давал `DONE` с
   `ResumeStatus` (`TestStalledExitClearsResumeStatus`).
+- Ошибки разбора JSON в localchat HTTP (включая unknown field, хвост и
+  превышение лимита тела) возвращаются как `400` с `code=invalid_input`, как
+  и другие некорректные входы; сценарии проверяют неизменность rooms snapshot.
 - По решению owner от 2026-10-08 автоматическая проверка содержимого checkpoint
   исключена из UX-1; перед `unblock` владелец проверяет checkpoint вручную,
   программная проверка остаётся в P1 ROADMAP.

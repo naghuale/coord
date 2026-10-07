@@ -20,17 +20,18 @@ import (
 //   - «### ID — Заголовок» в ADR-0004 (RT-01…RT-06) и ADR-0005 (ST-01…ST-07);
 //   - «- **ID — название.** текст» в ADR-0002 (DG-01…), ADR-0003 (EXT-01…,
 //     TID-01, TID-01a) и в ADR-0005 для ссылочной строки;
-//   - суффикс строчной буквой используется для добавленного инварианта (TID-01a).
+//   - суффикс строчной буквой используется для добавленного инварианта (TID-01a);
+//   - «- **ID — название.** текст» в ADR-0007 (BR-01…) и ADR-0008 (AC-01…).
 //
 // Определение считается здесь только заголовком раздела или пунктом списка, а не
 // любым упоминанием: иначе каждая ссылка стала бы «вторым определением».
 var (
-	invariantID = regexp.MustCompile(`^(?:### |- \*\*)((?:DG|EXT|TID|RT|ST)-\d+[a-z]?)`)
-	mention     = regexp.MustCompile(`\b(?:DG|EXT|TID|RT|ST)-\d+[a-z]?\b`)
+	invariantID = regexp.MustCompile(`^(?:### |- \*\*)((?:DG|EXT|TID|RT|ST|BR|AC)-\d+[a-z]?)`)
+	mention     = regexp.MustCompile(`\b(?:DG|EXT|TID|RT|ST|BR|AC)-\d+[a-z]?\b`)
 	// minDefinitions — фактическое число определений на момент написания теста.
 	// Пустой или почти пустой парсер прошёл бы проверку ссылок, поэтому тест
 	// сначала убеждается, что нашёл достаточно.
-	minDefinitions = 39
+	minDefinitions = 60
 )
 
 // documentPaths walks docs recursively: a plan that quotes an invariant tomorrow
