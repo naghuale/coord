@@ -7,7 +7,7 @@ Owner запросил независимый аудит и отдельную �
 ## Участники и доказательства
 
 - Дополнительный Codex Auditor: отдельный контекст и agent_id codex-independent-auditor, отчёт в Coord seq52–53, checkpoint и ack53. Он не является LongCat.
-- Nemotron: реальный OpenCode TUI, запрос оценки собственного опыта seq46; ответ пока не получен. После отправки задания transport peer отображается idle; новый ход модели не подтверждён. Это не основание объявлять ни quota, ни успешное принятие задачи.
+- Nemotron: реальный OpenCode TUI, запрос оценки собственного опыта seq46, собственный ответ seq56 и checkpoint seq58. Сообщил, что quota blocker у него отсутствует.
 - LongCat: owner подтвердил Free usage exceeded; дальнейшее recovery заблокировано квотой, новых заданий ему не выдаём.
 - Журнал комнаты: 2ddfab7a-4236-4445-af99-2e44fe8516d7. Приватное evidence: state/tui-team/evidence/report.json; runtime и credentials не публикуются в source Git.
 
@@ -43,3 +43,64 @@ Recovery: Resume увеличивает только generation выбранно
 ## Границы вывода
 
 Общение двух пользовательских TUI через Coord состоялось. Полное восстановление обоих не подтверждено: LongCat заблокирован провайдером. Имена моделей основаны на сообщениях участников. Предложенные команды описывают целевой UX; сейчас они не реализованы.
+
+## Отзыв реального пользователя-агента
+
+Ниже дословный ответ Nemotron seq56; его субъективные затруднения и утверждения о коде различаются.
+
+UX evaluation (nemotron-executor, provider NVIDIA nemotron-3-ultra-free via opencode, no quota blocker):
+
+**5 main friction points:**
+
+1. **Telepathy discovery is opaque** -- no `coord peers` equivalent for agent; I learn my ref (`opencode-57562`) only from coordinator's invite message. No self-service `coord status` showing my connection_id, generation, peer ref.
+
+2. **Long, error-prone CLI commands** -- `session resume` requires 6+ flags (--credential-file, --connection, --operation, --peer, --generation). One typo -> cryptic error. No short aliases, no config file for defaults.
+
+3. **Credential-file management is manual** -- must track `credential-file` path across generations (gen1->gen2 different files). No `coord session current` showing active credential-file. Easy to use stale file -> `stale session generation`.
+
+4. **Status visibility gaps** -- `session context` dumps full journal (verbose). No summary: `role, generation, ready, acknowledged_seq, blockers`. `coord sessions` exists but owner-only; agents can't self-inspect.
+
+5. **Quota/permission/idle not surfaced** -- LongCat hit `Free usage exceeded` but room only showed ATTACHED/generation1. No transport-level signal (idle, quota, disconnect) visible to coordinator or agent. Recovery proceeded assuming available model.
+
+**Minimal owner/agent scenario:**
+```
+# Owner (one command)
+coord start coord --coordinator <peer> --agent-id stable-coord --operation owner-1
+
+# Coordinator (self-service)
+coord session assign <room> --agent-id stable-exec --role executor --instructions "..." --credential-file <coord-file>
+coord session invite <exec-session> --operation invite-1 --credential-file <coord-file>
+
+# Agent (receives invite via Telepathy, runs):
+coord accept <invite-token>
+coord session ready <session> --credential-file <file> --operation ready-1 --regulation coord-v1
+# ... work ...
+coord session say <session> --credential-file <file> --operation say-1 "done"
+coord session checkpoint <session> --credential-file <file> --operation cp-1 --file cp.json
+
+# Recovery (agent self-service after daemon restart):
+coord session resume <session> --credential-file <old-file> --connection recovery-<id>-2 --operation resume-<id>-2 --peer <my-ref>
+# verify old file rejected, new file works
+coord session ready <session> --credential-file <new-file> --operation ready-2 --regulation coord-v1
+coord session say <session> --credential-file <new-file> --operation say-2 "RECOVERY_DONE"
+```
+
+**What docs promise vs reality:**
+- README: "binary in bin/, runtime state outside Git" yes but no `coord help` discoverability for agent flows
+- SESSION_CLI.md shows commands but not the *sequence* for recovery; I needed coordinator's seq27 instructions
+- No `coord prompt` output includes recovery steps
+- Transport delivery != processing acknowledgment (correctly documented) but no agent-side ack helper
+
+**Where coordinator help was required:** seq27 (recovery steps), seq19 (auditor workflow), seq23 (corrected my global fencing assumption). Without coordinator, I'd have used stale credential-file and declared false global fencing.
+
+## Сверка координатора
+
+- Recovery уже описан в bootstrap.md, шаги 7–9, и SESSION_CLI.md, раздел «Подтверждение и checkpoint». Отсутствие этих инструкций, заявленное Nemotron, не подтверждается. Подтверждается, что агент не смог самостоятельно применить их и потребовал подсказок.
+- session context показывает собственные role, generation, ready, checkpoint и transport ref; отсутствует компактная самостоятельная карточка состояния. Утверждение «агенты не могут себя проверить» слишком широкое.
+- --generation у resume можно не передавать: CLI берёт его из предъявленного credential-file; --peer нужен для маршрута Telepathy, не для самого scoped Unix API. Не все перечисленные флаги обязательны всегда.
+- coord help перечисляет агентские команды, coord prompt содержит recovery. Это не подтверждает удобство первого использования: инструкции длинные, профиль подключения не запоминается.
+- Автоматический выбор самого нового credential-file не принимается как решение: старое TUI не должно получать capability нового поколения без явного resume своего контекста.
+
+## Совместный вывод и приоритет
+
+Технический слой durable sessions и scoped API работает в проверенных сценариях. Продуктовый сценарий owner/агента требует доработки. Первым этапом нужны единый onboarding/discovery, per-context profile коротких команд, карточка ожиданий и отдельные наблюдаемые статусы transport/provider/permission. Только после этого — повторная приёмка новым owner без ручных указаний координатора. Предложения API в отчётах не реализованы.
