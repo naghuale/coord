@@ -113,7 +113,11 @@ func TestFullLifecycleAndRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
+	t.Cleanup(func() {
+		if err := s.Close(); err != nil {
+			t.Errorf("close test resource: %v", err)
+		}
+	})
 	r, _ := s.Get("run")
 	if r.Status != fsm.Done || r.Result.Outcome != "SUCCESS" {
 		t.Fatal("restart lost result")
@@ -246,7 +250,11 @@ func TestOutboxReplayAfterRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
+	t.Cleanup(func() {
+		if err := s.Close(); err != nil {
+			t.Errorf("close test resource: %v", err)
+		}
+	})
 	c, err := New(f.tp, s, f.c.cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -289,7 +297,7 @@ func TestHTTPWatchdogControl(t *testing.T) {
 		*f.now = f.now.Add(time.Second)
 	}
 	server := httptest.NewServer(f.c.ControlHandler("token"))
-	defer server.Close()
+	t.Cleanup(server.Close)
 	h := watchdog.HTTPControl{URL: server.URL, Token: "token", ClaimID: "w", Client: server.Client()}
 	runs, err := h.Candidates(context.Background())
 	if err != nil || len(runs) != 1 {
@@ -310,7 +318,9 @@ func TestHTTPWatchdogControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	if err := resp.Body.Close(); err != nil {
+		t.Fatal(err)
+	}
 	if resp.StatusCode != 401 {
 		t.Fatal("unauthorized access")
 	}

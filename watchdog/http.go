@@ -41,7 +41,8 @@ func (h HTTPControl) Candidates(ctx context.Context) ([]fsm.Run, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	// The response outcome is handled below; closing its transport is best effort.
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("control status %d", resp.StatusCode)
 	}
@@ -60,7 +61,8 @@ func (h HTTPControl) post(ctx context.Context, path, id string, fence uint64, ex
 	if err != nil {
 		return 0, err
 	}
-	defer resp.Body.Close()
+	// The response outcome is handled below; closing its transport is best effort.
+	defer func() { _ = resp.Body.Close() }()
 	return resp.StatusCode, nil
 }
 func (h HTTPControl) Claim(ctx context.Context, id string, f uint64) (bool, error) {

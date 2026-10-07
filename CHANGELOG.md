@@ -1,5 +1,61 @@
 # История изменений
 
+## 2026-10-07 — устойчивые локальные ролевые сессии
+
+- Общий coord CLI, owner-чат и независимый от TUI Unix API.
+- Предварительное назначение/приглашение и WAITING_ASSIGNMENT.
+- Устойчивые session_id, agent_id, context bindings, generation CAS и ротация capability.
+- Checkpoint, explicit ack, идемпотентные операции и unknown внешние действия.
+- Версионирование регламента координатором и подтверждение readiness.
+- Раздельный owner API и scoped агентский контекст; доверие в пределах пользователя ОС.
+- Локальная Git-проекция с export policy, backlog и recovery commit/cursor.
+- Стандартные промпты четырёх ролей: границы полномочий, Task Contract, verdict и независимость.
+- Общий coord prompt; сценарные/CLI проверки и opt-in тест отдельного реального AI.
+- Crewflow не интегрируется; автоматического push runtime history нет.
+
+
+## 2026-10-07 — standalone Telepathy host/bridge
+
+- Добавлены пакет telepathy и cmd/coord-telepathy: реальный MCP stdio 0.8.0,
+  pinned Ed25519 frames, host/worker с checkpoint, writer/session locks и receipt.
+- Command worker отказывается повторять interrupted work без durable RESULT;
+  готовый RESULT replay не запускает команду.
+- Учтены Telepathy rate/duplicate limits и ограниченный archive replay.
+- Добавлены make test-telepathy-host, инструкции настройки и отдельная
+  спецификация Crewflow integration; CF-013A не изменяется.
+
+
+## 2026-10-06 — агентские инструкции и расширенная отладка
+
+- Добавлен RESULT_ACK: durable receipt в canonical outbox, terminal replay,
+  executor.Receipt и идемпотентная повторная отправка RESULT. Обновлять обе стороны вместе.
+- Deadline проверяется при получении событий; delayed heartbeat/progress regression
+  не откатывают run, повтор ACK не откатывает STARTED.
+- Executor проверяет полную identity до изменения checkpoint; duplicate TASK
+  после собственного commit не требует исходного HEAD и не запускает работу заново.
+- Store/Registry изолируют входные ссылки; registry имеет process lock и Close.
+  После ErrPersistence дальнейшие записи прекращаются до close/reopen.
+  Отвергаются revision overflow, неперечитываемые snapshots и неизвестные FSM states.
+- Watchdog выполняет bounded cleanup при cancellation, обрабатывает все candidates
+  после ошибки и удерживает claim при unknown/failed replacement cleanup.
+- Atomic snapshot writer общий для checkpoint/registry/harness; ошибки close
+  и cleanup обрабатываются. make check запускает установленный golangci-lint.
+- Byte/signature adapters проверяют route/configuration, strict frame JSON; retry
+  не выдаёт zero delay и не переполняет time.Duration.
+- Добавлен tested Unix CLI/subprocess host examples/agent, инструкции обоих
+  вариантов подключения, regression tests и fuzz targets.
+
+## 2026-10-06 — durable executor replay и безопасный cleanup recovery
+
+- ACK, heartbeat и RESULT сохраняются со состоянием до первого transport send;
+  FIFO outbox сохраняет готовность перед результатом и не заменяет старые сообщения.
+- RESULT_READY не откатывается при outage; успешный replay восстанавливает статус.
+  Просроченные lease responses обновляются как новые durable protocol messages.
+- Новый fence очищает сообщения, результат и blocker старого writer, сохраняя прогресс.
+- Watchdog не освобождает claim при неподтверждённой остановке replacement.
+- Store.Get копирует только запрошенный run вместо всего snapshot; изоляция вложенных данных сохраняется.
+- Добавлены regression tests и сквозной coordinator/executor restart scenario.
+
 ## 2026-10-06 — уточнение границ экспериментов
 
 - В EXPERIMENTS описаны проверяемые метрики и ограничения свидетельств после рестарта.

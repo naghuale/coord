@@ -15,7 +15,7 @@ func (c *Coordinator) ClaimRecovery(id string, fence uint64, claim string) error
 	}
 	return c.store.Update(func(runs map[string]fsm.Run) error {
 		r, ok := runs[id]
-		if !ok || r.Fence != fence || !r.RecoveryNeeded || r.Status != fsm.Stalled || r.RecoveryClaim != "" {
+		if !ok || r.Fence != fence || !r.RecoveryNeeded || r.Status != fsm.Stalled || r.RecoveryClaim != "" || !c.cfg.Now().Before(r.Deadline) {
 			return fmt.Errorf("recovery already claimed or stale")
 		}
 		r.RecoveryClaim = claim

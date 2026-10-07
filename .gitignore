@@ -19,3 +19,6 @@
 .vscode/
 go.work
 go.work.sum
+
+# Cooperative worktree writer ownership for examples/agent.
+.coord-writer.lock

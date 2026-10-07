@@ -58,7 +58,8 @@ stateDiagram-v2
 ## Commit перед side effect
 
 Назначение и outbox сохраняются до отправки TASK. Store сериализует изменения,
-записывает snapshot и только после этого публикует новую версию памяти.
+записывает snapshot и только после этого публикует новую версию памяти. Входные slices/maps/pointers копируются, чтобы
+вызывающий код и persistence не могли изменить опубликованное состояние.
 Если snapshot не записался, TASK не отправляется. При рестарте outbox повторяется.
 Executor устраняет повторное выполнение по task/run/attempt/fence.
 
@@ -105,3 +106,23 @@ ROLE_ACK. Каждое назначение сохраняет RoleSelection, а
 Transport signing подтверждает источник сообщения по pinned Ed25519 public key.
 Registry registration и public-key provisioning остаются доверенными действиями
 оператора. Имена моделей и capabilities остаются self-reported.
+
+## Подтверждение результата
+
+RESULT и RESULT_ACK записываются одной canonical transaction: receipt
+коррелируется с message_id результата и содержит committed outcome. Терминальный
+run повторяет недоставленный receipt; повтор RESULT получает новое подтверждение
+без повторного выполнения. Executor хранит RESULT_READY и RESULT в outbox до
+проверки receipt через Receipt, затем атомарно фиксирует DONE/FAILED и очищает
+очередь. RESULT_ACK не разрешает coordinator закончить работу до durable commit.
+
+Heartbeat с timestamp старше последнего принятого heartbeat либо с меньшим
+progress_pct отвергается без изменения run. Recovery очищает timestamp при новом
+fence. Полный порядок при равных timestamps и clock skew требует sequence policy.
+
+## Самостоятельный Telepathy host
+
+`cmd/coord-telepathy` связывает coordinator/executor через отдельные MCP subprocess
+и подписанный `coord/telepathy` byte Client. Host и worker имеют собственные
+checkpoints и session/worktree locks. Это one-run deployment без canonical
+Crewflow adapter и автоматического supervisor recovery. См. TELEPATHY_HOST.md.

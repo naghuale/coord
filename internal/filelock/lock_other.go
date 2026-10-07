@@ -1,0 +1,6 @@
+//go:build !unix
+
+package filelock
+
+// Lock refuses platforms where this implementation cannot guarantee ownership.
+func Lock(string) (func() error, error) { return nil, ErrUnavailable }

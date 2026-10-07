@@ -29,5 +29,13 @@ func (p Policy) DelayFor(n int) time.Duration {
 	if p.Jitter {
 		d *= 0.5 + rand.Float64()
 	}
-	return time.Duration(math.Min(d, float64(p.MaxDelay)))
+	d = math.Min(d, float64(p.MaxDelay))
+	// float64 rounds MaxInt64 up to 2^63; converting it directly overflows.
+	if d >= float64(p.MaxDelay) {
+		return p.MaxDelay
+	}
+	if d < 1 {
+		return time.Nanosecond
+	}
+	return time.Duration(d)
 }

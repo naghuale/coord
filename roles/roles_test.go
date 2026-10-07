@@ -37,10 +37,18 @@ func TestAtomicUpdatePreservesCapabilitiesAndReplays(t *testing.T) {
 	if a.Revision != 2 || len(a.Roles) != 2 {
 		t.Fatal("partial update committed")
 	}
+	if err = r.Close(); err != nil {
+		t.Fatal(err)
+	}
 	restored, err := New(path)
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		if err := restored.Close(); err != nil {
+			t.Errorf("close test resource: %v", err)
+		}
+	})
 	if _, err = restored.Select("session-1", Requirement{Role: Auditor, Capabilities: []string{"security_audit"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +60,15 @@ func TestAtomicUpdatePreservesCapabilitiesAndReplays(t *testing.T) {
 	}
 }
 func TestConcurrentRevisionCAS(t *testing.T) {
-	r, _ := New(filepath.Join(t.TempDir(), "roles.json"))
+	r, err := New(filepath.Join(t.TempDir(), "roles.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := r.Close(); err != nil {
+			t.Errorf("close test resource: %v", err)
+		}
+	})
 	if err := r.Register("id", "session", []Profile{{Executor, "old", nil}}); err != nil {
 		t.Fatal(err)
 	}

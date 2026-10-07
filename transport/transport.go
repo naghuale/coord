@@ -32,6 +32,9 @@ type Adapter struct {
 
 func (a *Adapter) WhoAmI() string { return a.Session }
 func (a *Adapter) Send(ctx context.Context, to string, e envelope.Envelope) error {
+	if a.Client == nil || a.Session == "" {
+		return fmt.Errorf("transport client and session required")
+	}
 	if e.To != to || e.From != a.Session {
 		return fmt.Errorf("transport identity mismatch")
 	}
@@ -49,6 +52,12 @@ func (a *Adapter) Receive(ctx context.Context) <-chan envelope.Envelope {
 		a.inbox = make(chan envelope.Envelope)
 		go func() {
 			defer close(a.inbox)
+			if a.Client == nil || a.Session == "" {
+				if a.Malformed != nil {
+					a.Malformed()
+				}
+				return
+			}
 			raws := a.Client.Incoming(ctx)
 			for {
 				select {
@@ -59,7 +68,7 @@ func (a *Adapter) Receive(ctx context.Context) <-chan envelope.Envelope {
 						return
 					}
 					e, err := envelope.Decode(raw)
-					if err != nil {
+					if err != nil || e.To != a.Session {
 						if a.Malformed != nil {
 							a.Malformed()
 						}

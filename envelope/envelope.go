@@ -19,6 +19,7 @@ const (
 	Ack        Kind = "ACK"
 	Heartbeat  Kind = "HEARTBEAT"
 	Result     Kind = "RESULT"
+	ResultAck  Kind = "RESULT_ACK"
 	Ping       Kind = "PING"
 	Pong       Kind = "PONG"
 	Abort      Kind = "ABORT"
@@ -43,6 +44,7 @@ type Envelope struct {
 	TaskPayload       *TaskPayload      `json:"task_payload,omitempty"`
 	AckPayload        *AckPayload       `json:"ack_payload,omitempty"`
 	HeartbeatPayload  *HeartbeatPayload `json:"heartbeat_payload,omitempty"`
+	ResultAckPayload  *ResultAckPayload `json:"result_ack_payload,omitempty"`
 	ResultPayload     *ResultPayload    `json:"result_payload,omitempty"`
 	PingPayload       *PingPayload      `json:"ping_payload,omitempty"`
 	PongPayload       *PongPayload      `json:"pong_payload,omitempty"`
@@ -78,6 +80,12 @@ type ResultPayload struct {
 	Artifacts []string `json:"artifacts,omitempty"`
 	Summary   string   `json:"summary"`
 }
+
+// ResultAckPayload acknowledges the outcome durably committed by the coordinator.
+type ResultAckPayload struct {
+	Outcome string `json:"outcome"`
+}
+
 type PingPayload struct {
 	Nonce string `json:"nonce"`
 }
@@ -118,7 +126,7 @@ func (e Envelope) Validate() error {
 		}
 	}
 	n := 0
-	for _, present := range []bool{e.TaskPayload != nil, e.AckPayload != nil, e.HeartbeatPayload != nil, e.ResultPayload != nil, e.PingPayload != nil, e.PongPayload != nil, e.AbortPayload != nil, e.RoleUpdatePayload != nil, e.RoleAckPayload != nil} {
+	for _, present := range []bool{e.TaskPayload != nil, e.AckPayload != nil, e.HeartbeatPayload != nil, e.ResultPayload != nil, e.ResultAckPayload != nil, e.PingPayload != nil, e.PongPayload != nil, e.AbortPayload != nil, e.RoleUpdatePayload != nil, e.RoleAckPayload != nil} {
 		if present {
 			n++
 		}
@@ -126,7 +134,7 @@ func (e Envelope) Validate() error {
 	if n != 1 {
 		return bad("exactly one payload required")
 	}
-	if e.Kind == Ack || e.Kind == Heartbeat || e.Kind == Result || e.Kind == Pong || e.Kind == Abort || e.Kind == RoleAck {
+	if e.Kind == Ack || e.Kind == Heartbeat || e.Kind == Result || e.Kind == ResultAck || e.Kind == Pong || e.Kind == Abort || e.Kind == RoleAck {
 		if e.InReplyTo == "" {
 			return bad("missing correlation")
 		}
@@ -167,6 +175,11 @@ func (e Envelope) Validate() error {
 		}
 		if p.State == "BLOCKED" && p.Blocker == "" {
 			return bad("blocker required")
+		}
+	case ResultAck:
+		p := e.ResultAckPayload
+		if p == nil || (p.Outcome != "SUCCESS" && p.Outcome != "FAILURE" && p.Outcome != "PARTIAL") {
+			return bad("RESULT_ACK payload")
 		}
 	case Result:
 		p := e.ResultPayload

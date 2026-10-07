@@ -15,11 +15,20 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() {
+		if err := os.RemoveAll(dir); err != nil {
+			fmt.Fprintln(os.Stderr, "remove example state:", err)
+		}
+	}()
 	registry, err := roles.New(filepath.Join(dir, "roles.json"))
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer func() {
+		if err := registry.Close(); err != nil {
+			fmt.Fprintln(os.Stderr, "close example snapshot:", err)
+		}
+	}()
 	const session = "session://agent-nemotron-1"
 	err = registry.Register("agent-nemotron", session, []roles.Profile{
 		{Role: roles.Executor, Model: "provider/model-v1", Capabilities: []string{"go"}},

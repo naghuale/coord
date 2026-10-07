@@ -21,6 +21,7 @@ type Store struct {
 	p       Persistence
 	release func() error
 	closed  bool
+	failed  error
 }
 
 func New(p Persistence) (*Store, error) {
@@ -42,6 +43,13 @@ func New(p Persistence) (*Store, error) {
 		}
 		return nil, err
 	}
+	r, err = copyRuns(r)
+	if err != nil {
+		if release != nil {
+			_ = release()
+		}
+		return nil, fmt.Errorf("copy loaded state: %w", err)
+	}
 	return &Store{runs: r, p: p, release: release}, nil
 }
 
@@ -58,14 +66,38 @@ func (s *Store) Close() error {
 	}
 	return nil
 }
-func clone(v map[string]fsm.Run) map[string]fsm.Run {
-	b, _ := json.Marshal(v)
+func copyRuns(v map[string]fsm.Run) (map[string]fsm.Run, error) {
+	if v == nil {
+		return map[string]fsm.Run{}, nil
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
 	var out map[string]fsm.Run
-	_ = json.Unmarshal(b, &out)
+	if err = json.Unmarshal(b, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func clone(v map[string]fsm.Run) map[string]fsm.Run {
+	// Stored state has already passed copyRuns before publication.
+	out, _ := copyRuns(v)
 	return out
 }
-func (s *Store) All() map[string]fsm.Run       { s.mu.RLock(); defer s.mu.RUnlock(); return clone(s.runs) }
-func (s *Store) Get(id string) (fsm.Run, bool) { r, ok := s.All()[id]; return r, ok }
+func (s *Store) All() map[string]fsm.Run { s.mu.RLock(); defer s.mu.RUnlock(); return clone(s.runs) }
+
+// Get copies only the requested run while keeping nested state isolated.
+func (s *Store) Get(id string) (fsm.Run, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	r, ok := s.runs[id]
+	if !ok {
+		return fsm.Run{}, false
+	}
+	return clone(map[string]fsm.Run{id: r})[id], true
+}
 
 // Update serializes mutations and persists them before exposing them.
 func (s *Store) Update(fn func(map[string]fsm.Run) error) error {
@@ -74,13 +106,24 @@ func (s *Store) Update(fn func(map[string]fsm.Run) error) error {
 	if s.closed {
 		return fmt.Errorf("store closed")
 	}
+	if s.failed != nil {
+		return fmt.Errorf("store requires reopen after durability failure: %w", s.failed)
+	}
 	next := clone(s.runs)
 	if err := fn(next); err != nil {
 		return err
 	}
-	if err := s.p.Save(next); err != nil {
-		return fmt.Errorf("%w: %w", ErrPersistence, err)
+	committed, err := copyRuns(next)
+	if err != nil {
+		return fmt.Errorf("copy updated state: %w", err)
 	}
-	s.runs = next
+	// Neither a callback nor a persistence implementation owns published memory.
+	if err := s.p.Save(clone(committed)); err != nil {
+		// Save may have renamed its snapshot before returning an fsync error.
+		// Further writes from old memory could erase that possibly committed state.
+		s.failed = fmt.Errorf("%w: %w", ErrPersistence, err)
+		return s.failed
+	}
+	s.runs = committed
 	return nil
 }

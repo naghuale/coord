@@ -1,7 +1,8 @@
 # Эксплуатация и команды
 
 Текущая поставка содержит библиотеку coordinator, локальное демо и отдельный
-watchdog CLI. Готового production coordinator daemon ещё нет: приложение-хост
+watchdog CLI. Есть ограниченный самостоятельный Telepathy host/worker
+([TELEPATHY_HOST.md](TELEPATHY_HOST.md)). Multi-run production daemon отсутствует: приложение-хост
 предоставляет transport, создаёт coordinator и запускает его loop/listeners.
 
 ## Значения по умолчанию
@@ -143,3 +144,35 @@ Executor использует собственный checkpoint. После reco
 
 Runtime alerts находятся в `prometheus-alerts.yml`. Их нужно подключить
 к вашей конфигурации Prometheus; наличие файла само по себе не включает алерты.
+
+## Неудачная остановка replacement
+
+Ошибка transfer не доказывает, что передача владения не состоялась: ответ мог
+потеряться после durable commit. Команда stop обязана подтвердить завершение
+replacement и освобождение writer lock даже после принятия TASK. Если stop
+завершился ошибкой, watchdog не освобождает claim старого поколения. Перед ручным
+release проверьте канонические owner/fence и остановку всех затронутых writers.
+Если transfer уже был сохранён, новое поколение и его supervision остаются
+каноническими; release старого fence не отменяет состоявшийся transfer.
+
+## Подтверждение результата и registry ownership
+
+Executor передаёт RESULT_ACK в Receipt только после проверки identity,
+coordinator sender, correlation и outcome. Получение transport delivery само
+по себе не очищает RESULT из outbox. Coordinator повторяет недоставленные
+receipts и у терминальных runs; после reconnect executor вызывает Replay.
+
+Registry.New удерживает process lock файла roles до Registry.Close; закрывайте
+registry после остановки coordinator. Не открывайте второй registry writer для
+чтения revision: используйте существующий owner или остановите его перед reload.
+На платформе без Unix flock registry отказывается запускаться.
+
+При failed spawn с неизвестным адресом replacement watchdog удерживает claim
+до ручного подтверждения cleanup. Известный partial replacement останавливается
+перед release. Cancellation основного context не отменяет ограниченный cleanup
+context для stop/release; ошибка одного recovery не пропускает остальные runs.
+
+После ErrPersistence Store и Registry прекращают дальнейшие записи, а Registry
+также прекращает новые Select. Причина: ошибка могла произойти после rename,
+и память уже не доказывает состояние диска. Остановите host, закройте владельцев
+и повторно откройте snapshots; не продолжайте запись из старой памяти.

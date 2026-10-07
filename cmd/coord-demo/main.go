@@ -35,11 +35,20 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() {
+		if err := os.RemoveAll(dir); err != nil {
+			fmt.Fprintln(os.Stderr, "remove example state:", err)
+		}
+	}()
 	s, err := store.New(checkpoint.File{Path: filepath.Join(dir, "runs.json")})
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer func() {
+		if err := s.Close(); err != nil {
+			fmt.Fprintln(os.Stderr, "close example snapshot:", err)
+		}
+	}()
 	tp := &local{make(chan envelope.Envelope, 8), make(chan envelope.Envelope, 8)}
 	c, err := coord.New(tp, s, coord.DefaultConfig())
 	if err != nil {

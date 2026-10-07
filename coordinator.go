@@ -19,6 +19,9 @@ import (
 var ErrTransportClosed = errors.New("transport closed")
 var ErrStale = errors.New("noncanonical identity")
 
+// ErrDeadlineExceeded rejects application events after the absolute run deadline.
+var ErrDeadlineExceeded = errors.New("task deadline exceeded")
+
 // ErrStaleFence also matches ErrStale for callers rejecting any stale identity.
 var ErrStaleFence = fmt.Errorf("%w: stale fence", ErrStale)
 
@@ -51,7 +54,21 @@ func New(tp transport.Transport, s *store.Store, cfg Config) (*Coordinator, erro
 	if err := cfg.Retry.Validate(); err != nil {
 		return nil, err
 	}
-	return &Coordinator{tp: tp, store: s, cfg: cfg, Metrics: NewMetrics()}, nil
+	c := &Coordinator{tp: tp, store: s, cfg: cfg, Metrics: NewMetrics()}
+	for id, r := range s.All() {
+		if id != r.RunID || !r.Status.Valid() || r.Worktree == "" || r.Deadline.IsZero() {
+			return nil, fmt.Errorf("invalid canonical snapshot run %q", id)
+		}
+		e := c.base(envelope.Result, r)
+		e.From = r.OwnerSession
+		e.To = tp.WhoAmI()
+		e.InReplyTo = "snapshot"
+		e.ResultPayload = &envelope.ResultPayload{Outcome: "SUCCESS"}
+		if err := e.Validate(); err != nil {
+			return nil, fmt.Errorf("invalid canonical snapshot run %q: %w", id, err)
+		}
+	}
+	return c, nil
 }
 func (c *Coordinator) base(k envelope.Kind, r fsm.Run) envelope.Envelope {
 	return envelope.Envelope{SchemaVersion: 1, MessageID: envelope.NewID(), Timestamp: c.cfg.Now().UTC(), From: c.tp.WhoAmI(), To: r.OwnerSession, Kind: k, Task: r.Task, Run: r.RunID, Attempt: r.Attempt, TargetSHA: r.TargetSHA, Fence: r.Fence}
@@ -77,6 +94,7 @@ func (c *Coordinator) Assign(ctx context.Context, r fsm.Run) error {
 	r.RecoveryClaim = ""
 	r.DeliveredAt = time.Time{}
 	r.Result = nil
+	r.LastHeartbeatAt = time.Time{}
 	if err := c.selectRole(&r); err != nil {
 		return err
 	}
@@ -213,8 +231,26 @@ func (c *Coordinator) Handle(ctx context.Context, e envelope.Envelope) error {
 		c.rejectIdentity(ctx, r, e, "not canonical owner/attempt/task/SHA")
 		return ErrStale
 	}
+	now := c.cfg.Now()
+	if !r.Terminal() && !now.Before(r.Deadline) {
+		r.Status = fsm.Failed
+		r.Blocker = "task deadline exceeded"
+		r.Outbox = nil
+		r.RecoveryNeeded = false
+		r.LastUpdate = now
+		if err := c.put(r); err != nil {
+			return err
+		}
+		return ErrDeadlineExceeded
+	}
+	if r.Seen == nil {
+		r.Seen = map[string]bool{}
+	}
 	if r.Seen[e.MessageID] {
 		c.Metrics.Inc("duplicate_messages_total")
+		if e.Kind == envelope.Result && r.Terminal() && r.Result != nil {
+			return c.repeatResultReceipt(ctx, r, e)
+		}
 		return nil
 	}
 	if r.RecoveryClaim != "" {
@@ -227,6 +263,9 @@ func (c *Coordinator) Handle(ctx context.Context, e envelope.Envelope) error {
 		// Liveness cannot substitute for an application heartbeat.
 		return c.store.Update(func(runs map[string]fsm.Run) error {
 			x := runs[r.RunID]
+			if x.Seen == nil {
+				x.Seen = map[string]bool{}
+			}
 			x.Seen[e.MessageID] = true
 			x.ProbeID = ""
 			x.ProbeNonce = ""
@@ -237,7 +276,12 @@ func (c *Coordinator) Handle(ctx context.Context, e envelope.Envelope) error {
 	if !contains(r.TaskMessages, e.InReplyTo) {
 		return fmt.Errorf("uncorrelated task response")
 	}
-	now := c.cfg.Now()
+	if e.Kind == envelope.Ack && e.AckPayload.State == "ACCEPTED" && r.Status != fsm.Pending && (r.Status != fsm.Stalled || r.ResumeStatus != fsm.Pending) {
+		// A retried TASK may produce a fresh ACK after work has already started.
+		// Acceptance cannot renew the progress lease or rewind application state.
+		r.Seen[e.MessageID] = true
+		return c.put(r)
+	}
 	if (e.Kind == envelope.Ack && e.AckPayload.State == "ACCEPTED" && !e.AckPayload.NextUpdateBy.After(now)) || (e.Kind == envelope.Heartbeat && !e.HeartbeatPayload.NextUpdateBy.After(now)) {
 		return fmt.Errorf("expired next_update_by")
 	}
@@ -247,6 +291,11 @@ func (c *Coordinator) Handle(ctx context.Context, e envelope.Envelope) error {
 	}
 	r.Seen[e.MessageID] = true
 	r.Outbox = nil
+	r.SendRetryAt = time.Time{}
+	r.SendRetries = 0
+	if e.Kind == envelope.Result {
+		r.Outbox = []envelope.Envelope{c.resultReceipt(r, e.MessageID)}
+	}
 	if err := c.store.Update(func(runs map[string]fsm.Run) error { runs[r.RunID] = r; return nil }); err != nil {
 		return err
 	}
@@ -258,7 +307,37 @@ func (c *Coordinator) Handle(ctx context.Context, e envelope.Envelope) error {
 	if e.Kind == envelope.Heartbeat {
 		c.Metrics.Inc("heartbeat_received_total")
 	}
+	if e.Kind == envelope.Result {
+		return c.flush(ctx, r.RunID)
+	}
 	return nil
+}
+
+func (c *Coordinator) resultReceipt(r fsm.Run, resultID string) envelope.Envelope {
+	e := c.base(envelope.ResultAck, r)
+	e.InReplyTo = resultID
+	e.ResultAckPayload = &envelope.ResultAckPayload{Outcome: r.Result.Outcome}
+	return e
+}
+
+func (c *Coordinator) repeatResultReceipt(ctx context.Context, r fsm.Run, result envelope.Envelope) error {
+	if result.ResultPayload.Outcome != r.Result.Outcome {
+		return fmt.Errorf("duplicate result outcome mismatch")
+	}
+	for _, queued := range r.Outbox {
+		if queued.Kind == envelope.ResultAck && queued.InReplyTo == result.MessageID {
+			return c.flush(ctx, r.RunID)
+		}
+	}
+	if len(r.Outbox) == 0 {
+		r.SendRetryAt = time.Time{}
+		r.SendRetries = 0
+	}
+	r.Outbox = append(r.Outbox, c.resultReceipt(r, result.MessageID))
+	if err := c.put(r); err != nil {
+		return err
+	}
+	return c.flush(ctx, r.RunID)
 }
 
 // An ABORT is a cooperative request; the trusted supervisor still fences writes.
@@ -277,12 +356,17 @@ func (c *Coordinator) Tick(ctx context.Context) error {
 	now := c.cfg.Now()
 	for id, r := range c.store.All() {
 		if r.Terminal() {
+			if err := c.flush(ctx, id); err != nil {
+				return err
+			}
 			continue
 		}
 		if !now.Before(r.Deadline) {
 			r.Status = fsm.Failed
 			r.Blocker = "task deadline exceeded"
 			r.Outbox = nil
+			r.RecoveryNeeded = false
+			r.LastUpdate = now
 			if err := c.put(r); err != nil {
 				return err
 			}
@@ -361,6 +445,10 @@ func (c *Coordinator) recover(ctx context.Context, id, owner string, expectedFen
 		return err
 	}
 	r.Fence++
+	r.LastHeartbeatAt = time.Time{}
+	r.Blocker = ""
+	r.ResumeStatus = ""
+	r.LastUpdate = c.cfg.Now()
 	r.RecoveryClaim = ""
 	r.Status = fsm.Pending
 	r.NextUpdateBy = c.cfg.Now().Add(c.cfg.AckTimeout)

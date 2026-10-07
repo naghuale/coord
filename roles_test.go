@@ -17,6 +17,11 @@ func TestRolesIndependenceAndImmutableAssignment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		if err := registry.Close(); err != nil {
+			t.Errorf("close test resource: %v", err)
+		}
+	})
 	profiles := []roles.Profile{{Role: roles.Executor, Model: "nemotron", Capabilities: []string{"go"}}, {Role: roles.Auditor, Model: "audit", Capabilities: []string{"security_audit"}}}
 	for _, session := range []string{"exec", "alias"} {
 		if err = registry.Register("same-agent", session, profiles); err != nil {

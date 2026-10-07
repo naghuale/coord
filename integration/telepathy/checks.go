@@ -10,6 +10,7 @@ import (
 	"coord/fsm"
 	"coord/store"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http/httptest"
 	"os"
@@ -41,8 +42,7 @@ func takeWriterLock(dir string) (*os.File, error) {
 		return nil, err
 	}
 	if err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		f.Close()
-		return nil, fmt.Errorf("writer lock occupied: %w", err)
+		return nil, errors.Join(fmt.Errorf("writer lock occupied: %w", err), f.Close())
 	}
 	return f, nil
 }
@@ -98,8 +98,7 @@ func scenarioCore(t *tp, dir string) (*coord.Coordinator, *store.Store, error) {
 	cfg.Retry.MaxRetries = 0
 	c, err := coord.New(t, s, cfg)
 	if err != nil {
-		s.Close()
-		return nil, nil, err
+		return nil, nil, errors.Join(err, s.Close())
 	}
 	return c, s, nil
 }
@@ -107,7 +106,7 @@ func snapshotFields(r fsm.Run) map[string]any {
 	return map[string]any{"status": r.Status, "fence": r.Fence, "owner": r.OwnerSession, "attempt": r.Attempt, "progress": r.ProgressPct, "sha": r.TargetSHA, "task_messages": r.TaskMessages}
 }
 
-func p0Writer(ctx context.Context, t *tp, dir string, old bool) error {
+func p0Writer(ctx context.Context, t *tp, dir string, old bool) (err error) {
 	label := "b"
 	if old {
 		label = "a"
@@ -123,7 +122,7 @@ func p0Writer(ctx context.Context, t *tp, dir string, old bool) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { err = errors.Join(err, f.Close()) }()
 	t.event("writer_lock_acquired", map[string]any{"fence": task.Fence, "owner": t.self})
 	if err = mark(dir, "p0-"+label+"-task.json", task); err != nil {
 		return err
@@ -185,12 +184,12 @@ func p0Late(ctx context.Context, t *tp, dir string) error {
 		}
 	}
 }
-func p0Coord(ctx context.Context, t *tp, dir, to, newOwner, sha string) error {
+func p0Coord(ctx context.Context, t *tp, dir, to, newOwner, sha string) (err error) {
 	c, s, err := scenarioCore(t, dir)
 	if err != nil {
 		return err
 	}
-	defer s.Close()
+	defer func() { err = errors.Join(err, s.Close()) }()
 	r := fsm.Run{Task: "P0-FENCE", RunID: "P0-FENCE-run-1", Attempt: 3, Fence: 1, TargetSHA: sha, OwnerSession: to, Worktree: dir, Deadline: time.Now().Add(time.Minute)}
 	if err = c.Assign(ctx, r); err != nil {
 		return err
@@ -278,12 +277,12 @@ func p1Agent(ctx context.Context, t *tp, dir string) error {
 	}
 	return sendCompletion(ctx, t, task)
 }
-func p1Coord(ctx context.Context, t *tp, dir, to, sha string) error {
+func p1Coord(ctx context.Context, t *tp, dir, to, sha string) (err error) {
 	c, s, err := scenarioCore(t, dir)
 	if err != nil {
 		return err
 	}
-	defer s.Close()
+	defer func() { err = errors.Join(err, s.Close()) }()
 	const id = "P1-RESTART-run-1"
 	r, loaded := s.Get(id)
 	if !loaded {

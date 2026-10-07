@@ -25,12 +25,17 @@ func (h *histogram) observe(seconds float64) {
 	h.Count++
 	h.Sum += seconds
 }
-func (h histogram) write(w http.ResponseWriter, name string) {
-	fmt.Fprintf(w, "# TYPE coord_%s histogram\n", name)
-	for i, b := range []float64{.1, .5, 1, 2, 5, 10, 30} {
-		fmt.Fprintf(w, "coord_%s_bucket{le=\"%g\"} %d\n", name, b, h.Buckets[i])
+func (h histogram) write(w http.ResponseWriter, name string) error {
+	if _, err := fmt.Fprintf(w, "# TYPE coord_%s histogram\n", name); err != nil {
+		return err
 	}
-	fmt.Fprintf(w, "coord_%s_bucket{le=\"+Inf\"} %d\ncoord_%s_count %d\ncoord_%s_sum %g\n", name, h.Count, name, h.Count, name, h.Sum)
+	for i, b := range []float64{.1, .5, 1, 2, 5, 10, 30} {
+		if _, err := fmt.Fprintf(w, "coord_%s_bucket{le=\"%g\"} %d\n", name, b, h.Buckets[i]); err != nil {
+			return err
+		}
+	}
+	_, err := fmt.Fprintf(w, "coord_%s_bucket{le=\"+Inf\"} %d\ncoord_%s_count %d\ncoord_%s_sum %g\n", name, h.Count, name, h.Count, name, h.Sum)
+	return err
 }
 
 // Metrics exposes Prometheus text without dependencies or task/session labels.
@@ -68,8 +73,12 @@ func (m *Metrics) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		fmt.Fprintf(w, "coord_%s %d\n", k, m.counters[k])
+		if _, err := fmt.Fprintf(w, "coord_%s %d\n", k, m.counters[k]); err != nil {
+			return
+		}
 	}
-	m.ack.write(w, "ack_latency_seconds")
-	m.delivery.write(w, "delivery_latency_seconds")
+	if err := m.ack.write(w, "ack_latency_seconds"); err != nil {
+		return
+	}
+	_ = m.delivery.write(w, "delivery_latency_seconds")
 }

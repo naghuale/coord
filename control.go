@@ -4,6 +4,7 @@ import (
 	"coord/fsm"
 	"crypto/subtle"
 	"encoding/json"
+	"io"
 	"net/http"
 )
 
@@ -34,7 +35,7 @@ func (c *Coordinator) ControlHandler(token string) http.Handler {
 			return
 		}
 		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", 405)
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 		var req controlRequest
@@ -42,6 +43,11 @@ func (c *Coordinator) ControlHandler(token string) http.Handler {
 		d.DisallowUnknownFields()
 		if err := d.Decode(&req); err != nil {
 			http.Error(w, "invalid request", 400)
+			return
+		}
+		var trailing any
+		if err := d.Decode(&trailing); err != io.EOF {
+			http.Error(w, "invalid trailing JSON", http.StatusBadRequest)
 			return
 		}
 		var err error
@@ -59,7 +65,7 @@ func (c *Coordinator) ControlHandler(token string) http.Handler {
 			return
 		}
 		if err != nil {
-			http.Error(w, "operation refused", 409)
+			http.Error(w, "operation refused", http.StatusConflict)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)

@@ -10,11 +10,11 @@ production bridge, произвольные legacy subprocess или весь ch
 
 | Приоритет | Работа | Критерий завершения |
 |---|---|---|
-| P0 | Реальный Telepathy byte bridge | Проверен доступный API; TASK/ACK/heartbeat проходят между реальными сессиями |
+| Выполнено локально | Telepathy 0.8.0 MCP byte bridge и standalone CLI | Подписанный полный lifecycle и worker restart проверены make test-telepathy-host; arbitrary frontend и canonical Crewflow отдельно |
 | P0 | Production coordinator daemon | Конфигурация, старт/остановка, metrics/control listeners и восстановление snapshot |
-| P0 | Executor lifecycle и writer lock | Повторный TASK не запускает работу повторно; ABORT/lease loss прекращают writer |
+| P0 | Production executor lifecycle и writer lock | Повторный TASK не запускает работу повторно; ABORT/lease loss прекращают writer |
 | P0 | Supervisor конкретной установки | Fence подтверждает остановку writer; replacement ждёт TASK; failed spawn очищается |
-| P1 | Подтверждение commit результата | Executor отличает transport delivery от durable RESULT receipt координатора |
+| Выполнено локально | Подтверждение commit результата | RESULT_ACK durable вместе с RESULT; executor.Receipt фиксирует local completion; проверены retry/restart |
 | P1 | Crash/chaos integration suite | Убийство executor/coordinator/watchdog на каждом шаге не создаёт второго writer |
 | P1 | Проверка содержимого checkpoint | Проверяются hashes файлов/артефактов, а не только base HEAD и diff whitespace |
 | P1 | Порядок и replay сообщений | Определены sequence/epoch правила; поздний heartbeat не откатывает прогресс |
@@ -29,3 +29,8 @@ production bridge, произвольные legacy subprocess или весь ch
 Production acceptance: реальный полный lifecycle, restart с сохранением результата,
 устойчивость к повторам/потере сообщений, подтверждённое отсутствие двух writers
 и эксплуатационная инструкция, проверенная на целевом окружении.
+
+Локальный reference host CLI/subprocess находится в examples/agent. Он проверен
+с тестовым executable, включая process-group cancellation, и не заменяет
+production supervisor для произвольного агента. Исправления и воспроизводимые
+сценарии перечислены в VERIFICATION.md.

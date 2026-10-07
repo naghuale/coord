@@ -14,7 +14,9 @@ func TestExclusiveOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 	if unlock, err := f.Lock(); err == nil {
-		unlock()
+		if err := unlock(); err != nil {
+			t.Error(err)
+		}
 		t.Fatal("second coordinator acquired snapshot")
 	}
 	if err = release(); err != nil {
@@ -24,5 +26,9 @@ func TestExclusiveOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer unlock()
+	t.Cleanup(func() {
+		if err := unlock(); err != nil {
+			t.Errorf("release test lock: %v", err)
+		}
+	})
 }

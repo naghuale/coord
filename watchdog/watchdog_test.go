@@ -12,6 +12,7 @@ import (
 type backend struct {
 	events                           []string
 	fenceErr, verifyErr, transferErr bool
+	stopErr                          bool
 }
 
 func (b *backend) Candidates(context.Context) ([]fsm.Run, error) {
@@ -52,6 +53,9 @@ func (b *backend) Transfer(context.Context, string, string, uint64) error {
 }
 func (b *backend) Stop(context.Context, string) error {
 	b.events = append(b.events, "stop")
+	if b.stopErr {
+		return errors.New("replacement still live")
+	}
 	return nil
 }
 func (b *backend) Fail(context.Context, string, uint64, string) error {
@@ -72,5 +76,18 @@ func TestRecoveryOrdering(t *testing.T) {
 				t.Fatalf("events %v", b.events)
 			}
 		})
+	}
+}
+
+func TestFailedReplacementStopRetainsClaim(t *testing.T) {
+	b := &backend{transferErr: true, stopErr: true}
+	w := Watchdog{Backend: b, Interval: time.Second}
+	if err := w.Sweep(context.Background()); err == nil {
+		t.Fatal("expected cleanup error")
+	}
+	for _, event := range b.events {
+		if event == "release" {
+			t.Fatal("released claim while replacement may still be live")
+		}
 	}
 }

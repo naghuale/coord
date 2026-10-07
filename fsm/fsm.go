@@ -3,6 +3,7 @@ package fsm
 import (
 	"coord/envelope"
 	"coord/roles"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -19,6 +20,18 @@ const (
 	Done        Status = "DONE"
 	Failed      Status = "FAILED"
 )
+
+// ErrOutOfOrder rejects delayed progress that would overwrite a newer heartbeat.
+var ErrOutOfOrder = errors.New("out-of-order heartbeat")
+
+// Valid reports whether a status belongs to the persisted state machine.
+func (s Status) Valid() bool {
+	switch s {
+	case Pending, Accepted, Started, Blocked, Stalled, ResultReady, Done, Failed:
+		return true
+	}
+	return false
+}
 
 // Run contains protocol state and durable retry/outbox bookkeeping.
 type Run struct {
@@ -46,6 +59,9 @@ type Run struct {
 	DeliveredAt                                    time.Time
 	SendRetryAt                                    time.Time
 	SendRetries                                    int
+	CoordinatorSession                             string
+	ResultMessageID                                string
+	LastHeartbeatAt                                time.Time
 	RequiredRole                                   roles.Requirement
 	RoleHistory                                    []roles.Selection
 	RoleSelection                                  *roles.Selection
@@ -71,7 +87,7 @@ func (r *Run) Apply(e envelope.Envelope, now time.Time) error {
 	if status == Stalled {
 		status = r.ResumeStatus
 	}
-	next := status
+	var next Status
 	switch e.Kind {
 	case envelope.Ack:
 		if e.AckPayload == nil || (e.AckPayload.State != "ACCEPTED" && e.AckPayload.State != "REJECTED") {
@@ -91,6 +107,9 @@ func (r *Run) Apply(e envelope.Envelope, now time.Time) error {
 		}
 		if status != Accepted && status != Started && status != Blocked && status != ResultReady {
 			return fmt.Errorf("heartbeat before ACK")
+		}
+		if e.Timestamp.Before(r.LastHeartbeatAt) || e.HeartbeatPayload.ProgressPct < r.ProgressPct {
+			return ErrOutOfOrder
 		}
 		next = Status(e.HeartbeatPayload.State)
 		if status == ResultReady && next != ResultReady {
@@ -122,6 +141,7 @@ func (r *Run) Apply(e envelope.Envelope, now time.Time) error {
 	case envelope.Ack:
 		r.NextUpdateBy = e.AckPayload.NextUpdateBy
 	case envelope.Heartbeat:
+		r.LastHeartbeatAt = e.Timestamp
 		r.NextUpdateBy = e.HeartbeatPayload.NextUpdateBy
 		r.ProgressPct = e.HeartbeatPayload.ProgressPct
 		r.Blocker = e.HeartbeatPayload.Blocker

@@ -3,11 +3,16 @@ package watchdog
 import (
 	"context"
 	"coord/fsm"
+	"errors"
 	"fmt"
+	"math"
 	"os/exec"
 	"strings"
 	"time"
 )
+
+// ErrFenceExhausted prevents spawning a writer with a wrapped generation.
+var ErrFenceExhausted = errors.New("fence generation exhausted")
 
 type Control interface {
 	Candidates(context.Context) ([]fsm.Run, error)
@@ -54,6 +59,9 @@ func (b CommandBackend) VerifyWorktree(ctx context.Context, r fsm.Run) error {
 	return err
 }
 func (b CommandBackend) Spawn(ctx context.Context, r fsm.Run) (string, error) {
+	if r.Fence == math.MaxUint64 {
+		return "", ErrFenceExhausted
+	}
 	s, err := runCommand(ctx, b.SpawnCommand, r.RunID, fmt.Sprint(r.Attempt), r.TargetSHA, r.Worktree, fmt.Sprint(r.Fence+1))
 	if err == nil && (s == "" || strings.ContainsAny(s, "\n\r \t") || s == r.OwnerSession) {
 		return "", fmt.Errorf("invalid spawned session address")

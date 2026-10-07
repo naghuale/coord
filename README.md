@@ -3,9 +3,25 @@
 Самостоятельный Go-модуль координации агентов. Зависимости — только stdlib.
 Транспорт, процесс исполнения и supervision подключаются через явные интерфейсы.
 
+Самостоятельный Telepathy host/worker: `make build`, затем `bin/coord-telepathy -help`.
+Настройка, подписи и проверка: [TELEPATHY_HOST.md](docs/TELEPATHY_HOST.md).
+
+[Текущая рабочая версия и её проверки](docs/CURRENT_VERSION.md).
+
+## Ролевые сессии
+
+`make build`, затем `bin/coord prompt` — общий вход AI-агента.
+`bin/coord --state state/team --server none rooms` запускает локальный daemon.
+Комнаты, owner, оба входа, checkpoint, generation и Git-история:
+[SESSION_CLI.md](docs/SESSION_CLI.md).
+
+Шаблоны Executor, Orchestrator, Auditor и Reviewer: [ROLE_PROMPTS.md](docs/ROLE_PROMPTS.md).
+
 ## Документация
 
 - [Быстрый старт и примеры команд](docs/QUICKSTART.md)
+- [Инструкция агенту: Telepathy и CLI/subprocess](docs/AGENT_INSTRUCTIONS.md)
+- [Проверенные сценарии и границы отладки](docs/VERIFICATION.md)
 - [Архитектура и жизненный цикл](docs/ARCHITECTURE.md)
 - [Telepathy, plugin и уровни совместимости](docs/TRANSPORT.md)
 - [Настройка, control API и эксплуатация](docs/OPERATIONS.md)
@@ -27,7 +43,7 @@ go build ./...
 Из корня проекта также доступны `make demo`, `make roles`, `make check`,
 `make build`. Бинарники создаются в `bin/`, runtime state хранится вне Git.
 
-Демо выполняет `TASK → ACK → STARTED → RESULT_READY → RESULT → DONE` через
+Демо выполняет `TASK → ACK → STARTED → RESULT_READY → RESULT → RESULT_ACK → DONE` через
 in-process транспорт, сохраняя snapshot в собственной временной папке.
 Это проверка ядра, а не интеграция с действующими сессиями CF-009.
 
@@ -53,7 +69,7 @@ in-process транспорт, сохраняя snapshot в собственно
 используйте `Assign(ctx, fsm.Run{...})` для назначения задач. `Attempt` и `Fence`
 начинаются с 1; для существующего attempt можно указать его номер. `TargetSHA`
 содержит полный SHA, `Deadline` — абсолютный дедлайн. После остановки Run вызовите
-`Store.Close()`.
+`Store.Close()` и `Registry.Close()` для подключённого реестра ролей.
 
 На Unix `Store.New` автоматически удерживает kernel flock snapshot до Close:
 два координатора с одним canonical snapshot одновременно не запускаются.
@@ -66,9 +82,9 @@ context и возвращать успех после подтверждения
 `Receive` вызывается один раз. Закрытие incoming останавливает координатор.
 Для ошибок декодирования задайте `Malformed: func(){c.Metrics.Inc("malformed_messages_total")}`.
 
-Здесь нет выдуманного `telepathy.Client`: конкретный Telepathy SDK/CLI/daemon bridge
-должен реализовать byte interface. Реальная Telepathy-интеграция и тест с её
-процессами требуют доступного API конкретной установки.
+Пакет `coord/telepathy` реализует byte interface через проверенный MCP stdio API
+Telepathy 0.8.0. Это наш adapter, а не официальный SDK. Подписанный standalone
+host/worker и его process-level тест описаны в [TELEPATHY_HOST.md](docs/TELEPATHY_HOST.md).
 
 ## Семантика доставки и восстановления
 
@@ -101,16 +117,24 @@ context и возвращать успех после подтверждения
 
 `executor.Executor` настраивается с transport, отдельным checkpoint файлом,
 retry policy, `UpdateInterval`, `SendTimeout`, `Now: time.Now`.
-`Accept` сверяет HEAD, сохраняет checkpoint и посылает ACK. `Heartbeat` сохраняет
-прогресс, `Result` сначала сохраняет результат. После отказа транспорта checkpoint
-содержит `BLOCKED/TELEPATHY_UNAVAILABLE` и outbox. После reconnect той же сессии
-можно вызвать `Replay`; новая сессия принимает TASK с новым fence.
+`Accept` сверяет HEAD; ACK, heartbeat и RESULT сохраняются в checkpoint вместе
+с изменением состояния до первой отправки. Outbox отправляется в порядке записи:
+неотправленная готовность результата предшествует RESULT. Доставленные ACK и
+heartbeat удаляются; RESULT остаётся до correlated RESULT_ACK координатора.
+После отказа транспорта checkpoint содержит `BLOCKED/TELEPATHY_UNAVAILABLE`
+и outbox, но `RESULT_READY` сохраняется как необратимое состояние.
+После reconnect той же сессии можно вызвать `Replay`. Просроченные ACK и
+heartbeat получают новый message_id и next_update_by, сохраняемые до отправки;
+transport retries используют неизменное сообщение. Успешный replay снимает
+transport blocker и восстанавливает состояние приложения.
+Новая сессия принимает TASK с новым fence: прогресс сохраняется, outbox,
+результат и blocker старого writer очищаются.
 
 Владелец executor loop должен сериализовать вызовы, удерживать исключительный
 worktree lock, проверять AssignedRole и фактический профиль, прекращать работу
 при ABORT/потере lease, а при неудачном reconnect завершать процесс для supervisor.
 Повторный TASK не должен запускать работу второй раз. Локальный RESULT остаётся
-RESULT_READY до внешнего подтверждения commit координатором: transport delivered
+RESULT_READY до обработки RESULT_ACK через executor.Receipt: transport delivered
 не является таким подтверждением. Здесь нет автоматического исполнения кода задачи.
 
 ## Роли и независимость аудита
@@ -146,7 +170,8 @@ AUDITOR выполняет независимую проверку. REVIEWER м�
 Все операции применяются вместе; при ошибке ни одна не сохраняется. Пропущенное
 поле capabilities сохраняет прежние значения, пустой массив очищает их.
 Успех возвращает ROLE_ACK с in_reply_to и новой revision. Повтор message_id — no-op.
-Журнал `Registry.Events()` хранится в том же snapshot. Активный run и отправленный
+Журнал `Registry.Events()` хранится в том же snapshot. Registry удерживает kernel lock
+до Close; второй writer того же файла отклоняется. Активный run и отправленный
 TASK сохраняют снимок профиля/revision; ROLE_UPDATE влияет на будущие назначения.
 Capabilities и названия моделей остаются заявлениями агента, не аттестацией.
 
@@ -170,8 +195,11 @@ go run ./cmd/coord-watchdog \
 * spawn получает `run attempt target_sha worktree next_fence`, выводит один адрес
   сессии. Процесс ожидает TASK перед записью; при включённых ролях supervisor
   предварительно регистрирует его с доверенным agent_id и подходящим профилем.
-* stop получает адрес replacement. При неудачном transfer watchdog останавливает
-  replacement. Неудачные sweeps логируются, следующий sweep повторяет проверку.
+* stop получает адрес replacement и подтверждает завершение процесса и освобождение
+  writer lock. Ошибка transfer может означать потерянный ответ после commit:
+  stop должен работать и для replacement, уже получившего TASK.
+  Если stop не подтверждён, watchdog сохраняет recovery claim для ручной проверки,
+  не разрешая новый recovery того же поколения. Неудачные sweeps логируются.
 
 Snapshot исполнителя и канонический snapshot координатора — разные файлы.
 Произвольные незакоммиченные правки допустимы как progress; проверка HEAD и diff
@@ -192,3 +220,14 @@ chaos-тестом Telepathy. Файловое хранилище сохраня
 для тысяч runs следует заменить его на transactional database и разгрузить
 последовательные transport sends. Распределённый multi-coordinator consensus,
 автоматическое истечение recovery claims и аттестация моделей не реализованы.
+
+RESULT_ACK расширяет локальный schema_version=1: обновляйте обе стороны вместе.
+Регрессия progress и более старый timestamp heartbeat внутри fence отклоняются.
+Это не заменяет sequence/epoch protocol при равных timestamps и clock skew.
+Unix-пример `go run ./examples/agent` подключает CLI через stdin/stdout и
+проверяет полный lifecycle; ограничения и команда запуска — в инструкции агенту.
+
+## Отдельные будущие планы
+
+[Интеграция с Crewflow](docs/plans/crewflow/INTEGRATION_TASK.md) — отдельная
+не реализованная задача; она не требуется для текущего standalone запуска.

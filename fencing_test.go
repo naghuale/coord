@@ -114,7 +114,11 @@ func TestFailedRecoveryCommitRetainsOwnerAndFence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
+	t.Cleanup(func() {
+		if err := s.Close(); err != nil {
+			t.Errorf("close test store: %v", err)
+		}
+	})
 	f.c.store = s
 	sent := len(f.tp.sent)
 	err = f.c.RecoverClaimed(context.Background(), "run", "replacement", 1, "supervisor")

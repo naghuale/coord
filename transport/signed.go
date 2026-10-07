@@ -5,6 +5,7 @@ import (
 	"coord/envelope"
 	"crypto/ed25519"
 	"encoding/json"
+	"fmt"
 	"sync"
 )
 
@@ -20,9 +21,15 @@ type SignedClient struct {
 }
 
 func (s *SignedClient) Send(ctx context.Context, to string, raw []byte) error {
+	if s.Client == nil {
+		return fmt.Errorf("signed transport client required")
+	}
 	e, err := envelope.Decode(raw)
 	if err != nil {
 		return err
+	}
+	if e.To != to {
+		return fmt.Errorf("signed transport recipient mismatch")
 	}
 	signed, err := envelope.Sign(e, s.PrivateKey)
 	if err != nil {
@@ -35,6 +42,12 @@ func (s *SignedClient) Incoming(ctx context.Context) <-chan []byte {
 		s.in = make(chan []byte)
 		go func() {
 			defer close(s.in)
+			if s.Client == nil {
+				if s.Rejected != nil {
+					s.Rejected()
+				}
+				return
+			}
 			in := s.Client.Incoming(ctx)
 			for {
 				select {

@@ -93,3 +93,17 @@ go test -v ./roles -run '^TestConcurrentRevisionCAS$'
 ```
 
 Эти команды запускают воспроизводимые тестовые сценарии, а не production chaos-тесты.
+
+## 5. Подключить CLI-агента
+
+На Unix локальный host выполняет команду с задачей на stdin и завершает весь
+application lifecycle, включая RESULT_ACK:
+
+```sh
+go run ./examples/agent -worktree . -state state/local-agent \
+  -prompt "Проверочная задача" -- /usr/bin/printf "Готово"
+```
+
+Для настоящего CLI замените executable на его документированный stdin mode.
+Контракты, текст инструкции модели и Telepathy-вариант — в
+[AGENT_INSTRUCTIONS.md](AGENT_INSTRUCTIONS.md).

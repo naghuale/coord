@@ -36,7 +36,7 @@ flowchart LR
 | 0 | Нет двустороннего канала | Не назначать автоматические задачи |
 | 1 | Доставка текстовых сообщений | Проверять канал, но не считать задачу принятой |
 | 2 | Валидные TASK и ACK с correlation | Фиксировать acceptance и контролировать ACK timeout |
-| 3 | Heartbeat, RESULT, identity, deduplication | Вести рабочий lifecycle и принимать результаты |
+| 3 | Heartbeat, RESULT/RESULT_ACK, identity, deduplication | Вести рабочий lifecycle и принимать результаты |
 | 4 | Checkpoint, writer lock, ABORT, fenced recovery | Восстанавливать работу при выполнении supervisor contract |
 
 Ping/pong и перечисление профиля сами по себе не означают уровень 3 или 4.
@@ -47,8 +47,9 @@ checkpoint, предотвращать повторное исполнение �
 ## Что уже реализовано
 
 В проекте есть transport interface, generic byte Adapter, SignedClient, валидатор
-envelopes, executor helpers и watchdog interface/CLI. Специфичный bridge к SDK,
-CLI или daemon API конкретной установки Telepathy пока не реализован.
+envelopes, executor helpers и watchdog interface/CLI. Добавлен stdio MCP bridge для Telepathy 0.8.0 и standalone host/worker CLI;
+настройка и ограничения — в [TELEPATHY_HOST.md](TELEPATHY_HOST.md).
+Подключение произвольной живой LLM-сессии требует собственного frontend wrapper.
 
 Для подключения потребуются:
 
@@ -60,3 +61,7 @@ CLI или daemon API конкретной установки Telepathy пока
 
 Так `coord` можно использовать и с Telepathy, и с другим транспортом, сохранив
 одно ядро FSM и одинаковые проверки восстановления.
+
+RESULT_ACK передаётся в executor.Receipt и подтверждает durable commit, а не
+доставку. Старые strict decoders его не понимают: coordinator и wrapper/bridge
+обновляются вместе. Полные инструкции подключения — в AGENT_INSTRUCTIONS.md.

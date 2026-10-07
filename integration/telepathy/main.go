@@ -10,6 +10,7 @@ import (
 	"coord/checkpoint"
 	"coord/envelope"
 	"coord/fsm"
+	"coord/internal/atomicfile"
 	"coord/store"
 	"encoding/json"
 	"errors"
@@ -244,32 +245,7 @@ func save(path string, value any) error {
 	if err != nil {
 		return err
 	}
-	f, err := os.CreateTemp(filepath.Dir(path), ".checkpoint-*")
-	if err != nil {
-		return err
-	}
-	name := f.Name()
-	defer os.Remove(name)
-	if _, err = f.Write(b); err != nil {
-		f.Close()
-		return err
-	}
-	if err = f.Sync(); err != nil {
-		f.Close()
-		return err
-	}
-	if err = f.Close(); err != nil {
-		return err
-	}
-	if err = os.Rename(name, path); err != nil {
-		return err
-	}
-	d, err := os.Open(filepath.Dir(path))
-	if err != nil {
-		return err
-	}
-	defer d.Close()
-	return d.Sync()
+	return atomicfile.Write(path, b)
 }
 
 type agentState struct {
@@ -367,12 +343,12 @@ func agent(ctx context.Context, t *tp, dir string, drop bool) error {
 		}
 	}
 }
-func coordinator(ctx context.Context, t *tp, dir, to, sha string) error {
+func coordinator(ctx context.Context, t *tp, dir, to, sha string) (err error) {
 	s, err := store.New(checkpoint.File{Path: filepath.Join(dir, "runs.json")})
 	if err != nil {
 		return err
 	}
-	defer s.Close()
+	defer func() { err = errors.Join(err, s.Close()) }()
 	cfg := coord.DefaultConfig()
 	cfg.AckTimeout = 3 * time.Second
 	cfg.TickInterval = 100 * time.Millisecond
@@ -455,7 +431,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	defer log.Close()
+	defer func() {
+		if err := log.Close(); err != nil {
+			fmt.Fprintln(os.Stderr, "close event log:", err)
+		}
+	}()
 	rpc, err := newRPC(ctx, *server, filepath.Join(*dir, "telepathy-home"), *dir, *pid)
 	if err != nil {
 		panic(err)

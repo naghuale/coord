@@ -113,12 +113,12 @@ func p2Agent(ctx context.Context, t *tp, dir, worker string) error {
 	}
 	return sendCompletion(ctx, t, task)
 }
-func p2Coord(ctx context.Context, t *tp, dir, to, sha string) error {
+func p2Coord(ctx context.Context, t *tp, dir, to, sha string) (err error) {
 	c, s, err := scenarioCore(t, dir)
 	if err != nil {
 		return err
 	}
-	defer s.Close()
+	defer func() { err = errors.Join(err, s.Close()) }()
 	r := fsm.Run{Task: "P2-SUBPROCESS", RunID: "P2-SUBPROCESS-run-1", Attempt: 3, Fence: 1, TargetSHA: sha, OwnerSession: to, Worktree: dir, Deadline: time.Now().Add(time.Minute)}
 	if err = c.Assign(ctx, r); err != nil {
 		return err

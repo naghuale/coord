@@ -26,7 +26,7 @@ func TestUnavailableTransportCheckpointsProgress(t *testing.T) {
 	}
 	x := Executor{Transport: offline{}, Checkpoint: f, Policy: retry.Policy{BaseDelay: time.Millisecond, MaxDelay: time.Millisecond, Multiplier: 2, MaxRetries: 2}, UpdateInterval: time.Minute, SendTimeout: time.Second, Now: func() time.Time { return now }}
 	r.ProgressPct = 42
-	e := envelope.Envelope{MessageID: "hb"}
+	e := envelope.Envelope{MessageID: "hb", From: "exec", Fence: r.Fence, Task: r.Task, Run: r.RunID, Attempt: r.Attempt, TargetSHA: r.TargetSHA}
 	if err := x.deliver(context.Background(), r, e); err == nil {
 		t.Fatal("offline send succeeded")
 	}

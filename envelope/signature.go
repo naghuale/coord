@@ -1,9 +1,11 @@
 package envelope
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
+	"io"
 )
 
 // Signed preserves the exact bytes covered by the signature.
@@ -30,8 +32,14 @@ func Sign(e Envelope, key ed25519.PrivateKey) ([]byte, error) {
 // claimed SHA, but proving the actual filesystem contents requires attestation.
 func Verify(raw []byte, keys map[string]ed25519.PublicKey) (Envelope, error) {
 	var frame Signed
-	if err := json.Unmarshal(raw, &frame); err != nil {
+	d := json.NewDecoder(bytes.NewReader(raw))
+	d.DisallowUnknownFields()
+	if err := d.Decode(&frame); err != nil {
 		return Envelope{}, err
+	}
+	var trailing any
+	if err := d.Decode(&trailing); err != io.EOF {
+		return Envelope{}, fmt.Errorf("trailing signed frame JSON")
 	}
 	e, err := Decode(frame.Message)
 	if err != nil {
