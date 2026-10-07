@@ -1,7 +1,7 @@
 # Проверка и границы отладки
 
-Проверки ниже воспроизводятся локально, без реальных модельных сессий и сети
-провайдера. HTTP tests используют локальный httptest; subprocess tests —
+Базовые автоматические проверки воспроизводятся локально без реальных модельных
+сессий и сети провайдера; live-сценарии отдельно указаны ниже. HTTP tests используют локальный httptest; subprocess tests —
 собственный тестовый executable в t.TempDir(), а не настоящий AI-agent CLI.
 
 ## Команды
@@ -115,8 +115,8 @@ Runtime evidence в state/ отделено marker state/go.mod от основ�
   generation и progress сохранены, cursors не откатились. Coordinator и Executor
   выполнили resume до generation2. Старую запись coordinator лично проверил:
   stale session generation; Executor сообщил аналогичный отказ в seq40.
-  Auditor пока generation1, его собственный resume и повторный ready Executor
-  ещё ожидаются. Полная проверка восстановления обоих TUI не объявляется PASS.
+  Auditor пока generation1, его собственный resume ещё ожидается. Executor
+  подтвердил ready на generation2 в seq43 и сообщил о готовности в seq44. Полная проверка восстановления обоих TUI не объявляется PASS.
 - Качество ответа проверялось отдельно от протокола: seq14/22 содержали ошибки
   о restart и глобальном fencing, потребовалось вмешательство coordinator.
   Даже исправленный seq28 избыточно требует новый транспортный channel.
