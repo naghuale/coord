@@ -16,9 +16,25 @@ Coord сегодня объявляет `READY_FOR_COMMIT` и ждёт кома�
 
 ## Prerequisites
 
-Автокоммит не действует, пока не выполнены: P0-1 (production daemon),
-P0-2 (Task aggregate и Task-wide Fence), P0-3 (production executor lifecycle и
-writer lock) и шаг 8 ADR-0001 (структурированные ReviewResult и AuditResult).
+Автокоммит не действует, пока не выполнены все пять этапов P0 и шаг 8 ADR-0001:
+
+- P0-1 — production daemon skeleton;
+- P0-2 — Task aggregate, TaskID adoption и Task-wide Fence;
+- P0-3 — Telepathy agent write path через daemon command boundary;
+- P0-4 — production executor lifecycle и writer lock;
+- P0-5 — supervisor конкретной установки и end-to-end stop proof;
+- шаг 8 ADR-0001 — структурированные ReviewResult и AuditResult.
+
+Минимум, названный владельцем, был P0-1…P0-3 и Review/Audit. Расширение до P0-5
+следует из самих инвариантов этого ADR, а не является новым требованием: AC-04
+берёт базу CAS у Task.Fence, AC-06 предполагает, что commit выполняет executor,
+а AC-08 требует worktree и ветки на Task. Все три опираются на работающий
+executor lifecycle (P0-4) и на доказанный stop proof supervisor (P0-5). Без них
+fencing коммита недоказуем, поэтому документ не может быть принят раньше.
+
+Этапы названы вместе с номером, потому что нумерация P0-x уже перенумеровывалась
+один раз. Ссылка только на номер без названия сделала бы такую ошибку
+незаметной при чтении.
 
 До их выполнения действует `AGENTS.md`, раздел «Commit Readiness»: коммит, включая
 локальный, создаётся только по команде OWNER, а координатор лишь вычисляет
@@ -117,35 +133,50 @@ Startup Card ORCHESTRATOR получает autonomy, checks и `commit.allowed`.
 
 ## Инварианты
 
-- **AC-01 — только после prerequisites.** Пока не выполнены P0-1…P0-3 и шаг 8
-  ADR-0001, действует норма `AGENTS.md` о ручном коммите.
+- **AC-01 — только после prerequisites.** Пока не выполнены все пять этапов P0
+  (daemon skeleton, Task aggregate и Task.Fence, Telepathy write path, executor
+  lifecycle, supervisor stop proof) и шаг 8 ADR-0001, действует норма `AGENTS.md`
+  о ручном коммите.
+  Проверка: не реализовано
 - **AC-02 — только локальный commit.** Push, merge и deploy выполняет OWNER вне
   этого ADR.
+  Проверка: не реализовано
 - **AC-03 — фиксация факта до завершения.** Условие коммита: Run терминальный и
   Review/Audit PASS на этом tree hash. `COMPLETED` наступает только после
   наблюдённого `COMMIT_CREATED`, в одной транзакции с его записью.
+  Проверка: не реализовано
 - **AC-04 — CAS ветки.** Commit выполняется только через `git update-ref` с
   ожидаемым родителем, выданным текущим Task.Fence; несовпадение оставляет ref
   неизменным.
+  Проверка: не реализовано
 - **AC-05 — SHA проверяется daemon.** Принимается только SHA с ожидаемым
   родителем и деревом, равным проверенному tree hash; иначе `COMMIT_BLOCKED` и
   Task не `COMPLETED`.
+  Проверка: не реализовано
 - **AC-06 — commit выполняет executor.** Процессы запускает executor, а не daemon;
   факт поступает через command path.
+  Проверка: не реализовано
 - **AC-07 — вердикты привязаны к tree hash.** Изменение дерева после вердикта
   аннулирует его.
+  Проверка: не реализовано
 - **AC-08 — изоляция на Task.** Отдельный worktree и ветка на Task; общий рабочий
   каталог несовместим с автокоммитом.
+  Проверка: не реализовано
 - **AC-09 — gate не изменяется исполнителем.** `Makefile`, CI, `.gitignore`,
   `AGENTS.md`, линтеры и тестовые механизмы требуют `OWNER_REQUIRED`.
+  Проверка: не реализовано
 - **AC-10 — независимость ролей.** REVIEWER и AUDITOR не совпадают с executor по
   устойчивому `agent_id`.
+  Проверка: не реализовано
 - **AC-11 — Readiness только проекция.** Commit Readiness не хранится; значение и
   причина детерминированы для одного tree hash.
+  Проверка: не реализовано
 - **AC-12 — причины объяснимы.** Для состояния без commit всегда названа одна
   конкретная блокирующая причина.
+  Проверка: не реализовано
 - **AC-13 — OWNER_REQUIRED не обходится.** Причины OWNER_REQUIRED и запрещённые
   условия различимы, и запрещённое условие не снимается решением OWNER.
+  Проверка: не реализовано
 
 ## Последствия
 
@@ -165,7 +196,8 @@ Startup Card ORCHESTRATOR получает autonomy, checks и `commit.allowed`.
 
 Реализация соответствует этому ADR, если:
 
-- prerequisites выполнены, иначе действует ручной коммит (AC-01);
+- все пять этапов P0 и шаг 8 ADR-0001 выполнены, иначе действует ручной
+  коммит (AC-01);
 - commit изменяет только локальную ветку задачи (AC-02);
 - Task переходит в COMPLETED в одной транзакции с записью COMMIT_CREATED, и
   условием служит терминальный Run с Review/Audit PASS (AC-03);

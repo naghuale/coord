@@ -105,7 +105,7 @@ func (c Config) validate() error {
 	}
 	return nil
 }
-func connect(ctx context.Context, c Config) (*telepathy.Process, *telepathy.Client, *transport.Adapter, error) {
+func connect(ctx context.Context, c Config) (transport.Transport, func() error, error) {
 	environment := []string{}
 	for _, s := range os.Environ() {
 		if !strings.HasPrefix(s, "TELEPATHY_HOME=") && !strings.HasPrefix(s, "TELEPATHY_AGENT_PID=") {
@@ -113,31 +113,19 @@ func connect(ctx context.Context, c Config) (*telepathy.Process, *telepathy.Clie
 		}
 	}
 	environment = append(environment, "TELEPATHY_HOME="+c.Home, "TELEPATHY_AGENT_PID="+strconv.Itoa(c.AnchorPID))
-	p, err := telepathy.Start(ctx, []string{"node", c.Server, "--agent", "opencode"}, c.Directory, environment)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	listed, err := p.Call(ctx, "list_peers", map[string]any{})
-	if err != nil {
-		_ = p.Close()
-		return nil, nil, nil, err
-	}
-	first, _, _ := strings.Cut(listed, "\n")
-	if !strings.Contains(first, "["+c.Session+"]") {
-		_ = p.Close()
-		return nil, nil, nil, fmt.Errorf("actual Telepathy identity differs: %s", first)
-	}
-	client, err := telepathy.NewClient(p, c.Session, time.Second)
-	if err != nil {
-		_ = p.Close()
-		return nil, nil, nil, err
-	}
 	private, _ := base64.StdEncoding.DecodeString(c.PrivateKey)
 	keys := map[string]ed25519.PublicKey{}
 	for session, key := range c.Peers {
 		raw, _ := base64.StdEncoding.DecodeString(key)
 		keys[session] = ed25519.PublicKey(raw)
 	}
-	signed := &transport.SignedClient{Client: client, PrivateKey: ed25519.PrivateKey(private), Peers: keys}
-	return p, client, &transport.Adapter{Client: signed, Session: c.Session}, nil
+	return telepathy.OpenTransport(ctx, telepathy.TransportConfig{
+		Command:      []string{"node", c.Server, "--agent", "opencode"},
+		Directory:    c.Directory,
+		Environment:  environment,
+		Session:      c.Session,
+		PollInterval: time.Second,
+		PrivateKey:   ed25519.PrivateKey(private),
+		PeerKeys:     keys,
+	})
 }

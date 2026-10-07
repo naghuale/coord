@@ -4,6 +4,7 @@
 /coverage.html
 *.test
 *.prof
+/coordd.exe
 
 # Runtime state and credentials stay outside version control.
 /state/

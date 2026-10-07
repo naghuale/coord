@@ -14,7 +14,8 @@
 | Fail-closed exclusive lock snapshot | есть | ADR-0005 ST-02 |
 | Telepathy 0.8.0 MCP transport, one-run host/worker | есть (не подключён к daemon) | ROADMAP; TELEPATHY_HOST.md |
 | Library daemon host (listeners, readiness по Run) | частично | ADR-0004 RT-03 |
-| Standalone daemon, единый command path | нет (P0-1) | ADR-0004 RT-01, RT-04 |
+| Standalone daemon `cmd/coordd` (Run-only), namespace lock, process-kill acceptance | частично: P0-1 в работе, приёмка не закрыта | ADR-0004 RT-01, RT-03; docs/plans/p0-daemon/DESIGN.md |
+| Единый command path для всех writer | нет: localchat host пишет runs.json напрямую | ADR-0004 RT-04 |
 | Task aggregate, `task_<ULID>`, Task.Fence | нет (P0-2); пакет `taskid` есть | TASK-MODEL; ADR-0003; ADR-0004 RT-06 |
 | Agent write path Telepathy → daemon → Task | нет (P0-3) | ADR-0001 шаг 11 |
 | ReviewResult, AuditResult | нет | ADR-0001 шаг 8 |
@@ -24,6 +25,18 @@
 | Startup Card, read-only API, Dashboard | нет | ADR-0001; ADR-0006 (не написан) |
 | Project/Task Brief | Proposed | ADR-0007 |
 | Автономная приёмка и git commit | Proposed; до пересмотра — ручной commit по AGENTS.md «Commit Readiness» | ADR-0008 |
+
+## Номера ADR
+
+Статус Accepted или Proposed берётся из шапки самого ADR. Здесь перечислены
+только номера, файла для которых ещё нет, чтобы их не заняли повторно.
+
+| Номер | Назначение | Где зарезервирован |
+|---|---|---|
+| ADR-0006 | API Contract: read-only API, command interface, Startup Card | ADR-0001 «Порядок реализации», шаг 12; ADR-0004 RT-05 |
+
+Новый ADR получает следующий свободный номер после последнего файла или
+зарезервированного номера.
 
 ## 1. Система целиком
 

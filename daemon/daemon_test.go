@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -166,6 +167,50 @@ func TestDaemonReadinessLifecycle(t *testing.T) {
 	}
 	if err := d.Run(context.Background()); err == nil {
 		t.Fatal("Run after shutdown unexpectedly succeeded")
+	}
+}
+
+func TestDaemonReadinessKeepsMutationsClosedDuringRecovery(t *testing.T) {
+	now := time.Now().UTC()
+	run := fsm.Run{Task: "task", RunID: "run", Attempt: 1, Fence: 1,
+		TargetSHA: strings.Repeat("a", 40), OwnerSession: "agent", Worktree: t.TempDir(),
+		Deadline: now.Add(time.Hour), Status: fsm.Stalled, ResumeStatus: fsm.Started,
+		RecoveryNeeded: true}
+	state, err := store.New(&memoryPersistence{runs: map[string]fsm.Run{run.RunID: run}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	coordinator, err := coord.New(&testTransport{inbox: make(chan envelope.Envelope)}, state, coord.DefaultConfig())
+	if err != nil {
+		_ = state.Close()
+		t.Fatal(err)
+	}
+	d := &Daemon{coordinator: coordinator, config: Config{ControlToken: "test-token"}}
+	d.transportReady.Store(true)
+	t.Cleanup(func() { _ = coordinator.Close() })
+
+	ready := httptest.NewRecorder()
+	d.readyHandler(ready, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if ready.Code != http.StatusServiceUnavailable || !strings.Contains(ready.Body.String(), "supervisor_recovery_pending") {
+		t.Fatalf("readiness during recovery = %d %q", ready.Code, ready.Body.String())
+	}
+	control := d.afterTransportReady(coordinator.ControlHandler("test-token"))
+	mutation := httptest.NewRequest(http.MethodPost, "/assign", strings.NewReader(`{"run":"new"}`))
+	mutation.Header.Set("Authorization", "Bearer test-token")
+	response := httptest.NewRecorder()
+	control.ServeHTTP(response, mutation)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("ordinary mutation became available during recovery: status=%d body=%q", response.Code, response.Body.String())
+	}
+	// Recovery control remains available while readiness is closed; this is the
+	// narrowly scoped RT-03 exception, not a general mutation path.
+	claim := httptest.NewRequest(http.MethodPost, "/claim", strings.NewReader(`{"run":"run","fence":1,"claim":"claim-1"}`))
+	claim.Header.Set("Authorization", "Bearer test-token")
+	claim.Header.Set("Content-Type", "application/json")
+	claimResponse := httptest.NewRecorder()
+	control.ServeHTTP(claimResponse, claim)
+	if claimResponse.Code != http.StatusNoContent {
+		t.Fatalf("recovery control unavailable while not ready: status=%d body=%q", claimResponse.Code, claimResponse.Body.String())
 	}
 }
 

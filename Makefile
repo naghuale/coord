@@ -32,6 +32,7 @@ build:
 	go build -o bin/coord-demo ./cmd/coord-demo
 	go build -o bin/coord-watchdog ./cmd/coord-watchdog
 	go build -o bin/coord-telepathy ./cmd/coord-telepathy
+	go build -o bin/coordd ./cmd/coordd
 
 demo:
 	go run ./cmd/coord-demo

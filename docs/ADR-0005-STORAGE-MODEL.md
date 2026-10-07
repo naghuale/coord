@@ -98,6 +98,8 @@ Canonical State + Domain Event + Outbox [+ Inbox receipt when required] = One Du
 пересобирает одну сторону из другой. Входящий Inbox receipt включается в тот же
 commit, если он нужен для durable deduplication обработанной команды/сообщения.
 
+Проверка: не реализовано
+
 ### ST-02 — Единственный writer
 
 Daemon удерживает exclusive process lock всего state namespace до остановки и
@@ -116,12 +118,16 @@ loop daemon. Task-level правило «не более одного актив
 само по себе этого правила не обеспечивает. После падения daemon новый процесс
 может получить lock и продолжить только после проверки durable state.
 
+Проверка: частично — `TestCoorddSecondProcessCannotOpenOwnedNamespace`, `TestRefusedOwnershipFailsBeforeLoadingState`, `TestLockExclusivityOrFailClosed`; не реализовано: все изменения только через daemon command path (localchat host пишет runs.json напрямую), один активный writer Run на Task
+
 ### ST-03 — Commit-or-reopen
 
 Состояние в памяти публикуется только после успешного durable commit. Если запись,
 rename или sync вернули ошибку с неопределённым результатом, store прекращает
 изменяющие операции. Daemon должен reopen и заново проверить snapshot до
 возобновления записи.
+
+Проверка: частично — `TestFailedCommitRequiresReopenBeforeFurtherWrites`; не реализовано: reopen и повторная проверка snapshot daemon'ом
 
 ### ST-04 — Загрузка до readiness
 
@@ -133,6 +139,8 @@ Run fence snapshots, отсутствие нескольких активных 
 блокируют readiness без side effects. Существующий `checkpoint.validateRuns`
 покрывает только проверки, перечисленные в Context; его нельзя считать выполнением
 этого требования.
+
+Проверка: не реализовано
 
 ### ST-05 — Миграции
 
@@ -150,6 +158,8 @@ Task требуется явная проверенная mapping table; есл�
 неоднозначна, импорт не создаёт каноническую Task и daemon остаётся not-ready
 для этого набора данных.
 
+Проверка: не реализовано
+
 ### ST-06 — Fencing и concurrency
 
 В первом single-daemon backend конкурентные команды сериализуются на command
@@ -159,6 +169,8 @@ boundary. Проверка актуального `Task.Fence` и запись �
 snapshot storage. При добавлении SQLite fencing/CAS переносится в транзакционное
 conditional update; он не вычисляется из `max(Run.Fence)`.
 
+Проверка: не реализовано
+
 ### ST-07 — Уникальность TaskID
 
 Transaction boundary обеспечивает уникальный ключ `TaskID`. Snapshot backend
@@ -166,6 +178,8 @@ Transaction boundary обеспечивает уникальный ключ `Tas
 backend дополнительно задаёт native unique constraint. Если создание встречает
 коллизию ULID, Coord генерирует другой ID и повторяет транзакцию; запись события
 и Outbox для неуспешной попытки не сохраняется.
+
+Проверка: не реализовано
 
 ## Ограничения и переход к БД
 

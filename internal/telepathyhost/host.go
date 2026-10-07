@@ -27,11 +27,13 @@ func Run(ctx context.Context, cfg Config) (result fsm.Run, err error) {
 		return result, fmt.Errorf("acquire Telepathy session: %w", lockErr)
 	}
 	defer func() { err = errors.Join(err, releaseSession()) }()
-	p, client, tp, err := connect(ctx, cfg)
+	tp, closeTransport, err := connect(ctx, cfg)
+	if closeTransport != nil {
+		defer func() { err = errors.Join(err, closeTransport()) }()
+	}
 	if err != nil {
 		return result, err
 	}
-	defer func() { err = errors.Join(err, p.Close()) }()
 	if cfg.Role == "worker" {
 		return worker(ctx, cfg, tp)
 	}
@@ -100,7 +102,10 @@ func Run(ctx context.Context, cfg Config) (result fsm.Run, err error) {
 	for {
 		select {
 		case loopErr := <-done:
-			return result, errors.Join(loopErr, client.Err())
+			if source, ok := tp.(interface{ Err() error }); ok {
+				return result, errors.Join(loopErr, source.Err())
+			}
+			return result, loopErr
 		case <-ticker.C:
 			result, _ = canonical.Get(cfg.Task.RunID)
 			// The receipt must leave the durable outbox before this one-shot host stops.

@@ -173,7 +173,7 @@ func TestAckRetryPreservesAttemptAndDeduplicates(t *testing.T) {
 	}
 	f.status(t, fsm.Stalled)
 	next := f.tp.sent[1]
-	if next.MessageID == old.MessageID || next.Attempt != old.Attempt || next.Fence != old.Fence || next.To != old.To {
+	if next.MessageID == old.MessageID || next.Run != old.Run || next.Attempt != old.Attempt || next.Fence != old.Fence || next.To != old.To {
 		t.Fatal("retry changed ownership or reused message ID")
 	}
 	e := f.ack()

@@ -11,7 +11,10 @@
 ## Ролевые сессии
 
 `make build`, затем `bin/coord prompt` — общий вход AI-агента.
-`bin/coord --state state/team --server none rooms` запускает локальный daemon.
+Production Run daemon skeleton P0-1: `make build`, затем `bin/coordd -config /absolute/path/coordd.json`; он владеет текущей Run-моделью. Canonical Task runtime остаётся следующим этапом P0-2. Формат и exit codes описаны в [OPERATIONS.md](docs/OPERATIONS.md).
+`bin/coord --state state/team --server none rooms` запускает локальный room host
+с Unix socket API. Это host для `internal/rooms`, не production daemon из
+ADR-0004 и не часть `coordd`.
 Комнаты, owner, оба входа, checkpoint, generation и Git-история:
 [SESSION_CLI.md](docs/SESSION_CLI.md).
 

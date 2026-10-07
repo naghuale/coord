@@ -63,7 +63,7 @@ WAITING_ASSIGNMENT и отключённые сессии; ATTACHED — выда
 не утверждение о живом TUI. peers показывает транспортные сессии.
 
 `session block` и `session unblock` — owner-команды: CLI использует локальный
-`owner.key`, а daemon проверяет owner capability. `--reason` обязателен;
+`owner.key`, а localchat host проверяет owner capability. `--reason` обязателен;
 `--retry-at` необязателен и задаётся в RFC3339. Блокер хранит источник `owner`,
 останавливает новые назначения этой сессии и не меняет checkpoint. При успехе
 CLI печатает `session=… blocker=… source=owner retry_at=…` для block и

@@ -1,10 +1,10 @@
 # Эксплуатация и команды
 
-Текущая поставка содержит библиотеку coordinator, host runtime из пакета
-`daemon`, локальное демо и отдельный watchdog CLI. Есть ограниченный
-самостоятельный Telepathy host/worker ([TELEPATHY_HOST.md](TELEPATHY_HOST.md)).
-Отдельного daemon executable и canonical Task runtime пока нет: приложение-хост
-предоставляет transport и создаёт Coordinator для `daemon`.
+Текущая поставка содержит библиотеку coordinator, production executable `coordd`
+для существующей Run-модели, локальное демо и отдельный watchdog CLI. Есть также
+ограниченный самостоятельный Telepathy host/worker
+([TELEPATHY_HOST.md](TELEPATHY_HOST.md)). `coordd` пока не реализует canonical
+Task runtime из P0-2.
 
 ## Значения по умолчанию
 
@@ -56,8 +56,75 @@ listeners, дожидается coordinator loop и закрывает его du
 ошибка освобождения snapshot/registry не теряется при штатном выходе.
 Оба listeners принимают только loopback-адреса. Для удалённого доступа
 используйте отдельный TLS proxy с аутентификацией и сетевой политикой. Runtime
-остаётся библиотечным host: транспорт и настройка Coordinator принадлежат
-приложению.
+остаётся доступным для встраивания host: транспорт и настройка Coordinator
+принадлежат приложению.
+
+## Production Run daemon (`coordd`)
+
+Соберите бинарник и запустите его с единственным аргументом конфигурации:
+
+```sh
+make build
+./bin/coordd -config /absolute/path/coordd.json
+```
+
+Файл конфигурации — JSON schema version 1. Неизвестные поля, отсутствующая или
+неподдерживаемая версия, неполный transport, нечитаемые ключи и нелокальные
+control/metrics addresses отклоняются до создания state namespace. Файл не
+содержит сами секреты: в нём указываются пути к control token и Ed25519 private
+key. Защитите эти файлы правами ОС. Пример структуры (значения путей и ключей
+замените своими):
+
+```json
+{
+  "schema_version": 1,
+  "state_dir": "/absolute/path/coord-state",
+  "control_addr": "127.0.0.1:8090",
+  "metrics_addr": "127.0.0.1:9091",
+  "control_token_file": "/absolute/path/coord-control.token",
+  "transport": {
+    "kind": "telepathy",
+    "server": "/absolute/path/telepathy/dist/server.mjs",
+    "home": "/absolute/path/telepathy-home",
+    "directory": "/absolute/path/session-presence",
+    "anchor_pid": 12345,
+    "session": "opencode-12345",
+    "private_key_file": "/absolute/path/coord-private-key.base64",
+    "peers": {
+      "opencode-67890": "<base64 Ed25519 public key>"
+    }
+  }
+}
+```
+
+`node` должен быть доступен в `PATH`; `server` — Telepathy 0.8.0 MCP server.
+`anchor_pid` задаёт ожидаемую сессию `opencode-<pid>`; перед запуском Telepathy
+проверяет её через `list_peers`. `peers` содержит закреплённые ключи удалённых
+сессий. Создайте отдельные живые anchor и не указывайте PID другой работающей
+сессии. Транспорт обязателен: отсутствие или ошибка запуска завершают startup;
+namespace lock, Store и RoleRegistry закрываются при ошибке.
+
+Перед Store и RoleRegistry daemon получает эксклюзивную `namespace.lock` на весь
+каталог `state_dir`. Второй процесс с тем же каталогом завершается до listeners.
+Файловые locks Store и RoleRegistry сохраняются как дополнительная защита.
+После SIGINT/SIGTERM daemon завершает HTTP handlers и coordinator loop, закрывает
+transport process, RoleRegistry и Store, затем освобождает namespace lock.
+`/readyz` закрыт до startup tick и инициализации transport receive, а также при
+pending supervisor recovery. Это readiness текущей Run-модели, не canonical Task.
+
+Exit codes:
+
+- `0` — штатное завершение после SIGINT/SIGTERM.
+- `1` — ошибка runtime, transport startup, ownership или graceful shutdown.
+- `2` — неверные аргументы или конфигурация; runtime state не открывается.
+
+При ошибке до lock stderr показывает `coordd: not started`, причину, выбранный
+или отсутствующий transport, поддерживаемый kind и строки `ownership: not
+acquired` / `namespace lock: not acquired`. Ошибка запуска Telepathy после lock
+возвращает `1` и сообщает `namespace lock: released` после cleanup.
+
+Runtime config не принимает override-флаги. Для изменения параметров отредактируйте
+конфигурационный файл и перезапустите daemon через внешний supervisor.
 
 ## Сборка и watchdog
 

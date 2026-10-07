@@ -12,23 +12,29 @@
 
 ## Task identity и связь с существующим Run
 
-`Task.ID` имеет тип `taskid.ID` и формат `task_<ULID>`. Он выдаётся Coord и
-не зависит от `Run.Task`, issue number, имени репозитория или других внешних
-идентификаторов.
+- **TM-01 — TaskID принадлежит Coord и использует ULID.** `Task.ID` имеет тип `taskid.ID` и формат `task_<ULID>`. Он выдаётся Coord и
+  не зависит от `Run.Task`, issue number, имени репозитория или других внешних
+  идентификаторов.
+  Проверка: частично — `TestGeneratorProducesCanonicalRoundTrippableID`, `TestParseRejectsNonCanonicalIDs`; не реализовано: поле `Task.ID` и выдача TaskID самим Coord (Task aggregate нет)
 
-Каждая новая каноническая Run содержит отдельное поле `Run.TaskID`, которое
-ссылается на `Task.ID`. Это отношение — каноническая связь Task ↔ Run.
-`Task` не хранит дублирующий список Run IDs: участники и история Runs находятся
-через индекс/поиск по `Run.TaskID`.
+- **TM-02 — Run.TaskID — явная связь с Task.** Каждая новая каноническая Run содержит отдельное поле `Run.TaskID`, которое
+  ссылается на `Task.ID`. Это отношение — каноническая связь Task ↔ Run.
+  `Task` не хранит дублирующий список Run IDs: участники и история Runs находятся
+  через индекс/поиск по `Run.TaskID`.
+  Проверка: не реализовано
 
-Историческое `Run.Task` сохраняется byte-for-byte как legacy execution/protocol
-identity. Его смысл может быть описанием, названием, внешним ключом или
-одноразовой строкой. Запрещается неявно копировать его в `Task.ID` или `Run.TaskID`.
-В новом wire contract `TaskID` передаётся отдельным типизированным полем; старое
-поле `Task` остаётся до отдельного protocol migration и не служит заменой
-TaskID. Миграция существующего Run требует явной таблицы соответствий и проверки
-коллизий; строки без однозначного соответствия остаются legacy и не импортируются
-автоматически.
+- **TM-03 — Legacy Run.Task не переинтерпретируется.** Историческое `Run.Task` сохраняется byte-for-byte как legacy execution/protocol
+  identity. Его смысл может быть описанием, названием, внешним ключом или
+  одноразовой строкой. Запрещается неявно копировать его в `Task.ID` или `Run.TaskID`.
+  В новом wire contract `TaskID` передаётся отдельным типизированным полем; старое
+  поле `Task` остаётся до отдельного protocol migration и не служит заменой
+  TaskID.
+  Проверка: не реализовано
+
+- **TM-04 — Импорт требует однозначной mapping table.** Миграция существующего Run требует явной таблицы соответствий и проверки
+  коллизий; строки без однозначного соответствия остаются legacy и не импортируются
+  автоматически.
+  Проверка: не реализовано
 
 ## Aggregate
 
@@ -52,20 +58,23 @@ Run
 └─ Inputs, Result, Artifacts, timestamps
 ```
 
-`OwnerID` names a stable human principal, not an `agent_id`, session address or
-transport identity. Owner commands authenticate that principal through a
-session-scoped capability bound to the current generation and TaskID.
+- **TM-05 — OwnerID и capability привязаны к человеку и generation.** `OwnerID` names a stable human principal, not an `agent_id`, session address or
+  transport identity. Owner commands authenticate that principal through a
+  session-scoped capability bound to the current generation and TaskID.
+  Проверка: не реализовано
 
-`Revision` increments on every canonical Task mutation and is the compare-and-swap
-version for Owner commands and conditional writes. It is not a separate FSM.
-Task-owned relations and workflow transitions are committed by Coord. Domain
-Events, Review/Audit, Discussion and Outbox records are associated with TaskID and
-written in the same transaction as the state transition. Derived projections do
-not add stored Task status fields.
+- **TM-06 — Revision является CAS-версией Task.** `Revision` increments on every canonical Task mutation and is the compare-and-swap
+  version for Owner commands and conditional writes. It is not a separate FSM.
+  Task-owned relations and workflow transitions are committed by Coord. Domain
+  Events, Review/Audit, Discussion and Outbox records are associated with TaskID and
+  written in the same transaction as the state transition. Derived projections do
+  not add stored Task status fields.
+  Проверка: не реализовано
 
 ## Независимые оси Task
 
-`CurrentStage` и `Status` — разные поля и разные значения.
+- **TM-07 — Stage и Status — разные оси.** `CurrentStage` и `Status` — разные поля и разные значения.
+  Проверка: не реализовано
 
 ### Stage
 
@@ -76,21 +85,26 @@ Stage отвечает, какой этап workflow сейчас выполня
 - `AUDIT`
 - `OWNER_DECISION`
 
-`StagePlan` задаёт обязательные и разрешённые этапы. Пропуск необязательного
-Review/Audit фиксируется policy и transition event, а не выводится Dashboard.
-Для MVP его грамматика ограничена: `EXECUTION` обязателен и идёт первым;
-`REVIEW` и `AUDIT` могут быть опущены согласно policy, но если оба включены,
-`REVIEW` предшествует `AUDIT`. Требование финального решения Owner задаётся
-отдельным флагом policy. `OWNER_DECISION` — условное прерывание, не этап,
-который можно добавлять или удалять произвольным текстом.
+- **TM-08 — StagePlan имеет фиксированную грамматику.** `StagePlan` задаёт обязательные и разрешённые этапы. Пропуск необязательного
+  Review/Audit фиксируется policy и transition event, а не выводится Dashboard.
+  Для MVP его грамматика ограничена: `EXECUTION` обязателен и идёт первым;
+  `REVIEW` и `AUDIT` могут быть опущены согласно policy, но если оба включены,
+  `REVIEW` предшествует `AUDIT`. Требование финального решения Owner задаётся
+  отдельным флагом policy. `OWNER_DECISION` — условное прерывание, не этап,
+  который можно добавлять или удалять произвольным текстом.
+  Проверка: не реализовано
 
-Task хранит валидированный StagePlan и его `PolicyVersion` как канонические
-данные. Это не скрытая вторая policy: переходы Coord используют только текущий
-снимок StagePlan в Task и его известную версию семантики. Изменить план можно
-только явной Owner-командой с ожидаемой Task Revision; изменение фиксируется
-событием и новой revision. Незаметное изменение внешней project config не меняет
-уже созданные Task. У терминального Task `CurrentStage` отсутствует; завершение
-представлено `Status=COMPLETED`.
+- **TM-09 — StagePlan меняется только Owner-командой с revision.** Task хранит валидированный StagePlan и его `PolicyVersion` как канонические
+  данные. Это не скрытая вторая policy: переходы Coord используют только текущий
+  снимок StagePlan в Task и его известную версию семантики. Изменить план можно
+  только явной Owner-командой с ожидаемой Task Revision; изменение фиксируется
+  событием и новой revision. Незаметное изменение внешней project config не меняет
+  уже созданные Task.
+  Проверка: не реализовано
+
+- **TM-10 — Терминальный Task не имеет CurrentStage.** У терминального Task `CurrentStage` отсутствует; завершение
+  представлено `Status=COMPLETED`.
+  Проверка: не реализовано
 
 ### Status
 
@@ -102,74 +116,90 @@ Status отвечает, может ли работа продолжаться �
 - `FAILED` — Task завершён неуспешно по явному правилу;
 - `COMPLETED` — workflow достиг принятого terminal outcome.
 
-`NEEDS_OWNER_DECISION` не является Task Status. Это `CurrentStage=OWNER_DECISION`,
-`Status=BLOCKED` и производная Attention для OWNER с причиной, основанием и
-разрешёнными вариантами. Агентский `RunStatus=BLOCKED` не автоматически делает
-Task заблокированной: текущий Run может быть восстановлен в рамках того же
-назначения после устранения причины. Если продвижение остановилось, Task получает
-`Status=BLOCKED` и сохраняет текущий Stage. Новое writer assignment запрещено,
-пока предыдущий Run не восстановлен в том же ownership либо не переведён в
-терминальный `SUPERSEDED` после подтверждённой остановки старого writer.
+- **TM-11 — NEEDS_OWNER_DECISION не является Task Status.** `NEEDS_OWNER_DECISION` не является Task Status. Это `CurrentStage=OWNER_DECISION`,
+  `Status=BLOCKED` и производная Attention для OWNER с причиной, основанием и
+  разрешёнными вариантами. Агентский `RunStatus=BLOCKED` не автоматически делает
+  Task заблокированной: текущий Run может быть восстановлен в рамках того же
+  назначения после устранения причины.
+  Проверка: не реализовано
+
+- **TM-12 — BLOCKED сохраняет текущий Stage.** Если продвижение остановилось, Task получает `Status=BLOCKED` и сохраняет текущий Stage.
+  Проверка: не реализовано
+
+Новое writer assignment запрещено, пока предыдущий Run не восстановлен в том же
+ownership либо не переведён в терминальный `SUPERSEDED` после подтверждённой
+остановки старого writer.
 
 `TaskStatus` и `RunStatus` — разные типы, хотя некоторые строковые значения
 совпадают. `TaskStatus.PENDING` означает «Task ещё не взят в работу»;
 `RunStatus.PENDING` означает «Run назначен, ждёт ACK».
 
-Если Coord committed результат Run, но supervisor ещё не подтвердил остановку
-процесса, Task получает `Status=BLOCKED` и сохраняет текущий Stage. Причина
-выводится как `WAITING_FOR_SUPERVISOR_STOP`; Attention показывает ожидаемый Run,
-session/process generation и то, что Coord ждёт stop proof от supervisor. Это
-вычисляется из committed результата и отсутствующего обязательного proof, а не
-хранится как отдельная очередь. Run может быть `DONE`, пока Task заблокирован на
-границе передачи; интерфейс не должен изображать этот период как активную работу.
+- **TM-13 — Неподтверждённая остановка блокирует продвижение.** Если Coord committed результат Run, но supervisor ещё не подтвердил остановку
+  процесса, Task получает `Status=BLOCKED` и сохраняет текущий Stage. Причина
+  выводится как `WAITING_FOR_SUPERVISOR_STOP`; Attention показывает ожидаемый Run,
+  session/process generation и то, что Coord ждёт stop proof от supervisor. Это
+  вычисляется из committed результата и отсутствующего обязательного proof, а не
+  хранится как отдельная очередь. Run может быть `DONE`, пока Task заблокирован на
+  границе передачи; интерфейс не должен изображать этот период как активную работу.
+  Проверка: не реализовано
 
-`RunViewStatus` — только вычисляемое представление для человека. Оно не
-принимается командами и не сохраняется как второе состояние Run.
+- **TM-14 — RunViewStatus только проекция.** `RunViewStatus` — только вычисляемое представление для человека. Оно не
+  принимается командами и не сохраняется как второе состояние Run.
+  Проверка: не реализовано
 
-`REWORK_REQUIRED` — не отдельная Stage/Status. Это результат Review/Audit,
-который атомарно переводит Task обратно в `EXECUTION`, сохраняет событие и
-создаёт новый Executor Run в следующем task attempt.
+- **TM-15 — REWORK_REQUIRED создаёт новый Executor Run.** `REWORK_REQUIRED` — не отдельная Stage/Status. Это результат Review/Audit,
+  который атомарно переводит Task обратно в `EXECUTION`, сохраняет событие и
+  создаёт новый Executor Run в следующем task attempt.
+  Проверка: не реализовано
 
 ## Run и Attempt
 
 Run — одно назначение одной роли внутри одного workflow attempt. Run FSM хранит
 протокольное исполнение роли; Task Stage хранит положение всей работы.
 
-Авторитетный `RunStatus` — протокольная FSM: `PENDING`, `ACCEPTED`, `STARTED`,
-`BLOCKED`, `STALLED`, `RESULT_READY`, `DONE`, `FAILED`, `SUPERSEDED`.
-`SUPERSEDED` — целевое терминальное состояние, ещё не добавленное в текущий
-`fsm.Status`. `ASSIGNED`, `READY`, `WORKING` и `COMPLETED` могут появляться только
-в неперсистентном `RunViewStatus` для интерфейса: соответственно как проекции
-`PENDING`, `ACCEPTED`, `STARTED` и `DONE` с durable Result record. Они не
-принимаются FSM и не записываются как RunStatus. View также обязан явно сохранять
-`STALLED` и `RESULT_READY`, чтобы не выдавать устаревшую работу или неподтверждённый
-результат за обычный `WORKING`/`COMPLETED`.
+- **TM-16 — RunStatus канонический, view-статусы не сохраняются.** Авторитетный `RunStatus` — протокольная FSM: `PENDING`, `ACCEPTED`, `STARTED`,
+  `BLOCKED`, `STALLED`, `RESULT_READY`, `DONE`, `FAILED`, `SUPERSEDED`.
+  `SUPERSEDED` — целевое терминальное состояние, ещё не добавленное в текущий
+  `fsm.Status`. `ASSIGNED`, `READY`, `WORKING` и `COMPLETED` могут появляться только
+  в неперсистентном `RunViewStatus` для интерфейса: соответственно как проекции
+  `PENDING`, `ACCEPTED`, `STARTED` и `DONE` с durable Result record. Они не
+  принимаются FSM и не записываются как RunStatus. View также обязан явно сохранять
+  `STALLED` и `RESULT_READY`, чтобы не выдавать устаревшую работу или неподтверждённый
+  результат за обычный `WORKING`/`COMPLETED`.
+  Проверка: частично — `TestRestartRejectsUnknownCanonicalStatus`; не реализовано: RunViewStatus и статус SUPERSEDED
 
-- Начальный Executor Run начинает Attempt `1`.
-- Reviewer и Auditor Runs, назначенные в том же проходе workflow, используют тот
+- **TM-17 — Attempt начинается с 1 и общий для Review/Audit прохода.** Начальный Executor Run начинает Attempt `1`.
+  Reviewer и Auditor Runs, назначенные в том же проходе workflow, используют тот
   же Attempt.
-- `CHANGES_REQUIRED` от Reviewer/Auditor начинает следующий Attempt: Coord
+  Проверка: не реализовано
+- **TM-18 — Rework требует подтверждённой остановки writer.** `CHANGES_REQUIRED` от Reviewer/Auditor начинает следующий Attempt: Coord
   терминально переводит старый Executor Run в `SUPERSEDED` и создаёт новый
   Executor Run с `Attempt+1` только после подтверждения supervisor, что предыдущий
   writer остановлен и больше не владеет рабочей границей.
-- Transport retry и повторная доставка сохраняют RunID и Attempt.
-- Recovery сохраняет RunID и Attempt; после подтверждённой остановки writer
+  Проверка: не реализовано
+- **TM-19 — Transport retry сохраняет RunID и Attempt.** Transport retry и повторная доставка сохраняют RunID и Attempt.
+  Проверка: `TestAckRetryPreservesAttemptAndDeduplicates`, `TestRunInvariantsHoldThroughLifecycle`
+- **TM-20 — Recovery сохраняет RunID и Attempt.** Recovery сохраняет RunID и Attempt; после подтверждённой остановки writer
   повышает Task.Fence и присваивает новый Run.Fence snapshot.
-- Каждый Run имеет собственный неизменяемый Attempt; Attempt является номером
+  Проверка: частично — `TestRunInvariantsHoldThroughLifecycle`, `TestRecoveryCASAndOldOwnerRejected`; не реализовано: stop proof supervisor до передачи и Task.Fence
+- **TM-21 — Attempt восстанавливается из committed истории.** Каждый Run имеет собственный неизменяемый Attempt; Attempt является номером
   прохода Task workflow и копируется в каждый Run этого прохода. Источник
   следующего номера — максимальный committed Attempt в истории Runs данного
   Task плюс один при rework; текущий Task status не используется для угадывания.
+  Проверка: не реализовано
 
-Run ID уникален в Coord и никогда не переиспользуется. Смена роли создаёт новый
-Run, но не увеличивает Attempt, пока не начат rework-проход.
+- **TM-22 — RunID уникален и не переиспользуется.** Run ID уникален в Coord и никогда не переиспользуется. Смена роли создаёт новый
+  Run, но не увеличивает Attempt, пока не начат rework-проход.
+  Проверка: не реализовано
 
-До создания Reviewer Run Coord проверяет стабильный `agent_id` и всю историю
-Executor Runs этого Task. Reviewer с тем же `agent_id`, что любой текущий или
-предыдущий Executor, отклоняется: он не может проверять собственную работу.
-Проверка выполняется до назначения, включая recovery и новые session адреса.
-Если независимого Reviewer нет, Task остаётся blocked на Stage REVIEW с причиной
-`NO_INDEPENDENT_REVIEWER`; Coord не подменяет его Executor, а Owner не может
-отменить hard policy. Аналогичные ограничения AUDITOR задаются ADR-0001.
+- **TM-23 — Reviewer независим по agent_id и истории.** До создания Reviewer Run Coord проверяет стабильный `agent_id` и всю историю
+  Executor Runs этого Task. Reviewer с тем же `agent_id`, что любой текущий или
+  предыдущий Executor, отклоняется: он не может проверять собственную работу.
+  Проверка выполняется до назначения, включая recovery и новые session адреса.
+  Если независимого Reviewer нет, Task остаётся blocked на Stage REVIEW с причиной
+  `NO_INDEPENDENT_REVIEWER`; Coord не подменяет его Executor, а Owner не может
+  отменить hard policy. Аналогичные ограничения AUDITOR задаются ADR-0001.
+  Проверка: не реализовано
 
 ## Task-wide Fence и ownership
 
@@ -199,11 +229,12 @@ writer должен быть остановлен внешним supervisor до
 один раз при создании следующего Executor Run; не следует
 повышать его отдельно за supersede и за создание того же writer.
 
-Owner decision не является агентским Run. Оно проходит через Task-scoped
-capability и CAS по текущей версии Task под daemon command boundary. Owner
-decision обновляет Task и Event, но не выдаёт агенту право записи и само не
-повышает Fence; последующее agent assignment повышает Fence до передачи
-ownership. Hard policy остаётся неизменной.
+- **TM-24 — Owner decision требует Task capability.** Owner decision не является агентским Run. Оно проходит через Task-scoped
+  capability и CAS по текущей версии Task под daemon command boundary. Owner
+  decision обновляет Task и Event, но не выдаёт агенту право записи и само не
+  повышает Fence; последующее agent assignment повышает Fence до передачи
+  ownership. Hard policy остаётся неизменной.
+  Проверка: не реализовано
 
 Эскалация Owner decision фиксирует в Domain Event исходный Stage, вопрос,
 evidence и разрешённые варианты. Task Revision и выбор Owner не разрешают
@@ -223,12 +254,13 @@ Coord повторно проверяет полный набор оставши
 Executor Run, пока каждый из них не `COMPLETED`. Owner не может решением
 изменить статус prerequisite или обойти иные hard policy.
 
-Человеческий ввод секрета/MFA — отдельный защищённый handoff, а не Owner
-decision и не событие с текстовым значением. Значение передаётся напрямую по
-защищённому каналу и не проходит через Coord; Coord может сохранить только
-нечувствительную ссылку на handoff и проверяемый исход. Если после handoff
-продолжается тот же заблокированный Run с тем же владельцем, его RunID, Attempt
-и Fence не меняются. Смена writer всё равно требует stop proof и нового Fence.
+- **TM-25 — Секретный handoff не проходит через Coord.** Человеческий ввод секрета/MFA — отдельный защищённый handoff, а не Owner
+  decision и не событие с текстовым значением. Значение передаётся напрямую по
+  защищённому каналу и не проходит через Coord; Coord может сохранить только
+  нечувствительную ссылку на handoff и проверяемый исход. Если после handoff
+  продолжается тот же заблокированный Run с тем же владельцем, его RunID, Attempt
+  и Fence не меняются. Смена writer всё равно требует stop proof и нового Fence.
+  Проверка: не реализовано
 
 ## Stage transitions
 

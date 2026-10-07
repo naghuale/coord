@@ -35,6 +35,8 @@ runtime state. Второй daemon, открывающий тот же state, п
 Это требование относится к одному state namespace. Распределённый multi-host
 leader election, шардинг задач и active-active режим этим ADR не вводятся.
 
+Проверка: `TestCoorddSecondProcessCannotOpenOwnedNamespace`, `TestCoorddTakesNamespaceLockBeforeStores`
+
 ### RT-02 — Authority Boundary
 
 Daemon авторитетен для:
@@ -49,6 +51,8 @@ CLI, Dashboard, API handlers, agent adapters и Telepathy не владеют о
 копиями изменяемого канонического состояния. Внешний supervisor отвечает за
 жизненный цикл процесса daemon и подтверждение остановки старого writer; он не
 становится владельцем Task workflow.
+
+Проверка: не реализовано
 
 ### RT-03 — Recovery и readiness
 
@@ -74,6 +78,8 @@ endpoints остаются доступны при not-ready, поскольку
 Crash/restart сохраняет каноническое состояние: daemon восстанавливает его из
 durable storage и продолжает только после повторной проверки ownership и
 инвариантов. Временная память daemon не является источником истины.
+
+Проверка: частично — `TestDaemonReadinessKeepsMutationsClosedDuringRecovery`, `TestCoorddProcessRestartRestoresAndReplaysOutboxBeforeReady`; не реализовано: проверки схемы и инвариантов Task (шаг 2) и Task.Fence (шаг 5)
 
 ### RT-04 — Write Path
 
@@ -102,6 +108,8 @@ Domain Event и необходимые Outbox records согласно ADR-0001.
 в ту же транзакцию. Публикация нового состояния в памяти происходит только после
 durable commit.
 
+Проверка: не реализовано
+
 ### RT-05 — Read Path
 
 CLI, Dashboard, API и диагностические клиенты читают каноническое состояние и
@@ -111,6 +119,8 @@ CLI, Dashboard, API и диагностические клиенты читаю�
 Dashboard использует read-only API. Управляющие команды CLI и агентов идут через
 отдельный авторизованный command interface daemon. API bind, транспорт локального
 IPC/HTTP и аутентификация определяются в ADR-0006.
+
+Проверка: не реализовано
 
 ### RT-06 — Task-wide Fencing
 
@@ -122,6 +132,8 @@ Assign/rework не допускает два активных writer Runs на T
 проверяют инвариант fail-closed. При передаче владения Fence повышается; recovery
 не передаёт владение, пока внешний supervisor не подтвердил остановку старого
 writer. Детальные состояния и переходы зафиксированы ADR-0001.
+
+Проверка: частично — `TestFenceValidationPrecedesOwnerAndDeduplication`, `TestRecoveryCASAndOldOwnerRejected`; не реализовано: Task.Fence (проверяется только Run.Fence), не более одного активного writer Run на Task при Assign/Tick/recovery, stop proof supervisor до передачи владения
 
 ## Process Ownership
 

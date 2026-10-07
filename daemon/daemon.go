@@ -21,6 +21,7 @@ type Config struct {
 	MetricsAddr     string
 	ControlToken    string
 	ShutdownTimeout time.Duration
+	CloseTransport  func() error
 }
 
 func DefaultConfig() Config {
@@ -137,6 +138,9 @@ func (d *Daemon) Run(ctx context.Context) (runErr error) {
 	d.started = true
 	d.lifecycleMu.Unlock()
 	defer func() { runErr = errors.Join(runErr, d.close()) }()
+	if d.config.CloseTransport != nil {
+		defer func() { runErr = errors.Join(runErr, d.config.CloseTransport()) }()
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}

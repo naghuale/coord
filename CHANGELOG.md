@@ -1,12 +1,46 @@
 # История изменений
 
+## 2026-10-08 — production Run daemon (P0-1)
+
+- Добавлен `coordd` с единственным `-config`, строгим JSON schema v1,
+  обязательным Telepathy transport и exit codes 0/1/2; некорректная config
+  отклоняется до state side effects (`TestCoorddInvalidConfigExitsTwoBeforeSideEffects`,
+  `TestLoadRequiresKnownSchemaVersion`, `TestLoadValidatesCompleteTelepathyConfiguration`).
+- `coordd` берёт namespace lock раньше Store/RoleRegistry; transport startup
+  выполняется после lock, а отказ освобождает всё открытое. Process-level сценарии
+  запускают реальную coordd composition в дочерних OS-процессах и проверяют
+  блокировку второго writer, release/restart после kill, восстановление Run,
+  replay outbox до readiness, сохранение committed result и штатный SIGTERM
+  shutdown
+  (`TestCoorddRefusesStartWithoutTransportBeforeLock`,
+  `TestCoorddTakesNamespaceLockBeforeStores`,
+  `TestCoorddTransportStartupFailureReleasesOwnership`,
+  `TestCoorddProcessKillReleasesNamespaceAndRestarts`,
+  `TestCoorddSecondProcessCannotOpenOwnedNamespace`,
+  `TestCoorddProcessRestartRestoresAndReplaysOutboxBeforeReady`,
+  `TestCoorddProcessRestartPreservesResultAndReceipt`,
+  `TestCoorddProcessGracefulShutdownReleasesNamespace`).
+- Общий Telepathy factory теперь используется daemon и standalone host; readiness
+  остаётся закрытой при supervisor recovery, а shutdown закрывает handlers/loop,
+  transport и durable ownership в этом порядке
+  (`TestWorkerDuplicateExecutesOnceAndRequiresReceipt`,
+  `TestDaemonReadinessKeepsMutationsClosedDuringRecovery`,
+  `TestDaemonGracefulShutdownReleasesNamespaceAfterHandlers`).
+- В ROADMAP добавлена модель интеграции агентов после P0-3: используется
+  существующий envelope и структурированные Review/Audit results. (документация)
+- Уточнены критерии P0-3/4/5 для проверки worktree в протокольных путях,
+  per-Task worktree/writer lock и обязательной fail-closed OS isolation
+  executor и требуемых доказательств из Linux CI. (документация)
+
 ## 2026-10-08 — fail-closed snapshot ownership
 
 - Snapshot ownership uses the shared `filelock` implementation. On platforms
   without a supported process lock, opening the store is rejected before state
-  is loaded; the system no longer proceeds without writer ownership.
+  is loaded; the system no longer proceeds without writer ownership
+  (`TestRefusedOwnershipFailsBeforeLoadingState`,
+  `TestLockOwnsSnapshotOrRefusesWithoutRelease`).
 - `make check` runs cross-platform `go vet` for Windows; Solaris and AIX builds
-  are neither checked nor guaranteed.
+  are neither checked nor guaranteed. (не проверено)
 - `telepathy.Process.Close` no longer reports a false `context canceled` when an
   MCP server exits cleanly after stdin EOF; a parent-context deadline still
   returns an error (`telepathy.TestCloseAfterCleanExitIsNotAnError`; this race
@@ -21,10 +55,12 @@
   `ResumeStatus` (`TestStalledExitClearsResumeStatus`).
 - Ошибки разбора JSON в localchat HTTP (включая unknown field, хвост и
   превышение лимита тела) возвращаются как `400` с `code=invalid_input`, как
-  и другие некорректные входы; сценарии проверяют неизменность rooms snapshot.
+  и другие некорректные входы; сценарии проверяют неизменность rooms snapshot
+  (`TestMalformedPOSTBodiesReturn400InvalidInputWithoutChangingRoomsState`,
+  `TestSessionBlockInvalidFieldsReturn400WithoutChangingRoomsState`).
 - По решению owner от 2026-10-08 автоматическая проверка содержимого checkpoint
   исключена из UX-1; перед `unblock` владелец проверяет checkpoint вручную,
-  программная проверка остаётся в P1 ROADMAP.
+  программная проверка остаётся в P1 ROADMAP. (документация)
 
 ## 2026-10-07 — coordinator daemon host runtime
 

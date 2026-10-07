@@ -27,25 +27,27 @@ blocker; это не закрывает критерии полного UX-1 и 
 `source` блокера пока не аутентифицирует supervisor/integration: API требует
 owner capability; scoped service identity остаётся открытой границей.
 
-| Приоритет | Работа | Критерий завершения |
-|---|---|---|
-| Выполнено локально | Telepathy 0.8.0 MCP byte bridge и standalone CLI | Подписанный полный lifecycle и worker restart проверены make test-telepathy-host; arbitrary frontend и canonical Crewflow отдельно |
-| P0 | Production coordinator daemon | Конфигурация, старт/остановка, metrics/control listeners и восстановление snapshot |
-| Открытая граница P0 | TaskID adoption | Пакет `taskid` проверяет ULID generation/parsing, но production-код его не вызывает; `fsm.Run.Task` остаётся свободной строкой, Task aggregate/snapshot/protocol не интегрированы |
-| P0 | Production executor lifecycle и writer lock | Повторный TASK не запускает работу повторно; ABORT/lease loss прекращают writer |
-| P0 | Supervisor конкретной установки | Fence подтверждает остановку writer; replacement ждёт TASK; failed spawn очищается |
-| Выполнено локально | Подтверждение commit результата | RESULT_ACK durable вместе с RESULT; executor.Receipt фиксирует local completion; проверены retry/restart |
-| P1 | Crash/chaos integration suite | Убийство executor/coordinator/watchdog на каждом шаге не создаёт второго writer |
-| P1 | Проверка содержимого checkpoint | Проверяются hashes файлов/артефактов, а не только base HEAD и diff whitespace |
-| P1 | Порядок и replay сообщений | Определены sequence/epoch правила; поздний heartbeat не откатывает прогресс |
-| P1 | Recovery после падения watchdog | Проверяемое освобождение abandoned claim без опасного автоматического expiry |
-| P1 | Политика доверия к roles | Provisioning keys/agent_id, allowlists capabilities и отзыв сессий |
-| P2 | Миграции snapshot/schema | Старые версии загружаются или отклоняются до side effects с понятной диагностикой |
-| P2 | Transactional database | Durable state/outbox/events и эффективные запросы без полной записи snapshot |
-| P2 | Нагрузка и bounded queues | Замеры на тысячах runs; transport sends не задерживают остальные run deadlines |
-| P2 | Наблюдаемость эксплуатации | Health/readiness, structured logs, dashboards, измеримые SLO |
-| Известное ограничение P2 | Рост дедупликации `Run.Seen` | Карта message_id растёт монотонно и очищается только при recovery, поэтому snapshot и стоимость каждого Update растут на длинных run. Окно или лимит не введены: вытеснение открыло бы задвоение RESULT при повторной доставке, а риск выше цены. Требует отдельного решения вместе с проверкой содержимого checkpoint |
-| P2 | Организационная независимость | AUDITOR проверяется по trust domain/организации, помимо agent_id |
+| Приоритет | Работа | Зависит от | Критерий завершения |
+|---|---|---|---|
+| Выполнено локально | Telepathy 0.8.0 MCP byte bridge и standalone CLI | — | Подписанный полный lifecycle и worker restart проверены make test-telepathy-host; arbitrary frontend и canonical Crewflow отдельно |
+| P0-1 | Daemon runtime skeleton | ADR-0001 шаг 6; ADR-0004 RT-01…RT-04; ADR-0005 ST-01…ST-06 | Production executable composition, ownership namespace, lifecycle, control/metrics и process-kill acceptance для текущего Run snapshot; design: [P0-1 Daemon Runtime](plans/p0-daemon/DESIGN.md) |
+| P0-2 | Canonical Task state и TaskID adoption | P0-1; ADR-0001 шаг 7; ADR-0003; ADR-0004 RT-06; ADR-0005 ST-01/ST-04/ST-06 | Task aggregate использует `task_<ULID>`; Task↔Run mapping не выводится из `fsm.Run.Task`; Task.Fence authoritative; State+Event+Outbox атомарны; startup fail-closed проверяет Task writer invariants |
+| P0-3 | Agent write path через daemon | P0-2; ADR-0001 шаг 11; ADR-0004 RT-04 | Telepathy agent writes проходят daemon command boundary и проверяют TaskID, RunID, Attempt, generation и Task.Fence; delivery не означает acceptance; пути в сообщениях протокола (Worktree, ссылки на артефакты результата) проверяются на принадлежность назначенному worktree; отказ без изменения состояния |
+| P0-4 | Production executor lifecycle и writer lock | P0-2, P0-3; ADR-0004 RT-06 | Повторный TASK не запускает второй writer; ABORT/lease loss прекращают writer; неоднозначный restart не повторяет произвольные side effects; у каждой Task свой worktree и writer lock |
+| P0-5 | Supervisor конкретной установки | P0-1…P0-4; ADR-0004 RT-03/RT-06; Linux CI с поддерживаемым механизмом изоляции (CI в репозитории пока нет) | Fence/stop proof подтверждает остановку writer до transfer; replacement ждёт TASK; failed spawn очищается; process acceptance пройдена на целевом окружении; supervisor запускает executor в изоляции ОС: запись только в назначенный worktree, приватный `/tmp`, toolchain и кэши — только чтение; доступ вне worktree — только по выданному OWNER праву. Без поддерживаемой изоляции (сейчас — только Linux) executor не запускается, fail-closed (решение owner 2026-10-08); production-конфигурация не может отключить изоляцию; в тестах изоляция подставляется через интерфейс. Гарантии изоляции принимаются только из Linux CI с поддерживаемым backend; зелёные тесты на неподдерживаемой платформе изоляцию не доказывают. В обязательной CI-задаче изоляции недоступность backend — провал теста, а не `t.Skip` (переменная окружения требует изоляцию); пропуск допустим только для macOS/локальных прогонов |
+| После P0-3 | Модель интеграции агентов | P0-2, P0-3; ADR-0001 шаги 8, 11, 12 (Startup Card, ADR-0006) | Расширяет существующий `roles.Profile` (умения агента под отдельным термином, не «capability» — это право доступа по ADR-0001) и существующий worker-adapter; профиль выдаёт оператор (P1 «Политика доверия к roles»); используется существующий `envelope`, новый transport-протокол не вводится; вердикты Review/Audit принимаются только явной структурой, без разбора свободного текста |
+| Выполнено локально | Подтверждение commit результата | — | RESULT_ACK durable вместе с RESULT; executor.Receipt фиксирует local completion; проверены retry/restart |
+| P1 | Crash/chaos integration suite | P0-1…P0-5 | Убийство executor/coordinator/watchdog на каждом шаге не создаёт второго writer |
+| P1 | Проверка содержимого checkpoint | не определено | Проверяются hashes файлов/артефактов, а не только base HEAD и diff whitespace |
+| P1 | Порядок и replay сообщений | не определено | Определены sequence/epoch правила; поздний heartbeat не откатывает прогресс |
+| P1 | Recovery после падения watchdog | не определено | Проверяемое освобождение abandoned claim без опасного автоматического expiry |
+| P1 | Политика доверия к roles | не определено | Provisioning keys/agent_id, allowlists capabilities и отзыв сессий |
+| P2 | Миграции snapshot/schema | не определено | Старые версии загружаются или отклоняются до side effects с понятной диагностикой |
+| P2 | Transactional database | не определено | Durable state/outbox/events и эффективные запросы без полной записи snapshot |
+| P2 | Нагрузка и bounded queues | не определено | Замеры на тысячах runs; transport sends не задерживают остальные run deadlines |
+| P2 | Наблюдаемость эксплуатации | не определено | Health/readiness, structured logs, dashboards, измеримые SLO |
+| Известное ограничение P2 | Рост дедупликации `Run.Seen` | не определено | Карта message_id растёт монотонно и очищается только при recovery, поэтому snapshot и стоимость каждого Update растут на длинных run. Окно или лимит не введены: вытеснение открыло бы задвоение RESULT при повторной доставке, а риск выше цены. Требует отдельного решения вместе с проверкой содержимого checkpoint |
+| P2 | Организационная независимость | не определено | AUDITOR проверяется по trust domain/организации, помимо agent_id |
 
 Production acceptance: реальный полный lifecycle, restart с сохранением результата,
 устойчивость к повторам/потере сообщений, подтверждённое отсутствие двух writers
@@ -59,13 +61,17 @@ executor lifecycle: worker привязан к одной заранее нас�
 к canonical Task daemon, а произвольные daemonizing subprocess остаются вне его
 гарантий.
 
-Для coordinator host добавлен file-backed сценарий повторного открытия Run
-snapshot новым Coordinator в том же процессе и освобождения ownership lock после
-штатной остановки host; второй store отвергается, пока host удерживает lock
-(`daemon.TestDaemonReopensFileBackedRunSnapshotAndReleasesLock`). Это не
-проверяет смерть/перезапуск OS-процесса. Самостоятельного daemon executable,
-process-kill recovery и canonical Task state пока нет, поэтому P0 production
-daemon остаётся открытым.
+Для coordinator host ранее был проверен только in-process reopen Run snapshot;
+этот сценарий сам по себе не доказывает process recovery. Теперь добавлен
+`coordd` executable и process acceptance на реальной composition: SIGKILL/restart,
+отказ второго writer до открытия snapshots, Run/outbox replay до readiness,
+сохранение RESULT receipt и SIGTERM shutdown. Это покрывает skeleton P0-1 для
+текущего Run snapshot, но не canonical Task state и не production supervisor
+stop proof; P0-1 остаётся открытым до общей проверки репозитория и согласования
+всех эксплуатационных критериев. Design и проверяемые критерии описаны в
+[plans/p0-daemon/DESIGN.md](plans/p0-daemon/DESIGN.md). P0-1 не закрывает P0-2
+(Task/Event/Outbox), P0-3 (агентский write path), P0-4 (production executor)
+или P0-5 (изоляция ОС и stop proof).
 
 Пакет `taskid` пока является проверенным самостоятельным строительным блоком,
 а не активным ограничением идентичности в runtime. Его тесты не подтверждают
