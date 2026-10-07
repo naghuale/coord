@@ -111,11 +111,11 @@ Runtime evidence в state/ отделено marker state/go.mod от основ�
   агентов, provider rollout отдельно не проверялся. В журнале: ответ Executor
   seq14, замечание Auditor seq20, ответ Executor seq22, verdict seq25 и
   исправление Executor seq28. Оба сохранили checkpoints своими capability.
-- RECOVERY-1 пока IN_PROGRESS: daemon остановлен/запущен; session UUID, роли,
+- RECOVERY-1 BLOCKED_PROVIDER_QUOTA (подтверждено owner): daemon остановлен/запущен; session UUID, роли,
   generation и progress сохранены, cursors не откатились. Coordinator и Executor
   выполнили resume до generation2. Старую запись coordinator лично проверил:
   stale session generation; Executor сообщил аналогичный отказ в seq40.
-  Auditor пока generation1, его собственный resume ещё ожидается. Executor
+  LongCat Auditor остаётся generation1: Free usage exceeded, retry примерно через 22 часа. Его recovery не проверен. Executor
   подтвердил ready на generation2 в seq43 и сообщил о готовности в seq44. Полная проверка восстановления обоих TUI не объявляется PASS.
 - Качество ответа проверялось отдельно от протокола: seq14/22 содержали ошибки
   о restart и глобальном fencing, потребовалось вмешательство coordinator.

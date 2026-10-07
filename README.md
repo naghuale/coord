@@ -22,6 +22,7 @@
 - [Быстрый старт и примеры команд](docs/QUICKSTART.md)
 - [Инструкция агенту: Telepathy и CLI/subprocess](docs/AGENT_INSTRUCTIONS.md)
 - [Проверенные сценарии и границы отладки](docs/VERIFICATION.md)
+- [Независимый аудит удобства и наблюдаемости](docs/UX_AUDIT.md)
 - [Архитектура и жизненный цикл](docs/ARCHITECTURE.md)
 - [Telepathy, plugin и уровни совместимости](docs/TRANSPORT.md)
 - [Настройка, control API и эксплуатация](docs/OPERATIONS.md)
