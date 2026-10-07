@@ -70,6 +70,12 @@ Run
   written in the same transaction as the state transition. Derived projections do
   not add stored Task status fields.
   Проверка: не реализовано
+- **TM-26 — EventSeq непрерывен внутри Task.** Каждый Domain Event Task имеет
+  `EventSeq`: монотонный, уникальный и непрерывный с 1 в пределах Task.
+  `Task.LastEventSeq` равен номеру последнего события и присваивается в той же
+  фиксации, что изменение Task/Run, событие и Outbox. Пропуск или повтор номера
+  блокирует readiness. Решение owner 2026-10-08 (R56).
+  Проверка: не реализовано
 
 ## Независимые оси Task
 
