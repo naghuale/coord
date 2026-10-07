@@ -172,3 +172,37 @@ func TestNewReceiptDoesNotInheritEarlierSendBackoff(t *testing.T) {
 		t.Fatal("receipt inherited unrelated transport backoff")
 	}
 }
+
+// Дедлайн наступает после того, как watchdog уже durable-забрал claim:
+// терминальный снимок не должен хранить claim, иначе операторская
+// диагностика показывает активную блокировку у мёртвого run.
+func TestDeadlineAfterClaimClearsRecoveryClaim(t *testing.T) {
+	f := setup(t)
+	f.assign(t)
+	for _, d := range []time.Duration{31 * time.Second, time.Second, time.Second} {
+		*f.now = f.now.Add(d)
+		if err := f.c.Tick(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := f.c.ClaimRecovery("run", 1, "watchdog-1"); err != nil {
+		t.Fatal(err)
+	}
+	r, _ := f.s.Get("run")
+	deadline := r.Deadline
+	*f.now = deadline
+	if err := f.c.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	r, _ = f.s.Get("run")
+	if r.Status != fsm.Failed || r.RecoveryClaim != "" {
+		t.Fatalf("terminal run must not keep a claim: status=%s claim=%q", r.Status, r.RecoveryClaim)
+	}
+	if r.Outbox != nil || r.RecoveryNeeded {
+		t.Fatalf("terminal run must not keep recovery work: %+v", r)
+	}
+	// Claim снят осознанно, поэтому новый claim на мёртвом run невозможен.
+	if err := f.c.ClaimRecovery("run", 1, "watchdog-2"); err == nil {
+		t.Fatal("deadline-expired run must stay unclaimable")
+	}
+}

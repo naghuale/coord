@@ -55,11 +55,10 @@ func (c *Coordinator) FailRecovery(id string, fence uint64, claim, reason string
 		if !ok || r.Fence != fence || r.RecoveryClaim != claim || claim == "" {
 			return fmt.Errorf("stale recovery failure")
 		}
-		r.Status = fsm.Failed
+		// The claim authorizes this transition only; the terminal run owns no
+		// recovery state afterwards.
+		c.failDeadline(&r, c.cfg.Now())
 		r.Blocker = reason
-		r.Outbox = nil
-		r.RecoveryNeeded = false
-		r.LastUpdate = c.cfg.Now()
 		runs[id] = r
 		return nil
 	})

@@ -11,6 +11,10 @@ import (
 
 var ErrPersistence = errors.New("persistence failure")
 
+// Persistence loads and saves the durable state. A durable implementation used
+// by a coordinator must also expose Lock() (func() error, error) through its
+// concrete type; if it cannot guarantee exclusive ownership, Lock must fail
+// closed. In-memory test persistence may omit process locking.
 type Persistence interface {
 	Load() (map[string]fsm.Run, error)
 	Save(map[string]fsm.Run) error

@@ -40,6 +40,9 @@ type Request struct {
 	After          uint64              `json:"after,omitempty"`
 	Value          string              `json:"value,omitempty"`
 	Text           string              `json:"text,omitempty"`
+	Reason         string              `json:"reason,omitempty"`
+	Source         string              `json:"source,omitempty"`
+	RetryAt        string              `json:"retry_at,omitempty"`
 }
 
 // Response contains only user-visible state; tokens never appear in status.
@@ -53,6 +56,7 @@ type Response struct {
 	Attachment   *rooms.Attachment         `json:"attachment,omitempty"`
 	Context      *rooms.SessionContext     `json:"context,omitempty"`
 	History      *rooms.HistoryStatus      `json:"history,omitempty"`
+	Availability []rooms.Availability      `json:"availability,omitempty"`
 	Rooms        []rooms.Room              `json:"rooms,omitempty"`
 	Room         *rooms.Room               `json:"room,omitempty"`
 	Events       []rooms.Event             `json:"events,omitempty"`
@@ -63,6 +67,27 @@ type Response struct {
 	Peer         *Peer                     `json:"peer,omitempty"`
 	Answer       *Answer                   `json:"answer,omitempty"`
 	Status       *Status                   `json:"status,omitempty"`
+}
+
+// readOnlyCommands is the single source of truth for HTTP methods. Handler and
+// Client derive the expected method from it, so a new endpoint cannot drift into
+// a second list that answers 405 for the client's request.
+var readOnlyCommands = map[string]bool{
+	"health": true, "peers": true, "status": true, "rooms": true,
+	"sessions": true, "history-status": true, "availability": true,
+}
+
+func expectedMethod(command string) string {
+	if readOnlyCommands[command] {
+		return http.MethodGet
+	}
+	return http.MethodPost
+}
+
+// invalidInput marks a malformed request rather than a state conflict; the
+// daemon answers 400 and clients can branch on Response.Code.
+var invalidInput = func(format string, args ...any) error {
+	return fmt.Errorf("invalid_input: "+format, args...)
 }
 
 // Handler serves only the private Unix socket; no TCP listener is created.
@@ -81,17 +106,13 @@ func (s *Service) Handler(stop func()) http.Handler {
 		status := http.StatusOK
 		var err error
 		var input Request
-		get := r.URL.Path == "/health" || r.URL.Path == "/peers" || r.URL.Path == "/status" || r.URL.Path == "/rooms" || r.URL.Path == "/sessions" || r.URL.Path == "/history-status"
-		expected := http.MethodPost
-		if get {
-			expected = http.MethodGet
-		}
+		expected := expectedMethod(strings.TrimPrefix(r.URL.Path, "/"))
 		if r.Method != expected {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			_ = json.NewEncoder(w).Encode(Response{Error: "неверный метод"})
 			return
 		}
-		if !get {
+		if expected != http.MethodGet {
 			d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 2<<20))
 			d.DisallowUnknownFields()
 			if err = d.Decode(&input); err == nil {
@@ -125,6 +146,20 @@ func (s *Service) Handler(stop func()) http.Handler {
 			}
 		case "/sessions":
 			response.Sessions = s.rooms.Sessions()
+		case "/availability":
+			response.Availability = s.rooms.Availability()
+		case "/session-block":
+			var retryAt time.Time
+			if input.RetryAt != "" {
+				if retryAt, err = time.Parse(time.RFC3339, input.RetryAt); err != nil {
+					err = invalidInput("retry_at %q должен быть в формате RFC3339 (например 2026-10-07T15:04:05Z)", input.RetryAt)
+				}
+			}
+			if err == nil {
+				err = s.rooms.SetBlocker(input.Value, input.Reason, input.Source, retryAt, input.Actor)
+			}
+		case "/session-unblock":
+			err = s.rooms.ClearBlocker(input.Value, input.Actor)
 		case "/session-register":
 			var ticket rooms.RegistrationTicket
 			ticket, err = s.rooms.Register(input.AgentID, input.Connection, input.Operation)
@@ -276,6 +311,17 @@ func (s *Service) Handler(stop func()) http.Handler {
 			if status == http.StatusOK {
 				status = http.StatusConflict
 			}
+			// Плохой payload — не конфликт состояния: повтор того же запроса
+			// не поможет, поэтому это отдельный класс ответа.
+			if strings.HasPrefix(response.Error, "invalid_input: ") {
+				response.Code = "invalid_input"
+				response.Error = strings.TrimPrefix(response.Error, "invalid_input: ")
+				status = http.StatusBadRequest
+			}
+			if errors.Is(err, rooms.ErrInvalidRequest) {
+				response.Code = "invalid_input"
+				status = http.StatusBadRequest
+			}
 			if errors.Is(err, ErrNotConnected) {
 				response.Code = "not_connected"
 			}
@@ -289,10 +335,19 @@ func (s *Service) Handler(stop func()) http.Handler {
 	})
 }
 
-// Client connects exclusively to a local Unix socket.
+// Client connects exclusively to a local Unix socket. base names that daemon and
+// is only replaced by in-package tests; NewClient always dials the socket.
 type Client struct {
 	http  *http.Client
 	owner string
+	base  string
+}
+
+func (c *Client) daemonURL(command string) string {
+	if c.base != "" {
+		return c.base + "/" + command
+	}
+	return "http://coord/" + command
 }
 
 // SocketPath is shared by CLI and daemon.
@@ -317,11 +372,7 @@ func (c *Client) Call(ctx context.Context, command string, input Request) (Respo
 	if err != nil {
 		return result, err
 	}
-	method := http.MethodPost
-	if command == "health" || command == "peers" || command == "status" || command == "rooms" || command == "sessions" || command == "history-status" {
-		method = http.MethodGet
-	}
-	req, err := http.NewRequestWithContext(ctx, method, "http://coord/"+command, bytes.NewReader(raw))
+	req, err := http.NewRequestWithContext(ctx, expectedMethod(command), c.daemonURL(command), bytes.NewReader(raw))
 	if err != nil {
 		return result, err
 	}
@@ -345,6 +396,8 @@ func (c *Client) Call(ctx context.Context, command string, input Request) (Respo
 			return result, fmt.Errorf("%w", ErrNotConnected)
 		case "not_confirmed":
 			return result, fmt.Errorf("%w: %s", ErrNotConfirmed, result.Error)
+		case "invalid_input":
+			return result, fmt.Errorf("%w: %s", ErrInvalidInput, result.Error)
 		}
 		return result, errors.New(result.Error)
 	}

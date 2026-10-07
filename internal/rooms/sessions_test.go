@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func sessionFixture(t *testing.T, m *Manager, roomID, agent, role string) Member {
@@ -77,6 +78,16 @@ func TestSessionRecoveryFencesAndScopesContext(t *testing.T) {
 		t.Fatal("reused model context accepted")
 	}
 }
+
+func TestPastRetryAtIsInvalidInputEvenForUnknownSession(t *testing.T) {
+	m, _ := fixture(t)
+	past := time.Now().Add(-time.Minute)
+	err := m.SetBlocker("missing-session", BlockedProviderQuota, "owner", past, "")
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("past retry_at must be rejected before session lookup: %v", err)
+	}
+}
+
 func TestSessionOperationsAreIdempotentAndAckExplicit(t *testing.T) {
 	m, _ := fixture(t)
 	r, _ := m.Create("task", "title", "")
@@ -368,5 +379,120 @@ func TestCoalescedNotificationsKeepLatestEvent(t *testing.T) {
 	p = m.data.Rooms[r.ID].Members["opencode-1"]
 	if p.Checkpoint.AcknowledgedSeq != 0 {
 		t.Fatal("delivery advanced cursor")
+	}
+}
+
+// Блокер останавливает новые назначения роли на любом пути assign() и не
+// трогает checkpoint/журнал; снимается только явным действием (§1.3).
+func TestBlockerStopsEveryAssignmentPathAndKeepsCheckpoint(t *testing.T) {
+	m, _ := fixture(t)
+	room, err := m.Create("task", "title", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticket, err := m.Register("first-agent", "context-first", "register-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	assigned, err := m.AssignRegistered(room.ID, ticket.Registration.SessionID, "executor", "Only work on this room", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	attachment := attachFixture(t, m, assigned, "context-first")
+	if err = m.SaveCheckpoint(attachment.Auth, "cp-1", Checkpoint{
+		Progress:        "half done",
+		PendingActions:  []Action{{ID: "a1", State: "executing"}},
+		ArtifactRefs:    []string{},
+		AcknowledgedSeq: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	retry := time.Now().Add(time.Hour).UTC().Truncate(time.Second)
+	if err = m.SetBlocker(assigned.SessionID, BlockedProviderQuota, "owner", retry, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	// Повторное назначение той же сессии отказывает и объясняет следующее действие.
+	_, err = m.AssignRegistered(room.ID, assigned.SessionID, "executor", "Only work on this room", "")
+	if err == nil || !strings.Contains(err.Error(), "заблокирована") || !strings.Contains(err.Error(), "unblock") {
+		t.Fatalf("blocked session must refuse assignment: %v", err)
+	}
+	if !strings.Contains(err.Error(), retry.Format(time.RFC3339)) {
+		t.Fatalf("refusal must name retry_at: %v", err)
+	}
+
+	// Checkpoint и журнал переживают блокировку без изменений.
+	context, err := m.Context(attachment.Auth, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if context.Member.Checkpoint.Progress != "half done" || context.Member.Checkpoint.PendingActions[0].State != "executing" {
+		t.Fatalf("blocker must not touch checkpoint: %+v", context.Member.Checkpoint)
+	}
+	if context.Member.Blocker == nil || context.Member.Blocker.Reason != BlockedProviderQuota {
+		t.Fatalf("blocker must be visible to the session: %+v", context.Member.Blocker)
+	}
+
+	// Карточка показывает blocked, но attachment/readiness не переписываются.
+	var card Availability
+	for _, a := range m.Availability() {
+		if a.SessionID == assigned.SessionID {
+			card = a
+		}
+	}
+	if card.Provider != "blocked" || card.Attachment != "attached" {
+		t.Fatalf("card must keep fields separate: %+v", card)
+	}
+	if !strings.Contains(card.Expectation, BlockedProviderQuota) {
+		t.Fatalf("expectation must name the blocker: %q", card.Expectation)
+	}
+
+	// Снятие — только явным действием, после назначения снова разрешено.
+	if err = m.ClearBlocker(assigned.SessionID, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = m.AssignRegistered(room.ID, assigned.SessionID, "executor", "Only work on this room", ""); err != nil {
+		t.Fatalf("assignment after explicit unblock: %v", err)
+	}
+}
+
+// Сессия с меньшим поколением того же agent_id видна отдельно, а её
+// connection/capability остаётся рабочим — stale это факт, не запрет.
+func TestAvailabilitySeparatesStaleGeneration(t *testing.T) {
+	m, _ := fixture(t)
+	first, _ := m.Create("task-1", "one", "")
+	second, _ := m.Create("task-2", "two", "")
+	older := sessionFixture(t, m, first.ID, "stable-agent", "executor")
+	oldAttach := attachFixture(t, m, older, "context-old")
+	newer := sessionFixture(t, m, second.ID, "stable-agent", "reviewer")
+	attached := attachFixture(t, m, newer, "context-new")
+	// Второе переподключение того же агента поднимает только его поколение.
+	rotated, err := m.Resume(ResumeRequest{Session: newer.SessionID, Connection: "context-newer", Expected: attached.Auth.Generation, Operation: "rotate-newer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rotated.Auth.Generation <= attached.Auth.Generation {
+		t.Fatal("fixture must raise the newest generation")
+	}
+	attached = rotated
+	states := map[string]string{}
+	for _, a := range m.Availability() {
+		states[a.SessionID] = a.State
+	}
+	if states[older.SessionID] != "stale_generation" {
+		t.Fatalf("older generation must be visible: %q", states[older.SessionID])
+	}
+	if states[newer.SessionID] != "active" {
+		t.Fatalf("newest generation stays active: %q", states[newer.SessionID])
+	}
+	// Отметка stale — только отображение: capability самой сессии не отзывается.
+	if _, err = m.Context(oldAttach.Auth, 0); err != nil {
+		t.Fatalf("stale reporting must not revoke that session credential: %v", err)
+	}
+	if _, err = m.Context(attached.Auth, 0); err != nil {
+		t.Fatalf("stale reporting must not revoke the newest credential: %v", err)
 	}
 }

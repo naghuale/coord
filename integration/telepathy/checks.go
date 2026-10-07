@@ -1,4 +1,4 @@
-//go:build unix
+//go:build linux || darwin || dragonfly || freebsd || netbsd || openbsd || illumos
 
 package main
 
@@ -8,6 +8,7 @@ import (
 	"coord/checkpoint"
 	"coord/envelope"
 	"coord/fsm"
+	"coord/internal/filelock"
 	"coord/store"
 	"encoding/json"
 	"errors"
@@ -16,7 +17,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -36,15 +36,12 @@ func waitMarker(ctx context.Context, dir, name string) error {
 	}
 }
 func mark(dir, name string, v any) error { return save(filepath.Join(dir, name), v) }
-func takeWriterLock(dir string) (*os.File, error) {
-	f, err := os.OpenFile(filepath.Join(dir, "writer.lock"), os.O_CREATE|os.O_RDWR, 0600)
+func takeWriterLock(dir string) (func() error, error) {
+	release, err := filelock.Lock(filepath.Join(dir, "writer.lock"))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("writer lock unavailable: %w", err)
 	}
-	if err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		return nil, errors.Join(fmt.Errorf("writer lock occupied: %w", err), f.Close())
-	}
-	return f, nil
+	return release, nil
 }
 func nextTask(ctx context.Context, t *tp) (envelope.Envelope, error) {
 	tick := time.NewTicker(50 * time.Millisecond)
@@ -118,11 +115,11 @@ func p0Writer(ctx context.Context, t *tp, dir string, old bool) (err error) {
 	if err != nil {
 		return err
 	}
-	f, err := takeWriterLock(dir)
+	release, err := takeWriterLock(dir)
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, f.Close()) }()
+	defer func() { err = errors.Join(err, release()) }()
 	t.event("writer_lock_acquired", map[string]any{"fence": task.Fence, "owner": t.self})
 	if err = mark(dir, "p0-"+label+"-task.json", task); err != nil {
 		return err

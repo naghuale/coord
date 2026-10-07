@@ -1,9 +1,10 @@
 # Эксплуатация и команды
 
-Текущая поставка содержит библиотеку coordinator, локальное демо и отдельный
-watchdog CLI. Есть ограниченный самостоятельный Telepathy host/worker
-([TELEPATHY_HOST.md](TELEPATHY_HOST.md)). Multi-run production daemon отсутствует: приложение-хост
-предоставляет transport, создаёт coordinator и запускает его loop/listeners.
+Текущая поставка содержит библиотеку coordinator, host runtime из пакета
+`daemon`, локальное демо и отдельный watchdog CLI. Есть ограниченный
+самостоятельный Telepathy host/worker ([TELEPATHY_HOST.md](TELEPATHY_HOST.md)).
+Отдельного daemon executable и canonical Task runtime пока нет: приложение-хост
+предоставляет transport и создаёт Coordinator для `daemon`.
 
 ## Значения по умолчанию
 
@@ -26,28 +27,37 @@ watchdog CLI. Есть ограниченный самостоятельный T
 blocking таймер ожидания PONG. `next_update_by` каждого run определяется ACK/heartbeat.
 Executor задаёт собственные `UpdateInterval` и `SendTimeout` явно.
 
-## Встраивание control и metrics
+## Встраивание daemon runtime
 
-Фрагмент для приложения, в котором `c` уже создан через `coord.New`:
+Приложение-хост создаёт `Coordinator` с настроенным transport и Store, затем
+передаёт его runtime. Вызов `Run` становится владельцем loop и после остановки
+закрывает role registry и Store:
 
 ```go
-// token одинаков в приложении и в окружении внешнего watchdog.
-controlServer := &http.Server{
-    Addr: "127.0.0.1:8090",
-    Handler: c.ControlHandler(token),
-    ReadHeaderTimeout: 5 * time.Second,
-}
-metricsServer := &http.Server{
-    Addr: "127.0.0.1:9091",
-    Handler: c.Metrics,
-    ReadHeaderTimeout: 5 * time.Second,
-}
+cfg := daemon.DefaultConfig()
+cfg.ControlToken = os.Getenv("COORD_CONTROL_TOKEN")
+runtime, err := daemon.New(c, cfg)
+if err != nil { return err }
+return runtime.Run(ctx)
 ```
 
-Host-приложение запускает `ListenAndServe`, обрабатывает ошибки, останавливает
-listeners через `Shutdown`, отменяет coordinator context и после завершения
-loop закрывает Store. Пример — integration fragment, не самостоятельный main.
-Для удалённых listeners предусмотрите TLS и сетевую политику доступа.
+По умолчанию control и metrics слушают только loopback (`8090` и `9091`).
+`/readyz` доступен на обоих listeners. Для текущего Run coordinator он означает,
+что startup tick завершился, transport receive инициализирован и нет Run с
+`RecoveryNeeded`; при 503 тело называет `transport_receive_not_initialized` или
+`supervisor_recovery_pending`. Это operational readiness существующего Run
+runtime, не подтверждение выполнения полного RT-03 для будущей canonical Task
+модели. После инициализации transport recovery control API доступен и при 503,
+чтобы supervisor мог завершить recovery; это единственный write path в этом
+режиме.
+При отмене context runtime останавливает
+listeners, дожидается coordinator loop и закрывает его durable stores.
+`Run` возвращает ошибки shutdown и закрытия stores вместе с основной ошибкой;
+ошибка освобождения snapshot/registry не теряется при штатном выходе.
+Оба listeners принимают только loopback-адреса. Для удалённого доступа
+используйте отдельный TLS proxy с аутентификацией и сетевой политикой. Runtime
+остаётся библиотечным host: транспорт и настройка Coordinator принадлежат
+приложению.
 
 ## Сборка и watchdog
 
@@ -165,7 +175,9 @@ receipts и у терминальных runs; после reconnect executor вы
 Registry.New удерживает process lock файла roles до Registry.Close; закрывайте
 registry после остановки coordinator. Не открывайте второй registry writer для
 чтения revision: используйте существующий owner или остановите его перед reload.
-На платформе без Unix flock registry отказывается запускаться.
+На Linux, macOS, DragonFly BSD, FreeBSD, NetBSD, OpenBSD и illumos используется
+kernel flock. На остальных платформах registry и checkpoint store возвращают
+ошибку и не открывают состояние без эксклюзивного process lock.
 
 При failed spawn с неизвестным адресом replacement watchdog удерживает claim
 до ручного подтверждения cleanup. Известный partial replacement останавливается

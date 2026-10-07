@@ -47,9 +47,16 @@ Fuzzing ограничен временем и не доказывает отс�
 | Byte transport отбрасывает неправильного получателя | transport.TestAdapterFiltersMalformedAndWrongRecipient |
 | Подпись проверяется на round-trip | transport.TestSignedClientRoundTripAndInvalidFrames |
 | Save не заменяет snapshot состоянием, которое Load не принимает | checkpoint.TestSaveRejectsStateThatCannotBeReloaded |
+| Checkpoint всегда предоставляет Lock; на неподдержанной платформе отказ происходит до Load | checkpoint.TestLockOwnsSnapshotOrRefusesWithoutRelease; filelock.TestLockExclusivityOrFailClosed; store.TestRefusedOwnershipFailsBeforeLoadingState |
+| Новый Coordinator в том же процессе повторно открывает file-backed Run snapshot; второй store отклонён при активном host, lock освобождается после shutdown | daemon.TestDaemonReopensFileBackedRunSnapshotAndReleasesLock |
+| TaskID ULID генерация/разбор, timestamp и границы формата | taskid package tests; пакет пока не импортируется production-кодом и не доказывает валидацию Run/snapshot/protocol |
 | Jitter положителен, Duration не переполняется | retry.TestNanosecondJitterNeverReturnsZero; retry.TestDelayNeverOverflowsAtDurationLimit |
 | CLI host проходит полный lifecycle и фиксирует receipt | examples/agent.TestLocalAgentSuccessAndFailure |
 | Таймаут останавливает дочерний writer | examples/agent.TestLocalAgentDeadlineStopsDescendantWriter |
+| Telepathy worker после ABORT подтверждает остановку writer process group | internal/telepathyhost.TestWorkerAbortStopsWriterProcessGroup |
+| Потеря heartbeat renewal останавливает writer process group | internal/telepathyhost.TestWorkerLeaseLossStopsWriterProcessGroup |
+| Повторный TASK не запускает команду второй раз | internal/telepathyhost.TestWorkerDuplicateExecutesOnceAndRequiresReceipt |
+| Restart с неоднозначным запуском fail-closed без повторного исполнения | internal/telepathyhost.TestWorkerRefusesAmbiguousRestart |
 
 ## Что эти проверки не доказывают
 
@@ -63,8 +70,14 @@ Fuzzing ограничен временем и не доказывает отс�
 Прогресс монотонен внутри fence; старые timestamps heartbeat отвергаются.
 Это защита от подтверждённого отката, а не распределённый sequence protocol.
 Canonical snapshot сохраняется целиком; transport sends остаются последовательными.
-Production bridge, daemon, sequence/epoch policy и comprehensive chaos suite
-по-прежнему требуют отдельной реализации, как указано в ROADMAP.
+Production bridge к canonical Task runtime, standalone daemon executable,
+sequence/epoch policy и comprehensive chaos suite по-прежнему требуют отдельной
+реализации, как указано в ROADMAP. Библиотечный Run-coordinator host уже есть;
+его границы описаны ниже и в ADR-0004.
+`make check` включает compile-only `go vet` для `GOOS=windows`, подтверждая
+доступность fail-closed Lock метода. Сборка для Solaris и AIX не входит в
+проверки проекта и не гарантируется; на этих и других неподдержанных ОС
+`filelock.Lock` отказывает fail-closed вместо работы без process ownership.
 
 ## Изолированные Telepathy process tests
 

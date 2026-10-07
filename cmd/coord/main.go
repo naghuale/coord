@@ -45,6 +45,8 @@ const usage = `Coord — совместная работа существующ�
   coord session say <session> --credential-file FILE --operation ID TEXT
   coord session ack <session> --credential-file FILE --operation ID --seq SEQ
   coord session checkpoint <session> --credential-file FILE --operation ID --file JSON
+  coord session block <session> --reason REASON [--retry-at RFC3339]
+  coord session unblock <session>                 сначала проверьте checkpoint
   coord history status                 cursor, commit, backlog и ошибки
   coord history export [--content]      локальный Git-экспорт; content только явно
   coord room create <задача>             создать отдельную комнату задачи
@@ -62,6 +64,7 @@ const usage = `Coord — совместная работа существующ�
   coord connect <агент>        пригласить агента и дождаться подтверждения
   coord chat                  начать беседу (/quit — выход)
   coord chat "сообщение"       отправить одну реплику
+  coord tui                   карточки сессий и раздельные статусы в терминале
   coord status                показать подключение и последний результат
   coord stop                  остановить локальный адаптер
 
@@ -117,7 +120,7 @@ func run(ctx context.Context, args []string, in io.Reader, out, diagnostic io.Wr
 	if roomCommand(command) {
 		return runRooms(ctx, command, values, state, *serverFlag, in, out, diagnostic)
 	}
-	valid := map[string]bool{"peers": true, "connect": true, "chat": true, "status": true, "stop": true, "accept": true, "reply": true}
+	valid := map[string]bool{"peers": true, "connect": true, "chat": true, "status": true, "stop": true, "accept": true, "reply": true, "tui": true}
 	if !valid[command] {
 		return fmt.Errorf("неизвестная команда %q; coord help", command)
 	}
@@ -127,12 +130,12 @@ func run(ctx context.Context, args []string, in io.Reader, out, diagnostic io.Wr
 	if command == "reply" && len(values) < 2 {
 		return fmt.Errorf("coord reply <ticket> <ответ> или coord reply <ticket> --stdin")
 	}
-	if (command == "peers" || command == "status" || command == "stop") && len(values) != 0 {
+	if (command == "peers" || command == "status" || command == "stop" || command == "tui") && len(values) != 0 {
 		return fmt.Errorf("coord %s не принимает аргументы", command)
 	}
 	client := localchat.NewClient(state)
 	defer client.Close()
-	if command == "peers" || command == "connect" || command == "chat" {
+	if command == "peers" || command == "connect" || command == "chat" || command == "tui" {
 		if err = ensure(ctx, state, *serverFlag, client); err != nil {
 			return err
 		}
@@ -286,6 +289,9 @@ func run(ctx context.Context, args []string, in io.Reader, out, diagnostic io.Wr
 		}
 		_, err = fmt.Fprintln(out, "Coord остановлен.")
 		return err
+	case "tui":
+		// The frame is owner-only: block/unblock require the owner capability.
+		return client.RunHumanTUI(ctx, in, out)
 	}
 	return nil
 }

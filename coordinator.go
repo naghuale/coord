@@ -47,6 +47,44 @@ type Coordinator struct {
 	RoleRegistry *roles.Registry
 }
 
+// Close releases coordinator-owned durable stores after Run and HTTP handlers
+// have stopped. Repeated calls are safe because the underlying stores are
+// idempotent.
+func (c *Coordinator) Close() error {
+	if c == nil {
+		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var errs []error
+	if c.RoleRegistry != nil {
+		if err := c.RoleRegistry.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("close role registry: %w", err))
+		}
+	}
+	if c.store != nil {
+		if err := c.store.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("close run store: %w", err))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// RecoveryPending reports whether a run still requires supervisor recovery.
+func (c *Coordinator) RecoveryPending() bool {
+	if c == nil {
+		return true
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, run := range c.store.All() {
+		if run.RecoveryNeeded {
+			return true
+		}
+	}
+	return false
+}
+
 func New(tp transport.Transport, s *store.Store, cfg Config) (*Coordinator, error) {
 	if tp == nil || s == nil || tp.WhoAmI() == "" || cfg.Now == nil || cfg.AckTimeout <= 0 || cfg.ProbeTimeout <= 0 || cfg.SendTimeout <= 0 || cfg.TickInterval <= 0 {
 		return nil, fmt.Errorf("invalid coordinator configuration")
@@ -233,11 +271,7 @@ func (c *Coordinator) Handle(ctx context.Context, e envelope.Envelope) error {
 	}
 	now := c.cfg.Now()
 	if !r.Terminal() && !now.Before(r.Deadline) {
-		r.Status = fsm.Failed
-		r.Blocker = "task deadline exceeded"
-		r.Outbox = nil
-		r.RecoveryNeeded = false
-		r.LastUpdate = now
+		c.failDeadline(&r, now)
 		if err := c.put(r); err != nil {
 			return err
 		}
@@ -362,11 +396,7 @@ func (c *Coordinator) Tick(ctx context.Context) error {
 			continue
 		}
 		if !now.Before(r.Deadline) {
-			r.Status = fsm.Failed
-			r.Blocker = "task deadline exceeded"
-			r.Outbox = nil
-			r.RecoveryNeeded = false
-			r.LastUpdate = now
+			c.failDeadline(&r, now)
 			if err := c.put(r); err != nil {
 				return err
 			}
@@ -430,6 +460,25 @@ func (c *Coordinator) Tick(ctx context.Context) error {
 func (c *Coordinator) put(r fsm.Run) error {
 	return c.store.Update(func(runs map[string]fsm.Run) error { runs[r.RunID] = r; return nil })
 }
+
+// failDeadline makes a run terminal and clears every piece of recovery state.
+// A claim held by a supervisor that never transferred ownership must not survive
+// here: the run can no longer be claimed or recovered, so the snapshot would
+// otherwise advertise an active recovery for a dead task.
+func (c *Coordinator) failDeadline(r *fsm.Run, now time.Time) {
+	r.Status = fsm.Failed
+	r.Blocker = "task deadline exceeded"
+	r.Outbox = nil
+	r.SendRetryAt = time.Time{}
+	r.SendRetries = 0
+	r.RetryAt = time.Time{}
+	r.RecoveryNeeded = false
+	r.RecoveryClaim = ""
+	// The run is terminal: there is nothing left to resume, and a leftover
+	// ResumeStatus would advertise a continuation point that Handle refuses.
+	r.ResumeStatus = ""
+	r.LastUpdate = now
+}
 func (c *Coordinator) recover(ctx context.Context, id, owner string, expectedFence uint64, claim string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -447,6 +496,9 @@ func (c *Coordinator) recover(ctx context.Context, id, owner string, expectedFen
 	r.Fence++
 	r.LastHeartbeatAt = time.Time{}
 	r.Blocker = ""
+	// recover не проходит через Apply: он пересобирает Run напрямую и не
+	// выходит из STALLED через FSM, поэтому здесь ResumeStatus снимается
+	// отдельно. Это единственное место вне Apply.
 	r.ResumeStatus = ""
 	r.LastUpdate = c.cfg.Now()
 	r.RecoveryClaim = ""
@@ -474,7 +526,26 @@ func (c *Coordinator) recover(ctx context.Context, id, owner string, expectedFen
 	return c.flush(ctx, id)
 }
 func (c *Coordinator) Run(ctx context.Context) error {
+	return c.RunWithReadiness(ctx, nil)
+}
+
+// RunWithReadiness initializes the transport receive stream, invokes onReady,
+// and then runs the coordinator loop. onReady is called exactly once, after
+// Receive has been acquired and before any incoming message is handled.
+func (c *Coordinator) RunWithReadiness(ctx context.Context, onReady func()) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	inbox := c.tp.Receive(ctx)
+	if inbox == nil {
+		return fmt.Errorf("transport receive returned nil channel")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if onReady != nil {
+		onReady()
+	}
 	tick := time.NewTicker(c.cfg.TickInterval)
 	defer tick.Stop()
 	for {

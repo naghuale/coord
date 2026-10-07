@@ -19,6 +19,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -58,6 +60,9 @@ type command struct {
 	cmd            *exec.Cmd
 	done           chan error
 	stdout, stderr *cappedOutput
+	finished       atomic.Bool
+	stopOnce       sync.Once
+	stopErr        error
 }
 
 func startCommand(ctx context.Context, c Config) (*command, error) {
@@ -74,20 +79,33 @@ func startCommand(ctx context.Context, c Config) (*command, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	go func() { err := cmd.Wait(); running.done <- errors.Join(err, running.stop()) }()
+	go func() {
+		err := cmd.Wait()
+		running.finished.Store(true)
+		running.done <- err
+	}()
 	return running, nil
 }
 func (c *command) stop() error {
-	if c.cmd.Process == nil {
-		return nil
-	}
-	err := syscall.Kill(-c.cmd.Process.Pid, syscall.SIGKILL)
-	if errors.Is(err, syscall.ESRCH) {
-		return nil
-	}
-	return err
+	c.stopOnce.Do(func() {
+		if c.cmd == nil || c.cmd.Process == nil || c.finished.Load() {
+			return
+		}
+		c.stopErr = syscall.Kill(-c.cmd.Process.Pid, syscall.SIGKILL)
+		if errors.Is(c.stopErr, syscall.ESRCH) {
+			c.stopErr = nil
+		}
+	})
+	return c.stopErr
 }
 func worker(ctx context.Context, c Config, tp transport.Transport) (result fsm.Run, err error) {
+	return workerWithIntervals(ctx, c, tp, time.Minute, 130*time.Second)
+}
+
+func workerWithIntervals(ctx context.Context, c Config, tp transport.Transport, heartbeatInterval, retryInterval time.Duration) (result fsm.Run, err error) {
+	if heartbeatInterval <= 0 || retryInterval <= 0 {
+		return result, fmt.Errorf("worker intervals must be positive")
+	}
 	// Resolving links prevents aliases from taking independent advisory locks.
 	worktree, err := filepath.EvalSymlinks(c.Task.Worktree)
 	if err != nil {
@@ -140,15 +158,15 @@ func worker(ctx context.Context, c Config, tp transport.Transport) (result fsm.R
 		_ = x.Replay(ctx)
 	}
 	life, cancel := context.WithDeadline(ctx, c.Task.Deadline)
-	defer cancel()
 	inbox := tp.Receive(life)
-	heartbeat := time.NewTicker(time.Minute)
+	heartbeat := time.NewTicker(heartbeatInterval)
 	defer heartbeat.Stop()
-	retryTick := time.NewTicker(130 * time.Second)
+	retryTick := time.NewTicker(retryInterval)
 	defer retryTick.Stop()
 	var running *command
 	var finished <-chan error
 	defer func() {
+		cancel()
 		if running != nil {
 			err = errors.Join(err, running.stop())
 			if finished != nil {

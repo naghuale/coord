@@ -35,6 +35,10 @@ var ErrNotConfirmed = errors.New("coord-подключение не подтве
 // ErrNotConnected requires an actual invitation acceptance before chat.
 var ErrNotConnected = errors.New("нет подключения; выполните coord connect <агент>")
 
+// ErrInvalidInput marks a malformed request so callers can branch on the class
+// of failure instead of retrying the same payload.
+var ErrInvalidInput = errors.New("неверный запрос")
+
 // Config controls local state and observable timeouts.
 type Config struct {
 	State, Executable            string

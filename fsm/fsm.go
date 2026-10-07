@@ -130,7 +130,15 @@ func (r *Run) Apply(e envelope.Envelope, now time.Time) error {
 	default:
 		return fmt.Errorf("not a task event")
 	}
-	r.Status = next
+	// Единственная точка выхода из STALLED: ResumeStatus очищается здесь, а не
+	// в каждом терминальном переходе, иначе появятся копии этой проверки, и
+	// выход в нетерминальный статус сохранит несуществующую точку продолжения.
+	if r.Status == Stalled {
+		r.Status = next
+		r.ResumeStatus = ""
+	} else {
+		r.Status = next
+	}
 	r.LastUpdate = now
 	r.Retries = 0
 	r.RetryAt = time.Time{}

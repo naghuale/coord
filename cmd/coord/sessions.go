@@ -114,7 +114,7 @@ func runSessionCLI(ctx context.Context, client *localchat.Client, command string
 		return encode(r.History)
 	}
 	if len(args) < 1 {
-		return fmt.Errorf("coord session assign|invite|register|registration|resume|context|ready|say|ack|checkpoint")
+		return fmt.Errorf("coord session assign|invite|register|registration|resume|context|ready|say|ack|checkpoint|block|unblock")
 	}
 	action, id := args[0], ""
 	remaining := args[1:]
@@ -146,6 +146,8 @@ func runSessionCLI(ctx context.Context, client *localchat.Client, command string
 	waitSeconds := f.Int("timeout", 30, "ожидание новых событий в секундах (1..60)")
 	capabilities := f.String("capabilities", "", "доступные инструменты через запятую")
 	blockers := f.String("blockers", "", "препятствия через запятую")
+	reason := f.String("reason", "", "машинная причина блокировки")
+	retryAt := f.String("retry-at", "", "время следующей проверки в RFC3339")
 	if err := f.Parse(remaining); err != nil {
 		return err
 	}
@@ -215,6 +217,44 @@ func runSessionCLI(ctx context.Context, client *localchat.Client, command string
 			return err
 		}
 		return encode(r.Session)
+	case "block":
+		if flagWasSet(f, "as") {
+			return fmt.Errorf("block uses owner capability; --as is not accepted")
+		}
+		if f.NArg() != 0 || *reason == "" || unexpectedFlag(f, "reason", "retry-at") != "" {
+			return fmt.Errorf("block requires --reason REASON [--retry-at RFC3339]")
+		}
+		if err := client.EnableOwner(state); err != nil {
+			return err
+		}
+		_, err := client.Call(ctx, "session-block", localchat.Request{
+			Value: id, Reason: *reason, Source: "owner", RetryAt: *retryAt, Actor: *actor,
+		})
+		if err != nil {
+			return err
+		}
+		retryAtValue := *retryAt
+		if retryAtValue == "" {
+			retryAtValue = "-"
+		}
+		_, err = fmt.Fprintf(out, "session=%s blocker=%s source=owner retry_at=%s\n", id, *reason, retryAtValue)
+		return err
+	case "unblock":
+		if flagWasSet(f, "as") {
+			return fmt.Errorf("unblock uses owner capability; --as is not accepted")
+		}
+		if f.NArg() != 0 || unexpectedFlag(f) != "" {
+			return fmt.Errorf("unblock takes only a session ID; inspect the checkpoint before clearing the blocker")
+		}
+		if err := client.EnableOwner(state); err != nil {
+			return err
+		}
+		_, err := client.Call(ctx, "session-unblock", localchat.Request{Value: id, Actor: *actor})
+		if err != nil {
+			return err
+		}
+		_, err = fmt.Fprintf(out, "session=%s blocker=cleared\n", id)
+		return err
 	case "resume":
 		if f.NArg() != 0 {
 			return fmt.Errorf("лишние аргументы")
@@ -351,6 +391,30 @@ func runSessionCLI(ctx context.Context, client *localchat.Client, command string
 		return err
 	}
 	return nil
+}
+
+func flagWasSet(f *flag.FlagSet, name string) bool {
+	set := false
+	f.Visit(func(v *flag.Flag) {
+		if v.Name == name {
+			set = true
+		}
+	})
+	return set
+}
+
+func unexpectedFlag(f *flag.FlagSet, allowed ...string) string {
+	allowedFlags := make(map[string]struct{}, len(allowed))
+	for _, name := range allowed {
+		allowedFlags[name] = struct{}{}
+	}
+	var unexpected string
+	f.Visit(func(v *flag.Flag) {
+		if _, ok := allowedFlags[v.Name]; !ok && unexpected == "" {
+			unexpected = v.Name
+		}
+	})
+	return unexpected
 }
 
 func splitItems(s string) []string {

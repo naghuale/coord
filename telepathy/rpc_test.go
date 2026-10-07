@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -42,6 +43,13 @@ func TestMCPHelper(t *testing.T) {
 		if err := json.NewEncoder(os.Stdout).Encode(map[string]any{"jsonrpc": "2.0", "id": request.ID, "result": result}); err != nil {
 			os.Exit(4)
 		}
+	}
+	// EOF on stdin is the documented shutdown of an MCP stdio server: the peer
+	// closed the session, so exiting cleanly is correct behaviour. COORD_MCP_EXIT
+	// makes the helper write a marker so a test can wait for the real exit
+	// instead of sleeping.
+	if path := os.Getenv("COORD_MCP_EXIT_MARKER"); path != "" {
+		_ = os.WriteFile(path, []byte("exited"), 0o600)
 	}
 	os.Exit(0)
 }
@@ -93,4 +101,47 @@ func TestRPCCancellationReapsProcess(t *testing.T) {
 	if err = p.Close(); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// TestCloseAfterCleanExitIsNotAnError reproduces the race deterministically: the
+// server exits with code 0 on EOF stdin, so cmd.Wait reports our own cancellation
+// instead of the exit status. The test waits for the exit marker written by the
+// helper and then for the process to be reaped, so no sleep is used as proof.
+func TestCloseAfterCleanExitIsNotAnError(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "exited")
+	env := append(os.Environ(), "COORD_MCP_HELPER=1", "COORD_MCP_EXIT_MARKER="+marker)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	p, err := Start(ctx, []string{os.Args[0], "-test.run=^TestMCPHelper$"}, t.TempDir(), env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Закрываем stdin: helper видит EOF и выходит сам.
+	if err = p.input.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// Факт завершения: helper записал маркер непосредственно перед выходом.
+	// Close сам отменяет life и дожидается Wait, поэтому отдельного ожидания
+	// p.done здесь нет: канал закрывается только после отмены, а не раньше.
+	waitForFile(t, marker)
+	if err = p.Close(); err != nil {
+		t.Fatalf("штатное закрытие вернуло ошибку: %v", err)
+	}
+	if err = p.Close(); err != nil {
+		t.Fatalf("повторное закрытие вернуло ошибку: %v", err)
+	}
+}
+
+// waitForFile blocks until the helper has written its exit marker. Polling is
+// used only to wait for a fact, never to prove the absence of an event.
+func waitForFile(t *testing.T, path string) {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(path); err == nil {
+			return
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	t.Fatalf("helper не записал маркер выхода %s", path)
 }

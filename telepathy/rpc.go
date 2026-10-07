@@ -23,7 +23,11 @@ type Process struct {
 	cancel  context.CancelFunc
 	once    sync.Once
 	waitErr error
-	id      uint64
+	// selfClosed records that this process stopped because Close cancelled it,
+	// not because the parent context expired. It is written inside the same
+	// sync.Once as cancel and read only after p.done, so no lock is needed.
+	selfClosed bool
+	id         uint64
 }
 type response struct {
 	JSONRPC string          `json:"jsonrpc"`
@@ -113,13 +117,30 @@ func Start(ctx context.Context, command []string, dir string, environment []stri
 
 // Close cancels the MCP process and waits for OS resources. Repeated calls are safe.
 func (p *Process) Close() error {
-	p.once.Do(func() { p.cancel(); _ = p.input.Close() })
+	p.once.Do(func() {
+		p.selfClosed = true
+		p.cancel()
+		_ = p.input.Close()
+	})
 	<-p.done
-	// Intentional cancellation kills the owned process.
+	if p.waitErr == nil {
+		return nil
+	}
+	// Intentional cancellation kills the owned process, so the signal death is
+	// not a failure.
 	var exit *exec.ExitError
 	if errors.As(p.waitErr, &exit) {
 		return nil
 	}
+	// A server that exits cleanly on EOF stdin before the kill lands is still a
+	// successful close, but exec reports the cancellation of CommandContext
+	// instead of the exit status: Wait returns ctx.Err() when the context was
+	// cancelled and the process finished successfully.
+	if p.selfClosed && errors.Is(p.waitErr, context.Canceled) {
+		return nil
+	}
+	// A deadline from the parent context is not our cancellation and stays an
+	// error: the caller asked for a session that outlived its budget.
 	return p.waitErr
 }
 func (p *Process) write(ctx context.Context, value any) error {

@@ -1,6 +1,6 @@
-GO_FILES := $(shell git ls-files --cached --others --exclude-standard '*.go')
+GO_FILES := $(shell git ls-files -co --exclude-standard '*.go' | while read f; do test -f "$$f" && echo "$$f"; done)
 
-.PHONY: help fmt check-format vet test build demo roles check test-telepathy lint test-telepathy-host
+.PHONY: help fmt check-format vet cross-vet test build demo roles check test-telepathy lint test-telepathy-host
 
 help:
 	@echo 'make demo   — полный цикл задачи в локальном транспорте'
@@ -14,10 +14,14 @@ fmt:
 	gofmt -w $(GO_FILES)
 
 check-format:
+	@test -n "$(GO_FILES)" || { echo 'no Go files found'; exit 1; }
 	@test -z "$$(gofmt -l $(GO_FILES))" || { gofmt -l $(GO_FILES); exit 1; }
 
 vet:
 	go vet ./...
+
+cross-vet:
+	GOOS=windows GOARCH=amd64 go vet ./...
 
 test:
 	go test -race -count=1 ./...
@@ -35,7 +39,7 @@ demo:
 roles:
 	go run ./examples/roles
 
-check: check-format vet test lint
+check: check-format vet cross-vet test lint
 	go build ./...
 	go mod tidy -diff
 

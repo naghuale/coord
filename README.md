@@ -60,6 +60,7 @@ in-process транспорт, сохраняя snapshot в собственно
 | `retry` | Экспоненциальный backoff, jitter и верхний предел задержки |
 | `executor` | Проверка HEAD, ACK, progress/result checkpoint, retry, replay |
 | `watchdog` | Recovery claim, fencing, проверка HEAD, spawn, CAS transfer |
+| `daemon` | Lifecycle host для coordinator loop, control/metrics listeners и readiness |
 | `roles` | Стабильные identities, роли, capabilities, атомарные обновления и журнал |
 | корневой пакет | Координатор, durable outbox, таймауты, метрики, supervisor HTTP API |
 
@@ -72,9 +73,22 @@ in-process транспорт, сохраняя snapshot в собственно
 содержит полный SHA, `Deadline` — абсолютный дедлайн. После остановки Run вызовите
 `Store.Close()` и `Registry.Close()` для подключённого реестра ролей.
 
-На Unix `Store.New` автоматически удерживает kernel flock snapshot до Close:
-два координатора с одним canonical snapshot одновременно не запускаются.
-Один coordinator владеет своим run snapshot и role registry. На других ОС
+На Linux, macOS, DragonFly BSD, FreeBSD, NetBSD, OpenBSD и illumos `Store.New`
+автоматически удерживает kernel flock snapshot до Close: два координатора с одним
+canonical snapshot одновременно не запускаются. На других платформах checkpoint
+storage возвращает `ErrUnavailable` и не открывается без process lock.
+Один coordinator владеет своим run snapshot и role registry. Daemon принимает
+только loopback control/metrics listeners; удалённый доступ размещается за TLS
+proxy. Host может передать
+его в `daemon.New`: runtime запускает control/metrics listeners, публикует
+`/readyz` после успешного startup tick и инициализации transport receive; он
+остаётся 503, пока есть Run с `RecoveryNeeded`, и сообщает одну из причин
+not-ready. Это readiness текущего Run runtime, не полная проверка RT-03 для
+будущей canonical Task модели. Recovery control endpoints доступны после
+инициализации receive даже при not-ready, чтобы supervisor мог завершить
+recovery. При остановке закрывает Store и подключённый RoleRegistry. Для
+прямого встраивания
+без `daemon` host сам закрывает эти stores после остановки loop. На других ОС
 process lock необходимо предоставить реализацией `Persistence.Lock`.
 
 Byte client реализует `Send(ctx, session, raw)` и `Incoming(ctx)`. Передайте его
@@ -232,3 +246,8 @@ Unix-пример `go run ./examples/agent` подключает CLI через 
 
 [Интеграция с Crewflow](docs/plans/crewflow/INTEGRATION_TASK.md) — отдельная
 не реализованная задача; она не требуется для текущего standalone запуска.
+[План UX-1: важно → нужно → как сделаем → что будет](docs/plans/ux-first-scenario/PLAN.md),
+[первый сценарий owner и агентов](docs/plans/ux-first-scenario/ALIGNED_UX.md) —
+согласованное целевое поведение и критерии приёмки по итогам UX-аудита. Срез B
+реализован локально; срезы A и C задачи [UX-1](docs/plans/ux-first-scenario/UX_TASK.md)
+ожидают отдельного approval.

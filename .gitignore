@@ -22,3 +22,6 @@ go.work.sum
 
 # Cooperative worktree writer ownership for examples/agent.
 .coord-writer.lock
+
+# Local agent scratch space (mutation copies, caches).
+/.scratch/

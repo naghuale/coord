@@ -64,8 +64,10 @@ stateDiagram-v2
 Executor устраняет повторное выполнение по task/run/attempt/fence.
 
 Файлы создаются с правами 0600; запись использует temp, fsync, atomic rename
-и fsync родительской папки. Unix flock защищает canonical snapshot от второго
-coordinator. Это single-owner хранилище, а не распределённая база.
+и fsync родительской папки. На Linux, macOS, DragonFly BSD, FreeBSD, NetBSD,
+OpenBSD и illumos kernel flock защищает canonical snapshot от второго
+coordinator; на остальных платформах checkpoint storage отказывает закрытым
+образом. Это single-owner хранилище, а не распределённая база.
 
 ## Таймауты и recovery
 

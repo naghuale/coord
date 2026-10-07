@@ -69,6 +69,7 @@ type Member struct {
 	Ref              string       `json:"ref"`
 	Role             string       `json:"role"`
 	Active           bool         `json:"active"`
+	Blocker          *Blocker     `json:"blocker,omitempty"`
 }
 
 // Room is a read-only public snapshot.

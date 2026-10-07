@@ -1,4 +1,4 @@
-//go:build unix
+//go:build linux || darwin || dragonfly || freebsd || netbsd || openbsd || illumos
 
 // Temporary experiment harness. Not a production Telepathy adapter.
 package main

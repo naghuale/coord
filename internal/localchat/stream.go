@@ -13,7 +13,7 @@ import (
 
 // Watch streams the shared room journal over the private Unix socket.
 func (c *Client) Watch(ctx context.Context, room string, after uint64, receive func(rooms.Event) error) error {
-	target := fmt.Sprintf("http://coord/watch?room=%s&after=%d", url.QueryEscape(room), after)
+	target := fmt.Sprintf("%s?room=%s&after=%d", c.daemonURL("watch"), url.QueryEscape(room), after)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
 		return err

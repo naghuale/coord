@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 )
 
 // ErrStaleGeneration rejects a disconnected writer even if it retries an old operation.
@@ -131,6 +132,25 @@ func reserve(d *snapshot, binding, session string) error {
 	return nil
 }
 
+// blockedSession refuses a role assignment while an external blocker stands.
+// Availability is never inferred by Coord, so the refusal must name the reason,
+// its source and the single action that lifts it. An empty id means the caller
+// creates a fresh session and no recorded blocker can apply to it.
+func blockedSession(d *snapshot, id string) error {
+	if id == "" {
+		return nil
+	}
+	_, _, p, ok := lookup(d, id)
+	if !ok || p.Blocker == nil {
+		return nil
+	}
+	retry := "не задан"
+	if !p.Blocker.RetryAt.IsZero() {
+		retry = p.Blocker.RetryAt.Format(time.RFC3339)
+	}
+	return fmt.Errorf("сессия %s заблокирована: %s (source %s, observed_at %s, retry_at %s); новые назначения остановлены, checkpoint сохранён. Следующее действие: coord session unblock %s после подтверждения доступности", id, p.Blocker.Reason, p.Blocker.Source, p.Blocker.ObservedAt.Format(time.RFC3339), retry, id)
+}
+
 // Assign creates a role session independently of any transport or TUI.
 func (m *Manager) Assign(id, agentID, role, instructions, as string) (Member, error) {
 	return m.assign(id, agentID, role, instructions, as, "")
@@ -144,6 +164,11 @@ func (m *Manager) assign(id, agentID, role, instructions, as, registrationID str
 	defer m.mu.Unlock()
 	var result Member
 	err := m.update(func(d *snapshot) error {
+		// The blocker gate runs before every other check, so a blocked session is
+		// refused on any assignment path and the refusal explains the next action.
+		if err := blockedSession(d, registrationID); err != nil {
+			return err
+		}
 		var waiting registration
 		if registrationID != "" {
 			var exists bool
@@ -231,6 +256,154 @@ func contextFor(d *snapshot, roomID string, p member, after uint64) SessionConte
 	return c
 }
 
+// Availability separates transport attachment from provider reachability.
+// Coord never claims a model is available without an external signal;
+// ATTACHED alone means capability issued, not "the agent works".
+type Availability struct {
+	SessionID    string    `json:"session_id"`
+	RoomID       string    `json:"room_id"`
+	AgentID      string    `json:"agent_id"`
+	Role         string    `json:"role"`
+	Generation   uint64    `json:"generation"`
+	State        string    `json:"state"`        // active|stopped|waiting_assignment|stale_generation|closed
+	Attachment   string    `json:"attachment"`   // attached|detached — только факт capability
+	Reachability string    `json:"reachability"` // ok|failed|unknown — факты доставки notification
+	Readiness    string    `json:"readiness"`    // ready|not_ready|re_regulation_required
+	Processing   string    `json:"processing"`   // processed N of M
+	LastActivity time.Time `json:"last_activity,omitempty"`
+	Provider     string    `json:"provider_availability"` // available|blocked|unknown
+	Blocker      *Blocker  `json:"blocker,omitempty"`
+	Expectation  string    `json:"expectation"` // кого/чего ждём
+	ObservedAt   time.Time `json:"observed_at"`
+}
+
+// latestCredentialGeneration reports the newest generation ever recorded for a
+// stable agent identity across rooms. Profiles compare against it to surface a
+// stale-generation state explicitly; it is display metadata only and grants no
+// access — every operation still requires the exact credential file.
+func (d *snapshot) latestCredentialGeneration(agentID string) uint64 {
+	var latest uint64
+	for _, r := range d.Rooms {
+		for _, p := range r.Members {
+			if p.AgentID == agentID && p.Generation > latest {
+				latest = p.Generation
+			}
+		}
+	}
+	return latest
+}
+
+// Availability returns honest per-session status cards with separated fields
+// (ALIGNED_UX.md §1.1). Fields are never derived from one another.
+func (m *Manager) Availability() []Availability {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	result := []Availability{}
+	now := m.cfg.Now()
+	for _, r := range m.data.Rooms {
+		lastSeq := uint64(len(r.Events))
+		for _, p := range r.Members {
+			reachability := "unknown"
+			inviteQueued := false
+			for _, d := range m.data.Outbox {
+				if d.Room != r.ID || d.Peer != p.SessionID {
+					continue
+				}
+				if d.Kind == "invite" && !d.Delivered {
+					inviteQueued = true
+				}
+				if d.LastError != "" {
+					reachability = "failed"
+				} else if d.Delivered && reachability != "failed" {
+					reachability = "ok"
+				}
+			}
+			// Generation facts, never inferred from attachment: an older generation
+			// of the same agent identity is reported as its own state.
+			stale := m.data.latestCredentialGeneration(p.AgentID) > p.Generation
+			state := "stopped"
+			switch {
+			case r.Closed:
+				state = "closed"
+			case stale:
+				state = "stale_generation"
+			case p.Active:
+				state = "active"
+			}
+			readiness := "not_ready"
+			if p.Ready {
+				if p.Regulation != "coord-v1" {
+					readiness = "re_regulation_required"
+				} else {
+					readiness = "ready"
+				}
+			}
+			provider := "unknown"
+			if p.Blocker != nil {
+				provider = "blocked"
+			}
+			expectation := ""
+			switch {
+			case !p.Active && inviteQueued:
+				expectation = "ждём accept приглашения агентом " + p.AgentID
+			case !p.Active:
+				expectation = "ждём reconnect: coord session resume " + p.SessionID
+			case readiness != "ready":
+				expectation = "ждём ready --regulation coord-v1 от " + p.AgentID
+			case p.Checkpoint.AcknowledgedSeq < lastSeq:
+				expectation = fmt.Sprintf("ждём обработку событий %d..%d от %s", p.Checkpoint.AcknowledgedSeq+1, lastSeq, p.AgentID)
+			default:
+				expectation = "ожиданий нет"
+			}
+			if p.Blocker != nil {
+				expectation = "заблокировано: " + p.Blocker.Reason
+				if !p.Blocker.RetryAt.IsZero() {
+					expectation += " (retry_at " + p.Blocker.RetryAt.Format(time.RFC3339) + ")"
+				}
+			}
+			attachment := "detached"
+			if p.Active {
+				attachment = "attached"
+			}
+			result = append(result, Availability{
+				SessionID:    p.SessionID,
+				RoomID:       r.ID,
+				AgentID:      p.AgentID,
+				Role:         p.Role,
+				Generation:   p.Generation,
+				State:        state,
+				Attachment:   attachment,
+				Reachability: reachability,
+				Readiness:    readiness,
+				Processing:   fmt.Sprintf("processed %d of %d", p.Checkpoint.AcknowledgedSeq, lastSeq),
+				LastActivity: p.ConnectedAt,
+				Provider:     provider,
+				Blocker:      p.Blocker,
+				Expectation:  expectation,
+				ObservedAt:   now,
+			})
+		}
+	}
+	for _, reg := range m.data.Registrations {
+		if reg.State != "WAITING_ASSIGNMENT" {
+			continue
+		}
+		result = append(result, Availability{
+			SessionID:    reg.SessionID,
+			AgentID:      reg.AgentID,
+			State:        "waiting_assignment",
+			Attachment:   "detached",
+			Reachability: "unknown",
+			Readiness:    "not_ready",
+			Processing:   "processed 0 of 0",
+			Provider:     "unknown",
+			Expectation:  "ждёт назначения роли: coord session assign <room> --registration " + reg.SessionID,
+			ObservedAt:   now,
+		})
+	}
+	return result
+}
+
 // Resume atomically rotates the capability, fences previous requests and returns replay.
 func (m *Manager) Resume(req ResumeRequest) (Attachment, error) {
 	if err := validOperation(req.Operation); err != nil {
@@ -270,7 +443,7 @@ func (m *Manager) Resume(req ResumeRequest) (Attachment, error) {
 			return nil
 		}
 		if p.Generation != req.Expected {
-			return ErrStaleGeneration
+			return fmt.Errorf("%w: profile gen%d, current gen%d — следующее действие: coord session resume %s --generation %d или profile refresh", ErrStaleGeneration, req.Expected, p.Generation, p.SessionID, p.Generation)
 		}
 		if req.Token != "" {
 			if (p.Generation > 0 && !p.Active) || p.Token != req.Token {

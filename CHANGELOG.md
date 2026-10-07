@@ -1,5 +1,110 @@
 # История изменений
 
+## 2026-10-08 — fail-closed snapshot ownership
+
+- Snapshot ownership uses the shared `filelock` implementation. On platforms
+  without a supported process lock, opening the store is rejected before state
+  is loaded; the system no longer proceeds without writer ownership.
+- `make check` runs cross-platform `go vet` for Windows; Solaris and AIX builds
+  are neither checked nor guaranteed.
+- `telepathy.Process.Close` no longer reports a false `context canceled` when an
+  MCP server exits cleanly after stdin EOF; a parent-context deadline still
+  returns an error (`telepathy.TestCloseAfterCleanExitIsNotAnError`; this race
+  previously made `TestRPCChecksVersionAndToolFailure` fail intermittently).
+- Run deadline handling (`failDeadline`) clears `ResumeStatus` with recovery
+  state, so a terminal Run has no continuation point
+  (`TestRunInvariantsHoldThroughLifecycle`).
+- Выход run из `STALLED` очищает `ResumeStatus` в единственной точке перехода
+  (`fsm.Run.Apply`), независимо от того, терминальный это переход или нет:
+  раньше поздний heartbeat возвращал run в работу с сохранённой точкой
+  продолжения, а RESULT после пропущенного probe давал `DONE` с
+  `ResumeStatus` (`TestStalledExitClearsResumeStatus`).
+- По решению owner от 2026-10-08 автоматическая проверка содержимого checkpoint
+  исключена из UX-1; перед `unblock` владелец проверяет checkpoint вручную,
+  программная проверка остаётся в P1 ROADMAP.
+
+## 2026-10-07 — coordinator daemon host runtime
+
+- Добавлен библиотечный `daemon` runtime для запуска coordinator loop,
+  control/metrics listeners и `/readyz`; обычная readiness учитывает pending
+  supervisor recovery, а recovery control остаётся доступен для его завершения.
+- Runtime выполняет startup tick до readiness, затем запускает transport receive;
+  readiness остаётся закрытой при незавершённом supervisor recovery, а recovery
+  endpoints доступны после инициализации receive. Shutdown использует единый
+  timeout, закрывает HTTP handlers и освобождает Store/RoleRegistry; listeners
+  ограничены loopback. Ошибки shutdown и закрытия durable stores возвращаются
+  вызывающему коду, а не теряются в defer.
+- Это host runtime текущего Run coordinator, а не завершённая canonical Task
+  daemon или отдельный executable.
+
+## 2026-10-07 — срез B UX-1: карточка состояния, блокер, `coord tui`
+
+- `GET /availability` различает attachment, transport reachability, readiness,
+  processing cursor, provider availability, blocker, ожидание и поколение.
+  `stale_generation` виден отдельной строкой; provider без внешнего сигнала
+  остаётся `unknown` — Coord не делает выводов о чужой модели.
+- Блокер (`blocked_provider_quota` и другие известные причины) несёт
+  reason/source/observed_at/retry_at, останавливает новое назначение роли на
+  любом пути assign(), не трогает checkpoint и журнал, снимается только
+  явным `coord session unblock` / командой TUI.
+- Новая команда `coord tui`: кадр owner с раздельными полями и slash-командами
+  (`/help /models /connect /sessions /rooms /join /leave /status /block
+  /unblock`), те же эндпоинты, что и CLI; сетевой listener не открывается.
+- Метод команды определяется одной таблицей для handler и client: рассинхрон
+  двух списков раньше отдавал 405 на `/availability` и ломал запуск TUI.
+- HTTP различает плохой вход (400, `code=invalid_input`) и конфликт состояния
+  (409); ошибки указывают следующую допустимую команду. Некорректные reason,
+  source и retry_at тоже относятся к 400, а не к конфликту.
+- TUI: доступ к разделяемому состоянию идёт через мьютекс (`/join`, `/leave`,
+  `/help`, `/status`, `/block`, `/unblock` больше не пишут поля без него);
+  курсор `/watch` переносится в переподключение, поэтому обрыв потока не
+  возвращает уже показанные строки; карточки перечитываются по тику, и внешний
+  blocker виден без ввода команды.
+- TUI: событие попадает в очередь кадра до продвижения курсора, поэтому
+  переполнение очереди не теряет запись навсегда; горутина ввода, ожидающая
+  отправки строки, освобождается при `/quit`; ожидание чтения stdin завершается
+  вместе с процессом (`internal/localchat.TestQuitWithTrailingInputLeavesNoGoroutine`).
+- TUI: подписка `/watch` живёт на одну комнату, поэтому `/join` другой комнаты
+  и `/leave` рвут активный запрос; раньше поток прежней комнаты оставался
+  открытым и события новой не приходили. Курсор комнаты двигает только цикл
+  отрисовки — после того как событие реально показано, — поэтому события,
+  доставленные в переполненную очередь покинутой комнаты, не теряются и не
+  дублируются при возврате.
+- `.gitignore` восстановлен: `/state/`, `/bin/`, credentials и логи снова
+  не попадают в Git.
+- Дедлайн делает run терминальным и очищает всю recovery-метаданную, включая
+  `RecoveryClaim`: снимок больше не показывает активную блокировку у мёртвого
+  run.
+- Срез B одобрен owner. Срезы A (per-context профили) и C (discover/onboarding)
+  не реализованы и требуют отдельного approval owner.
+- Добавлены owner-команды `coord session block/unblock`; `block` принимает
+  обязательный `--reason` и необязательный RFC3339 `--retry-at`. Повтор
+  идентичного блокера теперь no-op без нового события/сдвига `observed_at`;
+  просроченный `retry_at` отвергается как invalid input до поиска сессии.
+- Успешные CLI-команды печатают машинно-читаемый результат; аргументы
+  проверяются до чтения owner capability. Контракт проверяют
+  `cmd/coord.TestSessionBlockAndUnblockUseOwnerCapability`,
+  `cmd/coord.TestSessionBlockRejectsInvalidArgsBeforeRequest` и
+  `cmd/coord.TestSessionUnblockReferencesRemainExecutable`.
+- Перед `unblock` владелец должен вручную проверить checkpoint; CLI не
+  подтверждает и не валидирует эту проверку.
+
+## 2026-10-07 — согласован первый UX-сценарий (документация, без кода)
+
+- docs/plans/ux-first-scenario/ALIGNED_UX.md: согласованное целевое поведение
+  owner-карточек (раздельные attachment/reachability/readiness/cursor/activity/
+  availability), per-context профиля с привязкой к generation и запрет
+  auto-select newest credential, машинный блокер blocked_provider_quota с
+  reason/source/observed_at/retry_at, discover с availability=unknown.
+- docs/plans/ux-first-scenario/UX_TASK.md: задача UX-1 на реализацию
+  (PENDING APPROVAL); код не менялся, команды профиля ещё не существуют.
+- docs/plans/ux-first-scenario/PLAN.md: сводный план UX-1 в формате
+  «что важно → что нужно → как сделаем → что будет»; порядок срезов
+  B → A → C, LongCat recovery вне приёмки до снятия подтверждённой квоты.
+- README и ROADMAP ссылается на план; приёмка раздела «от начала до
+  восстановления» планируется с Codex Auditor и Nemotron; LongCat исключён
+  до снятия подтверждённой provider quota.
+
 ## 2026-10-07 — устойчивые локальные ролевые сессии
 
 - Общий coord CLI, owner-чат и независимый от TUI Unix API.

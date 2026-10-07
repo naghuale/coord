@@ -45,18 +45,45 @@ bin/coord --state state/team rooms
 bin/coord --state state/team sessions
 bin/coord --state state/team session assign ROOM_ID --agent-id stable-agent-1 \
   --role executor --instructions "Работать только над TASK-1."
+bin/coord --state state/team session block SESSION_ID \
+  --reason blocked_provider_quota --retry-at 2026-10-08T10:00:00Z
+bin/coord --state state/team session unblock SESSION_ID
 bin/coord --state state/team session invite SESSION_ID --operation invite-1
 bin/coord --state state/team watch ROOM_ID
 bin/coord --state state/team join ROOM_ID
 bin/coord --state state/team say ROOM_ID "Уточнение от owner"
 bin/coord --state state/team log ROOM_ID
 bin/coord --state state/team close ROOM_ID
+bin/coord --state state/team tui
 ```
 
 join — owner-чат; /quit завершает наблюдение. close не означает approval,
 merge или успех работы. sessions показывает логические назначения, включая
 WAITING_ASSIGNMENT и отключённые сессии; ATTACHED — выданная capability,
 не утверждение о живом TUI. peers показывает транспортные сессии.
+
+`session block` и `session unblock` — owner-команды: CLI использует локальный
+`owner.key`, а daemon проверяет owner capability. `--reason` обязателен;
+`--retry-at` необязателен и задаётся в RFC3339. Блокер хранит источник `owner`,
+останавливает новые назначения этой сессии и не меняет checkpoint. При успехе
+CLI печатает `session=… blocker=… source=owner retry_at=…` для block и
+`session=… blocker=cleared` для unblock; отсутствие срока обозначается `-`.
+Повтор
+того же блокера идемпотентен; снятие всегда явно и не означает, что провайдер
+сам восстановился. Блокер принадлежит сессии: новый `session assign` того же
+`agent_id` создаёт сессию без блокера, поэтому owner блокирует её отдельно.
+Перед командой owner должен проверить поле `checkpoint` в
+выводе `coord sessions`; команда не проверяет содержимое и не фиксирует
+подтверждение этой проверки. `source` в HTTP API — заявленная provenance-строка, а не
+отдельная identity: endpoint требует owner capability; service-scoped доступ
+для supervisor/integration пока не реализован.
+
+tui — тот же Unix-сокет и те же эндпоинты, что и CLI: кадр с раздельными
+полями attach/reach/ready/provider, явным blocker и ожиданием. Slash-команды:
+/help /models /connect /sessions /rooms /join /leave /status /block /unblock.
+Текстовая реплика уходит в комнату как owner через существующий POST /say.
+ATTACHED никогда не выводится как «работает», а provider без внешнего сигнала
+остаётся unknown: Coord не выводит о чужой модели то, чего не знает.
 
 ## Вход A: готовое назначение
 
