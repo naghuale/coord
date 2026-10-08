@@ -4,6 +4,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"coord"
 	"coord/checkpoint"
@@ -376,6 +377,70 @@ func TestCoorddReadinessRejectsInvalidCanonicalState(t *testing.T) {
 	after, err := os.ReadFile(path)
 	if err != nil || string(after) != string(before) {
 		t.Fatalf("invalid canonical snapshot changed: err=%v", err)
+	}
+}
+
+func TestCoorddReadinessFailsClosedForActiveTaskRunWithoutAgentSessionBinding(t *testing.T) {
+	cfg := testConfig(t)
+	cfg.ControlAddr, cfg.MetricsAddr = freeLoopbackAddrs(t)
+	if err := os.MkdirAll(cfg.StateDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(cfg.StateDir, "canonical.json")
+	id := taskid.ID("task_01ARZ3NDEKTSV4RRFFQ69G5FAV")
+	now := time.Unix(100, 0).UTC()
+	stage := task.Execution
+	state := store.EmptyCanonicalState()
+	state.Tasks[id] = task.Task{ID: id, Title: "task", OwnerID: "owner", Revision: 2, LastEventSeq: 2, Fence: 1,
+		StagePlan:    task.StagePlan{Stages: []task.Stage{task.Execution}, PolicyVersion: task.StagePlanPolicyVersion},
+		CurrentStage: &stage, Status: task.InProgress, CreatedAt: now, UpdatedAt: now.Add(time.Second)}
+	selection := roles.Selection{AgentID: "agent-executor", Session: "executor", Profile: roles.Profile{Role: roles.Executor}}
+	state.Runs["run-1"] = fsm.Run{TaskID: id, RunID: "run-1", Attempt: 1, Fence: 1, OwnerSession: selection.Session,
+		Worktree: "worktree", Deadline: now.Add(time.Hour), Status: fsm.Stalled, ResumeStatus: fsm.Started,
+		RecoveryNeeded: true, RoleSelection: &selection, RequiredRole: roles.Requirement{Role: roles.Executor}, RoleHistory: []roles.Selection{selection}}
+	state.Events = []task.DomainEvent{
+		{ID: task.EventID(id, 1), TaskID: id, EventSeq: 1, TaskRevision: 1, Type: task.TaskCreated, ActorID: "owner", CreatedAt: now},
+		{ID: task.EventID(id, 2), TaskID: id, RunID: "run-1", EventSeq: 2, TaskRevision: 2, TaskFence: 1, Type: task.TaskOwnershipTransferred, CreatedAt: now.Add(time.Second)},
+	}
+	seed, err := json.Marshal(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, seed, 0600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	factoryCalled := make(chan struct{}, 1)
+	done := make(chan error, 1)
+	go func() {
+		done <- runWithWriter(ctx, cfg, func(context.Context, coorddconfig.Config) (transport.Transport, func() error, error) {
+			factoryCalled <- struct{}{}
+			return nil, nil, errors.New("transport must not start")
+		}, io.Discard)
+	}()
+	waitForStatus(t, "http://"+cfg.ControlAddr+"/readyz", http.StatusServiceUnavailable)
+	response, err := http.Get("http://" + cfg.ControlAddr + "/readyz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, readErr := io.ReadAll(response.Body)
+	_ = response.Body.Close()
+	if readErr != nil || !strings.Contains(string(body), "has no AgentSession generation") {
+		t.Fatalf("/readyz body=%q readErr=%v; want missing AgentSession generation", body, readErr)
+	}
+	select {
+	case <-factoryCalled:
+		t.Fatal("transport started with active Task Run lacking AgentSession binding")
+	default:
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("diagnostic runtime shutdown: %v", err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(after, seed) {
+		t.Fatalf("invalid active Run snapshot was rewritten: err=%v", err)
 	}
 }
 

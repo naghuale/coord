@@ -43,6 +43,7 @@ type Run struct {
 	Attempt                                        uint64
 	TargetSHA                                      string
 	OwnerSession                                   string
+	AgentSessionGeneration                         uint64 `json:"agent_session_generation,omitempty"`
 	Fence                                          uint64
 	Status                                         Status
 	ResumeStatus                                   Status
@@ -78,7 +79,7 @@ func (r Run) Terminal() bool { return r.Status == Done || r.Status == Failed }
 func (r Run) SameDomainState(other Run) bool {
 	return r.Task == other.Task && r.TaskID == other.TaskID && r.RunID == other.RunID &&
 		r.Attempt == other.Attempt && r.TargetSHA == other.TargetSHA &&
-		r.OwnerSession == other.OwnerSession && r.Fence == other.Fence &&
+		r.OwnerSession == other.OwnerSession && r.AgentSessionGeneration == other.AgentSessionGeneration && r.Fence == other.Fence &&
 		r.Status == other.Status && r.ResumeStatus == other.ResumeStatus &&
 		r.AssignedAt.Equal(other.AssignedAt) && r.Deadline.Equal(other.Deadline) &&
 		r.Worktree == other.Worktree && r.PayloadRef == other.PayloadRef &&

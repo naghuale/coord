@@ -350,6 +350,8 @@ func TestCanonicalStateRejectsOutboxReferenceToDifferentRunEvent(t *testing.T) {
 		Task: "legacy label", TaskID: id, RunID: "run-2", Attempt: 1, Fence: 1,
 		OwnerSession: "reviewer", Worktree: "worktree-review", Deadline: value.UpdatedAt.Add(time.Hour), Status: fsm.Failed,
 	}
+	otherRun.RequiredRole = roles.Requirement{Role: roles.Reviewer}
+	bindCanonicalTestRun(&state, &otherRun, "agent-reviewer", value.UpdatedAt)
 	state.Runs[otherRun.RunID] = otherRun
 	otherRunEvent := task.DomainEvent{
 		ID: task.EventID(id, value.LastEventSeq), TaskID: id, RunID: otherRun.RunID,
@@ -431,7 +433,9 @@ func TestCanonicalStoreRefusesWithoutOwnershipBeforeLoad(t *testing.T) {
 
 func TestCanonicalStateValidatesTaskEventAndRunRelations(t *testing.T) {
 	state := taskState()
-	run := fsm.Run{Task: "legacy label stays distinct", TaskID: taskid.ID("task_01ARZ3NDEKTSV4RRFFQ69G5FAV"), RunID: "run-1", Attempt: 1, Fence: 1, OwnerSession: "executor", Worktree: "worktree", Deadline: time.Now().Add(time.Hour), Status: fsm.Started}
+	run := fsm.Run{Task: "legacy label stays distinct", TaskID: taskid.ID("task_01ARZ3NDEKTSV4RRFFQ69G5FAV"), RunID: "run-1", Attempt: 1, Fence: 1, OwnerSession: "executor", Worktree: "worktree", Deadline: time.Now().Add(time.Hour), Status: fsm.Started,
+		RequiredRole: roles.Requirement{Role: roles.Executor}}
+	bindCanonicalTestRun(&state, &run, "agent-executor", state.Tasks[run.TaskID].UpdatedAt)
 	state.Runs[run.RunID] = run
 	value := state.Tasks[run.TaskID]
 	value.Revision, value.LastEventSeq = 2, 2
@@ -464,7 +468,9 @@ func TestCanonicalStateRejectsMultipleActiveRunsPerTask(t *testing.T) {
 	value.Revision, value.LastEventSeq = 3, 3
 	value.UpdatedAt = value.UpdatedAt.Add(time.Second)
 	state.Tasks[id] = value
-	state.Runs["run-2"] = fsm.Run{RunID: "run-2", TaskID: id, Attempt: 1, Fence: 1, OwnerSession: "executor-2", Worktree: "worktree-2", Deadline: value.UpdatedAt.Add(time.Hour), Status: fsm.Started}
+	run := fsm.Run{RunID: "run-2", TaskID: id, Attempt: 1, Fence: 1, OwnerSession: "executor-2", Worktree: "worktree-2", Deadline: value.UpdatedAt.Add(time.Hour), Status: fsm.Started, RequiredRole: roles.Requirement{Role: roles.Executor}}
+	bindCanonicalTestRun(&state, &run, "agent-executor-2", value.UpdatedAt)
+	state.Runs["run-2"] = run
 	state.Events = append(state.Events, task.DomainEvent{
 		ID: task.EventID(id, 3), TaskID: id, RunID: "run-2", EventSeq: 3, TaskRevision: 3, TaskFence: value.Fence,
 		Type: "TASK_ASSIGNED", CreatedAt: value.UpdatedAt,
@@ -901,7 +907,7 @@ func TestCanonicalTransitionRejectsRecoveryWithoutStalledRecoveryClaim(t *testin
 	previous.Runs[run.RunID] = run
 	next := ownershipTransferCandidate(t, previous, "run-1", roles.Executor, 1, 2)
 	run = next.Runs["run-1"]
-	setRunOwner(&run, "executor-new")
+	setRunOwner(&next, &run, "executor-new")
 	run.Fence = 2
 	run.Status = fsm.Pending
 	run.ResumeStatus = ""
@@ -925,7 +931,7 @@ func TestCanonicalTransitionRejectsRecoveryWithUnclearedState(t *testing.T) {
 			previous := claimedRecoveryState()
 			next := ownershipTransferCandidate(t, previous, "run-1", roles.Executor, 1, 2)
 			run := next.Runs["run-1"]
-			setRunOwner(&run, "executor-new")
+			setRunOwner(&next, &run, "executor-new")
 			run.Fence = 2
 			run.Status = fsm.Stalled
 			run.ResumeStatus = fsm.Started
@@ -949,7 +955,7 @@ func TestCanonicalTransitionRejectsOwnerChangeWhenRunBecomesTerminal(t *testing.
 		t.Fatal(err)
 	}
 	run := failedRun(next.Runs["run-1"])
-	setRunOwner(&run, "executor-new")
+	setRunOwner(&next, &run, "executor-new")
 	next.Runs[run.RunID] = run
 	appendTaskDomainEvent(&next, run.TaskID, run.RunID, "WORK_FAILED")
 	if err := ValidateCanonicalState(next); err != nil {
@@ -977,7 +983,7 @@ func TestCanonicalTransitionRejectsTerminalRunReactivation(t *testing.T) {
 			run = next.Runs[run.RunID]
 			run.Status = fsm.Started
 			if changeOwner {
-				setRunOwner(&run, "executor-new")
+				setRunOwner(&next, &run, "executor-new")
 			}
 			next.Runs[run.RunID] = run
 			appendTaskDomainEvent(&next, run.TaskID, run.RunID, "WORK_STARTED")
@@ -1078,7 +1084,7 @@ func TestCanonicalTransitionRequiresRoleSelectionHistory(t *testing.T) {
 		wantErr        string
 	}{
 		{name: "changed agent without history append", wantErr: "RoleSelection change requires the same selection appended to RoleHistory"},
-		{name: "changed agent with matching history append", appendNext: true},
+		{name: "changed agent with matching history append", appendNext: true, wantErr: "can change only with ownership transfer"},
 		{name: "changed agent with two history entries", appendNext: true, appendTwice: true, wantErr: "RoleSelection change requires the same selection appended to RoleHistory"},
 		{name: "changed agent with mismatching history entry", appendNext: true, appendMismatch: true, wantErr: "RoleSelection change requires the same selection appended to RoleHistory"},
 		{name: "remove selection", remove: true, wantErr: "selected role is immutable"},
@@ -1086,6 +1092,10 @@ func TestCanonicalTransitionRequiresRoleSelectionHistory(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			previous := taskStateWithRoleRun(roles.Executor, 1)
 			run := previous.Runs["run-1"]
+			run.Status = fsm.Failed
+			run.AgentSessionGeneration = 0
+			run.RoleSelection.Session = run.OwnerSession
+			run.RoleHistory[0].Session = run.OwnerSession
 			original := *run.RoleSelection
 			run.RoleHistory = []roles.Selection{original}
 			previous.Runs[run.RunID] = run
@@ -1214,7 +1224,10 @@ func TestCanonicalTransitionRoleHistoryIsAppendOnly(t *testing.T) {
 			run := previous.Runs["run-1"]
 			run.RoleHistory = []roles.Selection{selection("agent-a", roles.Executor), selection("agent-b", roles.Executor), selection("agent-c", roles.Executor)}
 			selected := selection("agent-c", roles.Executor)
+			selected.Session = run.OwnerSession
+			run.RoleHistory[2] = selected
 			run.RoleSelection = &selected
+			ensureCanonicalTestAgentSession(&previous, run.OwnerSession, selected.AgentID, previous.Tasks[run.TaskID].UpdatedAt)
 			previous.Runs[run.RunID] = run
 			next, err := copyCanonicalState(previous)
 			if err != nil {
@@ -1234,17 +1247,22 @@ func TestCanonicalTransitionRoleHistoryIsAppendOnly(t *testing.T) {
 		previous := taskStateWithRoleRun(roles.Executor, 1)
 		run := previous.Runs["run-1"]
 		selected := selection("agent-a", roles.Executor)
+		selected.Session = run.OwnerSession
 		run.RoleSelection = &selected
 		run.RoleHistory = []roles.Selection{selected}
+		ensureCanonicalTestAgentSession(&previous, run.OwnerSession, selected.AgentID, previous.Tasks[run.TaskID].UpdatedAt)
 		previous.Runs[run.RunID] = run
 		next, err := copyCanonicalState(previous)
 		if err != nil {
 			t.Fatal(err)
 		}
 		run = next.Runs[run.RunID]
-		selected = selection("agent-b", roles.Executor)
+		selected = selection("agent-a", roles.Executor)
+		selected.Session = run.OwnerSession
+		selected.Profile.Model = "updated-model"
 		run.RoleSelection = &selected
 		run.RoleHistory = append(run.RoleHistory, selected)
+		ensureCanonicalTestAgentSession(&next, run.OwnerSession, selected.AgentID, next.Tasks[run.TaskID].UpdatedAt)
 		next.Runs[run.RunID] = run
 		appendTaskDomainEvent(&next, run.TaskID, run.RunID, "ROLE_HISTORY_UPDATED")
 		if err := ValidateCanonicalState(next); err != nil {
@@ -1271,7 +1289,7 @@ func TestCanonicalTransitionRejectsFenceOverflow(t *testing.T) {
 	previous.Runs[run.RunID] = run
 	next := ownershipTransferCandidate(t, previous, "run-1", roles.Executor, 1, math.MaxUint64)
 	run = next.Runs["run-1"]
-	setRunOwner(&run, "executor-new")
+	setRunOwner(&next, &run, "executor-new")
 	run.Status = fsm.Pending
 	run.ResumeStatus = ""
 	run.RecoveryNeeded = false
@@ -1378,6 +1396,7 @@ func taskStateWithRoleRun(role roles.Role, attempt uint64) CanonicalState {
 	run.RequiredRole = roles.Requirement{Role: role}
 	run.RoleSelection = &roles.Selection{AgentID: "agent-" + strings.ToLower(string(role)), Session: run.OwnerSession, Profile: roles.Profile{Role: role}}
 	run.RoleHistory = []roles.Selection{*run.RoleSelection}
+	bindCanonicalTestRun(&state, &run, run.RoleSelection.AgentID, state.Tasks[run.TaskID].UpdatedAt)
 	state.Runs[run.RunID] = run
 	return state
 }
@@ -1395,7 +1414,7 @@ func claimedRecoveryState() CanonicalState {
 
 func completeRecoveryRun(state *CanonicalState, owner string, fence uint64) {
 	run := state.Runs["run-1"]
-	setRunOwner(&run, owner)
+	setRunOwner(state, &run, owner)
 	run.Fence = fence
 	run.Status = fsm.Pending
 	run.ResumeStatus = ""
@@ -1404,11 +1423,13 @@ func completeRecoveryRun(state *CanonicalState, owner string, fence uint64) {
 	state.Runs[run.RunID] = run
 }
 
-func setRunOwner(run *fsm.Run, owner string) {
+func setRunOwner(state *CanonicalState, run *fsm.Run, owner string) {
 	run.OwnerSession = owner
 	if run.RoleSelection != nil {
 		run.RoleSelection.Session = owner
 		run.RoleHistory = append(run.RoleHistory, *run.RoleSelection)
+		run.AgentSessionGeneration = 1
+		ensureCanonicalTestAgentSession(state, owner, run.RoleSelection.AgentID, state.Tasks[run.TaskID].UpdatedAt)
 	}
 }
 
@@ -1433,6 +1454,9 @@ func ownershipTransferCandidate(t *testing.T, previous CanonicalState, runID str
 			OwnerSession: owner, Worktree: "worktree", Deadline: taskValue.UpdatedAt.Add(time.Hour), Status: fsm.Pending,
 			RequiredRole: roles.Requirement{Role: role}, RoleSelection: &selection, RoleHistory: []roles.Selection{selection},
 		}
+		run := next.Runs[runID]
+		bindCanonicalTestRun(&next, &run, selection.AgentID, taskValue.UpdatedAt)
+		next.Runs[runID] = run
 	}
 	next.Events = append(next.Events, task.DomainEvent{
 		ID: task.EventID(id, taskValue.LastEventSeq), TaskID: id, RunID: runID,
@@ -1487,7 +1511,9 @@ func taskStateWithRun() CanonicalState {
 	run := fsm.Run{
 		Task: "legacy label", TaskID: id, RunID: "run-1", Attempt: 1, Fence: 1,
 		OwnerSession: "executor", Worktree: "worktree", Deadline: value.UpdatedAt.Add(time.Hour), Status: fsm.Started,
+		RequiredRole: roles.Requirement{Role: roles.Executor},
 	}
+	bindCanonicalTestRun(&state, &run, "agent-executor", value.UpdatedAt)
 	state.Runs[run.RunID] = run
 	state.Events = append(state.Events, task.DomainEvent{
 		ID: task.EventID(id, 2), TaskID: id, RunID: run.RunID,

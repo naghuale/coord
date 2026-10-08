@@ -205,6 +205,9 @@ func TestReviewResultRejectsInvalidAndOutOfScopeReferences(t *testing.T) {
 		TargetSHA: strings.Repeat("b", 40), OwnerSession: foreignSelection.Session, CoordinatorSession: "coord-session", Worktree: "other-worktree",
 		Deadline: foreignNow.Add(time.Hour), AssignedAt: foreignNow, LastUpdate: foreignNow, Status: fsm.Started,
 		RequiredRole: roles.Requirement{Role: roles.Executor}, RoleSelection: &foreignSelection, RoleHistory: []roles.Selection{foreignSelection}}
+	foreignRun := foreignState.Runs["foreign-run"]
+	bindCanonicalTestRun(&foreignState, &foreignRun, foreignSelection.AgentID, foreignNow)
+	foreignState.Runs[foreignRun.RunID] = foreignRun
 	foreignState.Events = append(foreignState.Events,
 		task.DomainEvent{ID: task.EventID(foreignTaskID, 1), TaskID: foreignTaskID, EventSeq: 1, TaskRevision: 1, TaskFence: 0, Type: task.TaskCreated, ActorID: "owner", CreatedAt: foreignNow},
 		task.DomainEvent{ID: task.EventID(foreignTaskID, 2), TaskID: foreignTaskID, RunID: "foreign-run", EventSeq: 2, TaskRevision: 2, TaskFence: 1, Type: task.TaskOwnershipTransferred, CreatedAt: foreignNow.Add(time.Second)},
@@ -671,6 +674,9 @@ func resultState(resultRole roles.Role) CanonicalState {
 		Deadline: now.Add(time.Hour), AssignedAt: now, LastUpdate: now, Status: fsm.Done,
 		Result:       &envelope.ResultPayload{Outcome: "SUCCESS", Summary: "executor result"},
 		RequiredRole: roles.Requirement{Role: roles.Executor}, RoleSelection: &executorSelection, RoleHistory: []roles.Selection{executorSelection}}
+	run := state.Runs["run-executor"]
+	bindCanonicalTestRun(&state, &run, executorSelection.AgentID, now)
+	state.Runs[run.RunID] = run
 	role := resultRole
 	runID := "run-review"
 	if resultRole == roles.Auditor {
@@ -693,6 +699,9 @@ func resultState(resultRole roles.Role) CanonicalState {
 			TargetSHA: sha, OwnerSession: reviewerSelection.Session, CoordinatorSession: "coord-session", Worktree: "worktree",
 			Deadline: now.Add(time.Hour), AssignedAt: now, LastUpdate: now, Status: fsm.Done,
 			RequiredRole: roles.Requirement{Role: roles.Reviewer}, RoleSelection: &reviewerSelection, RoleHistory: []roles.Selection{reviewerSelection}}
+		run := state.Runs["run-review"]
+		bindCanonicalTestRun(&state, &run, reviewerSelection.AgentID, now.Add(2*time.Second))
+		state.Runs[run.RunID] = run
 		role = roles.Auditor
 	}
 	selection := roles.Selection{AgentID: "agent-" + strings.ToLower(string(role)), Session: strings.ToLower(string(role)) + "-session", Profile: roles.Profile{Role: role}}
@@ -700,5 +709,8 @@ func resultState(resultRole roles.Role) CanonicalState {
 		TargetSHA: sha, OwnerSession: selection.Session, CoordinatorSession: "coord-session", Worktree: "worktree",
 		Deadline: now.Add(time.Hour), AssignedAt: now, LastUpdate: now, Status: fsm.Started,
 		RequiredRole: roles.Requirement{Role: role}, RoleSelection: &selection, RoleHistory: []roles.Selection{selection}}
+	run = state.Runs[runID]
+	bindCanonicalTestRun(&state, &run, selection.AgentID, now.Add(time.Duration(state.Tasks[id].LastEventSeq)*time.Second))
+	state.Runs[runID] = run
 	return state
 }

@@ -198,6 +198,10 @@ func TestSameAgentMayHoldRolesInDifferentTasks(t *testing.T) {
 		LastUpdate: now, Status: fsm.Pending, RequiredRole: roles.Requirement{Role: roles.Reviewer},
 		RoleSelection: &selection, RoleHistory: []roles.Selection{selection},
 	}
+	ensureCanonicalTestAgentSession(&state, "task-b-executor-session", "task-b-executor-agent", now)
+	run := state.Runs["task-b-reviewer"]
+	bindCanonicalTestRun(&state, &run, selection.AgentID, now)
+	state.Runs[run.RunID] = run
 	if err := ValidateCanonicalState(state); err != nil {
 		t.Fatalf("same AgentID across different Tasks was rejected: %v", err)
 	}
@@ -223,6 +227,7 @@ func TestRoleHistoryExtraSelectionRequiresEventAfterTransfer(t *testing.T) {
 	extra.AgentID = "extra-executor-selection"
 	run.RoleHistory = append(run.RoleHistory, extra)
 	run.RoleSelection = &extra
+	ensureCanonicalTestAgentSession(&state, run.OwnerSession, extra.AgentID, state.Tasks[run.TaskID].UpdatedAt)
 	state.Runs[run.RunID] = run
 	err := ValidateCanonicalState(state)
 	if err == nil || !strings.Contains(err.Error(), "no event anchor for every selection") {
@@ -247,6 +252,9 @@ func TestRoleIndependenceDoesNotRequireAnExecutorAssignment(t *testing.T) {
 		LastUpdate: now, Status: fsm.Pending, RequiredRole: roles.Requirement{Role: roles.Reviewer},
 		RoleSelection: &selection, RoleHistory: []roles.Selection{selection},
 	}
+	run := state.Runs["reviewer"]
+	bindCanonicalTestRun(&state, &run, selection.AgentID, now)
+	state.Runs[run.RunID] = run
 	state.Events = []task.DomainEvent{
 		{ID: task.EventID(id, 1), TaskID: id, EventSeq: 1, TaskRevision: 1, Type: task.TaskCreated, ActorID: "owner", CreatedAt: now},
 		{ID: task.EventID(id, 2), TaskID: id, RunID: "reviewer", EventSeq: 2, TaskRevision: 2, TaskFence: 1, Type: task.TaskOwnershipTransferred, CreatedAt: now.Add(time.Second)},
@@ -265,6 +273,7 @@ func TestRoleHistoryWithoutTransferMarkersUsesConservativeEventBounds(t *testing
 		selected.AgentID = "agent-extra-executor"
 		executor.RoleHistory = append(executor.RoleHistory, selected)
 		executor.RoleSelection = &selected
+		bindCanonicalTestRun(&state, &executor, selected.AgentID, state.Tasks[id].UpdatedAt)
 		state.Runs[executor.RunID] = executor
 		appendTaskDomainEvent(&state, id, executor.RunID, "ROLE_HISTORY_UPDATED")                                           // N=5, earliest possible anchor.
 		review := canonicalRoleTransfer(t, state, roles.Reviewer, "review-extra-executor", "agent-extra-executor", "model") // N=6.
@@ -284,6 +293,7 @@ func TestRoleHistoryWithoutTransferMarkersUsesConservativeEventBounds(t *testing
 		selected.AgentID = "agent-review-extra"
 		reviewer.RoleSelection = &selected
 		reviewer.RoleHistory = append(reviewer.RoleHistory, selected)
+		ensureCanonicalTestAgentSession(&state, reviewer.OwnerSession, selected.AgentID, state.Tasks[id].UpdatedAt)
 		state.Runs[reviewer.RunID] = reviewer
 		appendTaskDomainEvent(&state, id, reviewer.RunID, "ROLE_HISTORY_UPDATED") // N=6.
 		reviewer.Status = fsm.Failed
@@ -296,6 +306,7 @@ func TestRoleHistoryWithoutTransferMarkersUsesConservativeEventBounds(t *testing
 		executor := state.Runs["executor-rework-history"]
 		executor.RoleSelection.AgentID = "agent-review-extra"
 		executor.RoleHistory[0].AgentID = "agent-review-extra"
+		bindCanonicalTestRun(&state, &executor, "agent-review-extra", state.Tasks[id].UpdatedAt)
 		state.Runs[executor.RunID] = executor                         // N=7.
 		appendTaskDomainEvent(&state, id, reviewer.RunID, "RUN_NOTE") // N=8, latest possible Reviewer anchor.
 		err := ValidateCanonicalState(state)
@@ -331,6 +342,7 @@ func canonicalRoleTransfer(t *testing.T, previous CanonicalState, role roles.Rol
 	selection.Profile.Model = model
 	run.RoleSelection = &selection
 	run.RoleHistory = []roles.Selection{selection}
+	bindCanonicalTestRun(&next, &run, agentID, next.Tasks[run.TaskID].UpdatedAt)
 	next.Runs[runID] = run
 	return next
 }
@@ -357,6 +369,8 @@ func canonicalIndependenceBase(stage task.Stage) CanonicalState {
 	state.Runs["executor-current"] = canonicalExecutorRun(id, "executor-current", 2, 3, "executor-current-session", now, fsm.Done, []roles.Selection{
 		{AgentID: "agent-current", Session: "executor-current-session", Profile: roles.Profile{Role: roles.Executor, Model: "executor-model"}},
 	})
+	ensureCanonicalTestAgentSession(&state, "executor-old-session", "agent-old-current", now)
+	ensureCanonicalTestAgentSession(&state, "executor-current-session", "agent-current", now)
 	return state
 }
 
@@ -385,6 +399,7 @@ func TestReviewerOrAuditorMayOnlyUseAnAgentThatBecameExecutorLaterThanItsPastAss
 			rework := state.Runs["executor-rework"]
 			rework.RoleSelection.AgentID = "agent-r"
 			rework.RoleHistory[0].AgentID = "agent-r"
+			bindCanonicalTestRun(&state, &rework, "agent-r", state.Tasks[pastReviewer.TaskID].UpdatedAt)
 			state.Runs[rework.RunID] = rework
 			if err := ValidateCanonicalState(state); err != nil {
 				t.Fatalf("future Executor identity retroactively invalidated prior Reviewer assignment: %v", err)

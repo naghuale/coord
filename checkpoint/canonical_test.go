@@ -2,11 +2,14 @@ package checkpoint
 
 import (
 	"bytes"
+	"coord/agentsession"
 	"coord/envelope"
 	"coord/fsm"
+	"coord/roles"
 	"coord/store"
 	"coord/task"
 	"coord/taskid"
+	"crypto/ed25519"
 	"encoding/json"
 	"errors"
 	"os"
@@ -18,6 +21,18 @@ import (
 type countingCanonicalFile struct {
 	CanonicalFile
 	saves int
+}
+
+func addCanonicalTestSession(state *store.CanonicalState, address, agentID string, at time.Time) {
+	key := ed25519.PublicKey(make([]byte, ed25519.PublicKeySize))
+	for i := range key {
+		key[i] = byte(i + 1)
+	}
+	state.AgentSessions[address] = agentsession.Session{Address: address, AgentID: agentID, Generation: 1,
+		PublicKey: key, RegisteredAt: at, UpdatedAt: at}
+	state.AgentSessionEvents = append(state.AgentSessionEvents, agentsession.Event{ID: agentsession.EventID(address, 1),
+		Address: address, AgentID: agentID, Sequence: 1, Type: agentsession.Registered, Generation: 1,
+		PublicKey: key, CreatedAt: at})
 }
 
 func (f *countingCanonicalFile) Save(state store.CanonicalState) error {
@@ -170,8 +185,11 @@ func TestCanonicalTransitionCommitsStateEventOutboxAtomically(t *testing.T) {
 	state.Tasks[id] = task.Task{ID: id, Title: "task", OwnerID: "owner", Revision: 2, LastEventSeq: 2, Fence: 1,
 		StagePlan:    task.StagePlan{Stages: []task.Stage{task.Execution}, PolicyVersion: task.StagePlanPolicyVersion},
 		CurrentStage: &stage, Status: task.InProgress, CreatedAt: now, UpdatedAt: now.Add(time.Second)}
+	selection := roles.Selection{AgentID: "agent-executor", Session: "executor", Profile: roles.Profile{Role: roles.Executor}}
 	state.Runs["run-1"] = fsm.Run{Task: "legacy label", TaskID: id, RunID: "run-1", Attempt: 1, Fence: 1,
-		OwnerSession: "executor", Worktree: "worktree", Deadline: now.Add(time.Hour), Status: fsm.Started}
+		OwnerSession: "executor", AgentSessionGeneration: 1, Worktree: "worktree", Deadline: now.Add(time.Hour), Status: fsm.Started,
+		RequiredRole: roles.Requirement{Role: roles.Executor}, RoleSelection: &selection, RoleHistory: []roles.Selection{selection}}
+	addCanonicalTestSession(&state, "executor", "agent-executor", now)
 	state.Events = []task.DomainEvent{
 		{ID: task.EventID(id, 1), TaskID: id, EventSeq: 1, TaskRevision: 1, TaskFence: 0, Type: task.TaskCreated, ActorID: "owner", CreatedAt: now},
 		{ID: task.EventID(id, 2), TaskID: id, RunID: "run-1", EventSeq: 2, TaskRevision: 2, TaskFence: 1, Type: task.TaskOwnershipTransferred, CreatedAt: now.Add(time.Second)},
@@ -246,7 +264,10 @@ func TestCanonicalFileRoundTripsTaskEventAndExplicitRunRelation(t *testing.T) {
 		StagePlan:    task.StagePlan{Stages: []task.Stage{task.Execution}, PolicyVersion: task.StagePlanPolicyVersion},
 		CurrentStage: &stage, Status: task.InProgress, CreatedAt: now, UpdatedAt: now.Add(time.Second),
 	}
-	state.Runs["run-1"] = fsm.Run{Task: "legacy label", TaskID: id, RunID: "run-1", Attempt: 1, Fence: 1, OwnerSession: "executor", Worktree: "worktree", Deadline: now.Add(time.Hour), Status: fsm.Started}
+	selection := roles.Selection{AgentID: "agent-executor", Session: "executor", Profile: roles.Profile{Role: roles.Executor}}
+	state.Runs["run-1"] = fsm.Run{Task: "legacy label", TaskID: id, RunID: "run-1", Attempt: 1, Fence: 1, OwnerSession: "executor", AgentSessionGeneration: 1, Worktree: "worktree", Deadline: now.Add(time.Hour), Status: fsm.Started,
+		RequiredRole: roles.Requirement{Role: roles.Executor}, RoleSelection: &selection, RoleHistory: []roles.Selection{selection}}
+	addCanonicalTestSession(&state, "executor", "agent-executor", now)
 	state.Events = append(state.Events,
 		task.DomainEvent{ID: task.EventID(id, 1), TaskID: id, EventSeq: 1, TaskRevision: 1, TaskFence: 0, Type: task.TaskCreated, ActorID: "owner", CreatedAt: now},
 		task.DomainEvent{ID: task.EventID(id, 2), TaskID: id, RunID: "run-1", EventSeq: 2, TaskRevision: 2, TaskFence: 1, Type: task.TaskOwnershipTransferred, CreatedAt: now.Add(time.Second)},
@@ -258,7 +279,8 @@ func TestCanonicalFileRoundTripsTaskEventAndExplicitRunRelation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Tasks[id].ID != id || loaded.Runs["run-1"].TaskID != id || loaded.Runs["run-1"].Task != "legacy label" || len(loaded.Events) != 2 {
+	if loaded.Tasks[id].ID != id || loaded.Runs["run-1"].TaskID != id || loaded.Runs["run-1"].Task != "legacy label" ||
+		loaded.Runs["run-1"].AgentSessionGeneration != 1 || len(loaded.Events) != 2 {
 		t.Fatalf("canonical state round trip changed identities: %+v", loaded)
 	}
 }
@@ -371,7 +393,10 @@ func TestCanonicalFileRejectsTransferredV1WithoutFenceAndPreservesSource(t *test
 	state.Tasks[id] = task.Task{ID: id, Title: "task", OwnerID: "owner", Revision: 2, LastEventSeq: 2, Fence: 1,
 		StagePlan:    task.StagePlan{Stages: []task.Stage{task.Execution}, PolicyVersion: task.StagePlanPolicyVersion},
 		CurrentStage: &stage, Status: task.InProgress, CreatedAt: now, UpdatedAt: now.Add(time.Second)}
-	state.Runs["run-1"] = fsm.Run{TaskID: id, RunID: "run-1", Attempt: 1, Fence: 1, OwnerSession: "agent", Worktree: "worktree", Deadline: now.Add(time.Hour), Status: fsm.Started}
+	selection := roles.Selection{AgentID: "agent-id", Session: "agent", Profile: roles.Profile{Role: roles.Executor}}
+	state.Runs["run-1"] = fsm.Run{TaskID: id, RunID: "run-1", Attempt: 1, Fence: 1, OwnerSession: "agent", AgentSessionGeneration: 1, Worktree: "worktree", Deadline: now.Add(time.Hour), Status: fsm.Started,
+		RequiredRole: roles.Requirement{Role: roles.Executor}, RoleSelection: &selection, RoleHistory: []roles.Selection{selection}}
+	addCanonicalTestSession(&state, "agent", "agent-id", now)
 	state.Events = []task.DomainEvent{
 		{ID: task.EventID(id, 1), TaskID: id, EventSeq: 1, TaskRevision: 1, TaskFence: 0, Type: task.TaskCreated, CreatedAt: now},
 		{ID: task.EventID(id, 2), TaskID: id, RunID: "run-1", EventSeq: 2, TaskRevision: 2, TaskFence: 1, Type: task.TaskOwnershipTransferred, CreatedAt: now.Add(time.Second)},

@@ -159,7 +159,7 @@ func TestCanonicalStartupAcceptsFenceSnapshotsAcrossTransferAndRecovery(t *testi
 	state.Tasks[id] = value
 	run := state.Runs["run-1"]
 	run.Fence = 2
-	run.OwnerSession = "executor-recovered"
+	bindCanonicalTestRun(&state, &run, run.RoleSelection.AgentID, value.UpdatedAt)
 	state.Runs[run.RunID] = run
 	state.Events = append(state.Events, task.DomainEvent{ID: task.EventID(id, value.LastEventSeq), TaskID: id, RunID: run.RunID,
 		EventSeq: value.LastEventSeq, TaskRevision: value.Revision, TaskFence: 2,
