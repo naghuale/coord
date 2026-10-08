@@ -36,6 +36,25 @@
   `TestReviewerRejectsExecutorAgentIDAcrossHistory`). Явно перечислено не
   реализованное: command path, supervisor stop proof, stage scheduler, Discussion
   Graph, Artifact metadata, read-only API.
+- (документация) ADR-0007, «Назначение»: утверждение «Coord уже отдаёт
+  производные представления: `RunViewStatus` считается на лету» разделено на три
+  части. `RunViewStatus` в коде отсутствует — идентификатора нет ни в одном Go-файле,
+  он остаётся только нормой TASK-MODEL TM-14 с аннотацией «не реализовано».
+  Фактически вычисляемыми остаются проекция сессии в legacy rooms
+  (`internal/rooms/sessions.go:265-274`, `:315-335`;
+  `TestSessionRecoveryFencesAndScopesContext`,
+  `TestAvailabilitySeparatesStaleGeneration`), причина not-ready в daemon
+  (`daemon/daemon.go:107-115`; `TestDaemonReadinessLifecycle`) и фильтрация
+  stalled-результатов в control endpoint `/runs` (`control.go:27-36`) — ни одно из
+  них не является `RunViewStatus`. Read-only API для Task отсутствует, ADR-0006 не
+  написан; при этом внешний control endpoint daemon (`control.go:20-36`, bearer
+  token, `GET /runs`) существует, но отдаёт только stalled-результаты для
+  supervisor recovery и проекцией Task не является. Legacy rooms не является
+  опорой для Brief: по ADR-0001
+  «Миграция от `internal/rooms`» (`docs/ADR-0001-CANONICAL-COORDINATION-MODEL.md:504-529`)
+  rooms объявлены legacy, их данные не становятся Task facts автоматически, а
+  перенос используемых операций должен сохранить capability scope и generation
+  checks. Статус Proposed, нормы Brief и зрелость не менялись.
 
 ## 2026-10-08 — RA-2: независимость Reviewer и Auditor
 

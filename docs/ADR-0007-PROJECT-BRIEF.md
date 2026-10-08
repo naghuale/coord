@@ -9,9 +9,39 @@
 
 ## Назначение
 
-Coord уже отдаёт производные представления: `RunViewStatus` считается на лету,
-не хранится и не участвует в recovery. Brief продолжает эту линию для более
-крупных объектов — уровня задачи и уровня проекта.
+Ранняя редакция этого документа утверждала, что «Coord уже отдаёт
+производные представления: `RunViewStatus` считается на лету». Это не соответствует
+коду, и утверждение разделено на три разные вещи.
+
+1. **`RunViewStatus` в коде нет.** Идентификатора `RunViewStatus` нет ни в одном
+   Go-файле репозитория; он существует только как норма TASK-MODEL TM-14
+   («только вычисляемое представление для человека»), у которой собственная
+   аннотация «Проверка: не реализовано». Coord не отдаёт такой проекции ни во
+   внутреннем API, ни наружу.
+2. **Что вычисляется на лету фактически.** В legacy rooms вычисляется проекция
+   сессии, а не Run: `internal/rooms/sessions.go` собирает `State`, `Attachment`,
+   `Reachability`, `Readiness`, `Processing`, `LastActivity` и
+   `ProviderAvailability` из сохранённых фактов, включая различение поколений по
+   `latestCredentialGeneration` (`:315-335`, набор полей `:265-274`); проверки —
+   `TestSessionRecoveryFencesAndScopesContext`,
+   `TestAvailabilitySeparatesStaleGeneration`. В daemon вычисляется причина
+   not-ready из transport-готовности и наличия recovery
+   (`daemon/daemon.go:107-115`, проверка `TestDaemonReadinessLifecycle`), а
+   control endpoint `/runs` фильтрует stalled-результаты по сохранённому Run без
+   вычисляемой проекции (`control.go:27-36`). Ни одно из этих наблюдений не
+   является `RunViewStatus` и не подтверждает его существование.
+3. **Отсутствие read interface для Task и будущий Task Brief.** Read-only API
+   Task не написан: ADR-0006 не существует, и ни один endpoint не отдаёт проекцию
+   Task (см. §MVP). При этом внешний control interface у daemon есть — bearer-token
+   handler (`control.go:20-36`), чей `GET /runs` возвращает только stalled-результаты
+   для supervisor recovery; это не `RunViewStatus` и не проекция Task, и наличие
+   этого endpoint'а не означает read-only Task API. Task Brief остаётся контрактом
+   целевого ADR-0007 (Proposed).
+
+Brief продолжает линию вычисляемых по запросу проекций для уровня задачи и
+проекта. В канонической модели таких проекций пока нет; проекция сессии в
+`internal/rooms` относится к legacy (ADR-0001, «Миграция от `internal/rooms`»,
+`:504-529`) и опорой для Brief не служит.
 
 Термин **snapshot** зарезервирован за storage snapshot из ADR-0005. Brief никогда
 не называется snapshot, чтобы не смешивать проекцию, читаемую по запросу, с
@@ -45,9 +75,11 @@ Task ↔ Run, `Task.Fence` и историей DomainEvent — тоже
 
 Поэтому MVP Brief остаётся контрактом, а не функцией, но по другой причине, чем
 указано в ранней редакции этого документа: данных Task и Run теперь достаточно,
-а отсутствует read interface — ADR-0006 не написан, и ни одна проекция уровня
-Brief не выдаётся ни одним существующим endpoint. Статус этого ADR остаётся
-Proposed, и зрелость Brief не повышается.
+а отсутствует read-only API для Task — ADR-0006 не написан, и ни одна проекция
+уровня Brief не выдаётся ни одним существующим endpoint. Внешний control endpoint
+daemon (`control.go:20-36`) отдаёт только stalled-результаты для supervisor
+recovery и проекцией Task не является. Статус этого ADR остаётся Proposed, и
+зрелость Brief не повышается.
 
 ## Вне MVP
 
