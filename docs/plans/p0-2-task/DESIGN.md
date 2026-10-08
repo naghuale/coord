@@ -10,7 +10,7 @@
 
 ## 1. Текущая модель → целевая модель
 
-### Текущее состояние по коду
+### Исходное состояние до P0-2 (commit 76a5c6a)
 
 - `fsm.Run` (`fsm/fsm.go:36-69`) содержит строковое `Task`, `RunID`, `Attempt`,
   собственный `Fence`, протокольный `Status`, дедупликацию `Seen` и
@@ -38,54 +38,22 @@ boundary. Для начала она включает:
 ```go
 type CanonicalState struct {
     SchemaVersion uint32
-    Tasks         map[taskid.ID]Task
-    Runs          map[string]Run
-    Events        []DomainEvent
-    Inbox         map[string]InboxReceipt
-    Outbox        map[string]OutboxRecord
+    Tasks         map[taskid.ID]task.Task
+    Runs          map[string]fsm.Run
+    Events        []task.DomainEvent
+    Inbox         map[string]store.InboxReceipt
+    Outbox        map[string]store.OutboxQueue
 }
 
-type Task struct {
-    ID          taskid.ID
-    Title       string
-    Description string
-    OwnerID     string
-    Revision    uint64
-    LastEventSeq uint64
-    StagePlan   StagePlan
-    CurrentStage *Stage
-    Status      TaskStatus
-    Fence       uint64
-    CreatedAt   time.Time
-    UpdatedAt   time.Time
-}
-
-type DomainEvent struct {
-    ID        string
-    TaskID    taskid.ID
-    RunID     string
-    EventSeq  uint64 // непрерывен и уникален внутри Task
-    Type      string
-    CreatedAt time.Time
-}
-
-type Run struct {
-    Task       string // прежнее fsm.Run.Task; имя и значение сохраняются
-    TaskID     taskid.ID
-    RunID      string
-    Role       Role
-    SessionID  string
-    Attempt    uint64
-    Fence      uint64 // снимок Task.Fence
-    Status     RunStatus
-    // остальные текущие Run-поля сохраняются по их существующей семантике
-}
 ```
 
-Это эскиз размещения полей из TASK-MODEL, а не новая схема-контракт. Имена
-`Stage`, `TaskStatus`, `RunStatus`, `Role`, `DomainEvent`, `InboxReceipt` и
-`OutboxRecord` должны быть уточнены кодом по существующим правилам; их значения
-не переопределяются этим планом.
+В 22a `Tasks`, `Events`, `Inbox` и верхнеуровневый `Outbox` были пустыми
+коллекциями. В текущем срезе `task.Task` и `task.DomainEvent` стали типизированной
+каноникой; Outbox typed и хранится на верхнем уровне canonical state, Inbox
+пока зарезервирован. `fsm.Run.TaskID` теперь
+явное необязательное поле переходного состояния: пустой TaskID означает legacy
+Run и никогда не выводится из `Run.Task`. Новые Task-scoped Runs требуют
+существующий Task и событие в том же commit.
 
 Граница размещения:
 
@@ -100,14 +68,73 @@ type Run struct {
 | Дедупликация входа | `fsm.Run.Seen` | сохраняется для legacy-протокола; `Inbox` используется новыми daemon commands; сведение — P0-3, без TTL/pruning (R54) |
 
 Полная грамматика `StagePlan` хранится и валидируется по TM-08. В P0-2
-исполняется только `EXECUTION`; остальные стадии не запускаются. План,
-содержащий этап, который runtime не умеет исполнять, отклоняется fail-closed
-(R53).
+исполняется только `EXECUTION`; остальные стадии не запускаются. Грамматика
+StagePlan остаётся полной, но `taskservice.Create` до выделения TaskID и записи
+отвергает план, содержащий этап, который runtime не умеет исполнять (R53).
+
+В срезе 22a `CanonicalState.Runs` сохранял текущий `fsm.Run` целиком, включая
+его per-Run `Outbox`; верхнеуровневый `CanonicalState.Outbox` был зарезервирован.
+В 22b единственная durable очередь перенесена в canonical state: запись по
+`RunID` хранит упорядоченные envelopes, retry time/count и optional `EventID` для
+новых доменных отправок. Run API гидратирует прежнее поле `Run.Outbox` для
+совместимости coordinator, но на диске envelope хранится ровно один раз.
+`Task`-scoped отправка обязана ссылаться на DomainEvent той же команды;
+Run-only envelopes сохраняют исходные RunID и message identity без выдумывания
+Task/Event.
+
+В начальной canonical schema v1 есть typed Inbox receipts. Ключ receipt выводится
+из стабильного `ActorID` и входного `MessageID`; receipt ссылается на Task и на
+DomainEvent принятой команды. `CanonicalStore.ApplyInboxCommand` проверяет
+дубликат до handler, проверяет ожидаемую Task Revision против текущей и
+зафиксированную Revision против обновлённой Task, а новую команду фиксирует с её
+state/Event/Outbox одним snapshot commit. Повтор возвращает прежний receipt без
+повторного вызова handler или записи. Аутентификация, capability и получение
+ожидаемой Revision из авторизованного запроса остаются обязанностью daemon
+command boundary; этот storage primitive сам по себе не объявляется
+production-ready command path.
+
+Canonical snapshot использует начальную schema v1. Неизвестная версия
+отвергается до readiness без изменения файла. Переход на будущую версию схемы
+не реализуется в этом срезе и требует отдельного решения; если такой переход
+будет принят, процедура должна выполнить backup по ADR-0005 ST-05.
 
 `Session` transport presence, Review/Audit, Discussion, Graph, External
 References и Artifacts не получают отдельного storage в этом срезе. Позднейшие
 канонические агрегаты расширяют эту же `CanonicalState` и transaction boundary;
 вторая независимая persistence для них не вводится (ADR-0001 CM-01, ADR-0005).
+
+### Проверенная граница Owner authorization
+
+Task write command нельзя считать готовым только потому, что у daemon есть
+аутентификация:
+
+- `coordd` сейчас принимает один статический `ControlToken` для control handler;
+  он не кодирует стабильный human principal, Task scope или session generation.
+- `internal/localchat` проверяет локальный `owner.key`, но это отдельный
+  localchat endpoint и отдельная доверенная граница; ключ не удостоверяет
+  `Task.OwnerID` в canonical state.
+- `internal/rooms.SessionAuth` проверяет token вместе с точными SessionID и
+  generation, но принадлежит legacy Room snapshot. Его нельзя интерпретировать
+  как capability канонической Task или переносить вместе с Room state.
+- Текущий внутренний `taskservice.Create` вызывает `CanonicalStore` напрямую и
+  принимает `OwnerID` как данные; он не аутентифицирует человека. Это пока только
+  не подключённый foundation helper для тестов, не допустимый production command
+  path и не доказательство TM-05/RT-04.
+
+До Task mutation command требуется закрыть этот порядок:
+
+1. Определить стабильный Owner principal и сессию с монотонным generation;
+   выдать capability, ограниченную конкретным TaskID и разрешённым действием.
+2. Daemon command boundary проверяет principal, capability, TaskID и generation
+   до вызова Task service; OwnerID берётся из проверенного principal, не из body.
+3. Команда сверяет expected Task Revision под общей serialized boundary, строит
+   transition и DomainEvent, затем делает один durable commit.
+4. Свободный текст не включать в каноническое событие, пока ingest quarantine /
+   redaction не определён и не проверен на history export и диагностических логах.
+
+Existing control token и legacy Room capability не являются fallback для этой
+проверки. Поэтому CAS-механизм Task Revision может быть реализован отдельно, но
+никакой Task write command не должен быть подключён до выполнения пунктов 1–4.
 
 ## 2. TaskID, связь с Run и wire compatibility
 
@@ -124,8 +151,8 @@ References и Artifacts не получают отдельного storage в э
   входящий старый envelope разрешается по существующему RunID, затем Coord
   получает TaskID из проверенной связи Run → Task; `envelope.Task` проверяется
   по прежнему правилу и не используется для поиска/создания Task. P0-2 не
-  предоставляет внешний agent write path; его перевод на daemon command boundary
-  относится к P0-3.
+  предоставляет внешний CLI или agent write path; перевод production-команд на
+  daemon command boundary относится к P0-3.
 - Операторского способа создавать Task в P0-2 нет. Создание доступно только
   внутреннему API daemon и тестам; внешний write path вводится вместе с
   ADR-0006/P0-3 (R52).
@@ -191,6 +218,13 @@ Event Log остаётся append-only аудиторской историей; 
 является источником восстановления. При рассогласовании readiness закрывается,
 ни Event, ни State автоматически не выбираются победителем (ST-01, ST-04).
 
+Transport/runtime bookkeeping в Run (доставка, retry, heartbeat и внутренние
+probe receipts) также сохраняется через ту же atomic snapshot, но не создаёт
+DomainEvent и не увеличивает Task Revision. Изменение доменного состояния Run
+(ownership, fence, FSM status, progress, blocker или accepted result) обязано в
+том же commit увеличить Task Revision и добавить событие с теми же RunID и новой
+Task Revision. `fsm.Run.SameDomainState` отделяет эти изменения от технических.
+
 ### Проверяемая стоимость snapshot
 
 Каждая команда переписывает весь canonical document. Поэтому стоимость commit
@@ -207,13 +241,22 @@ canonical document и commit latency на состоянии с `N` событи
 время commit; порог production здесь не задаётся, он остаётся частью P2
 Transactional database и production acceptance.
 
-## 4. Run-only → CanonicalState migration
+## 4. Run-only state и CanonicalState
 
 ### Текущее → целевое
 
-Текущий файл — version 1 `checkpoint.Snapshot{Runs}`. CanonicalState получает
-новую schema version в отдельном файле/namespace; старый `runs.json`
-автоматически не мигрируется и не открывается на запись (R51).
+Текущий legacy файл — version 1 `checkpoint.Snapshot{Runs}`. Новый daemon
+использует отдельный `canonical.json`; старый `runs.json` автоматически не
+импортируется и не открывается на запись (R51). Canonical snapshot начинает с
+schema v1; переходы между версиями схемы в этом срезе не реализуются. Будущий
+переход требует отдельного решения и процедуры backup по ADR-0005 ST-05.
+
+Формат определяется по envelope и schema discriminator внутри документа, а не
+по имени файла: legacy `checkpoint.Snapshot` распознаётся по `Version` и
+legacy-форме `Runs`; CanonicalState — по `SchemaVersion` и canonical-форме.
+Имя `runs.json` указывает, где проверить legacy state, но само по себе не
+определяет формат. Неизвестный или неоднозначный envelope считается ошибкой
+схемы и блокирует readiness; ни один распознаватель не пробует записать файл.
 
 - Если старый snapshot содержит хотя бы один незавершённый Run, daemon остаётся
   `NOT_READY` с явной диагностикой legacy state. TaskID из `Run.Task`, внешних
@@ -233,20 +276,42 @@ Transactional database и production acceptance.
 своего namespace. Обнаружение legacy Runs влияет на readiness по правилам выше,
 но не делает старый snapshot альтернативным источником истины.
 
+Пока production Run writers не переведены на daemon boundary в P0-3,
+`coordd` удерживает compatibility lock для `runs.json` и canonical store lock
+вместе с namespace lock на всём сроке владения. Порядок захвата: namespace lock,
+`runs.json.lock`, `canonical.json.lock`; RoleRegistry открывается после этих
+locks. Compatibility lock принадлежит process composition `coordd`, а
+`Persistence.Lock()` canonical store удерживает `canonical.json.lock`. Ошибка
+любого шага освобождает уже взятые locks в обратном порядке до начала
+обслуживания запросов, кроме диагностического startup failure, описанного в §7.
+Compatibility lock — это тот же
+`runs.json.lock`, который берут текущие `localchat` и standalone Run hosts через
+`checkpoint.File.Lock`. Lock берётся
+до проверки legacy snapshot и не освобождается при успешном старте, иначе
+legacy writer мог бы запуститься параллельно уже после readiness. Если lock
+занят, `coordd` не читает legacy файл и остаётся диагностически `NOT_READY` с
+причиной `legacy writer owns namespace`; transport, Tick, outbox delivery и
+mutations не стартуют. После остановки legacy writer требуется явный restart.
+Когда все production writers переведены на daemon command path, compatibility
+lock снимается отдельным изменением, а не условной настройкой.
+
+`examples/agent`, `integration/telepathy` и demo/test hosts остаются Run-only
+путями на `runs.json` только в собственных временных state directories; их
+фикстуры не используют production namespace.
+
 ### Seen, Inbox и retry
 
 `Run.Seen` сегодня дедуплицирует входящие сообщения внутри одного Run до
 изменения FSM; `Run.Outbox` содержит отправки до подтверждённой доставки
-(`coordinator.go:280-335`, `386-461`). Ни один сохранённый message ID не может
-быть потерян при migration: старый повтор не должен повторно применить переход,
-а незавершённый Outbox должен отправляться с прежней идентичностью по текущей
-семантике.
+(`coordinator.go:280-335`, `386-461`). Ни одна сохранённая message identity не
+должна теряться: повтор не должен повторно применить переход, а незавершённый
+Outbox после restart отправляется с прежней идентичностью.
 
 P0-2 сохраняет `Run.Seen` для дедупликации legacy-протокола. `Inbox` используется
 для новых daemon commands. Их namespace и семантика остаются раздельными до
-сведения в P0-3; обе стороны сохраняются без TTL/pruning (R54). Старый Outbox
-переносится в единственный Outbox canonical state только в рамках отдельного
-одобренного импорта; в P0-2 нет автоматической миграции и второй записи Outbox.
+сведения в P0-3; обе стороны сохраняются без TTL/pruning (R54). Outbox уже
+хранится на верхнем уровне начальной canonical schema v1. Старый `runs.json` не
+преобразуется и остаётся под правилами R51.
 
 ## 5. Task-wide Fence и ownership
 
@@ -277,18 +342,24 @@ P0-2 сохраняет `Run.Seen` для дедупликации legacy-про
 он не заменяется им. Проверки должны возвращать контекстную ошибку до readiness,
 без repair и выбора «победителя» неявно.
 
-| Проверка | Основание | Будущий тест |
+Таблица ниже вводится в 22b вместе с Task aggregate. В 22a отдельный Task
+validator ещё не применяется: canonical document обязан содержать только
+валидируемые текущими правилами Runs, а `Tasks`, `Events` и верхнеуровневый
+`Outbox` должны быть пусты. Это не позволяет принять Run-only snapshot за
+полностью проверенную Task-модель.
+
+| Проверка | Основание | Целевое имя теста |
 |---|---|---|
-| Каждый `Task.ID` каноничен; ключ совпадает с ID; сохранённые ID уникальны | TM-01, TM-22; TID-01, TID-06; ST-07 | `TestCanonicalStateRejectsInvalidOrDuplicateTaskID` |
-| Каждая новая Run имеет непустой TaskID на существующую Task; legacy Task остаётся отдельным полем | TM-02…TM-04 | `TestCanonicalStateRejectsRunWithoutMappedTask`; `TestMigrationPreservesLegacyRunTask` |
-| Каждая Run принадлежит ровно одной Task; связь не выводится из Task string | TM-02, TM-03 | `TestCanonicalStateRejectsConflictingRunTaskMapping` |
-| Каждый Task Event имеет непрерывный `EventSeq`, начиная с 1; `Task.LastEventSeq` равен sequence последнего события | TM-26 (R56) | `TestCanonicalStateRejectsEventSeqGap` |
-| Task fields, Revision, StagePlan, Status и CurrentStage удовлетворяют принятым правилам | TM-05…TM-12 | `TestCanonicalStateRejectsInvalidTaskAggregate` |
-| Run Status допустим; Attempt и RunID корректны; SUPERSEDED — только после принятого перехода | TM-16…TM-22 | `TestCanonicalStateRejectsInvalidRunAggregate` |
-| Run fence snapshot не выше Task.Fence; текущий writer соответствует Task ownership; Fence не уменьшается при команде | RT-06, ST-06, TM-18, TM-20 | `TestTaskFenceIsAuthoritativeAndMonotonic` |
-| На Task не больше одного active writer; нарушение блокирует startup и мутации | RT-03 шаг 5, RT-06, ST-04, TM-18, TM-20 | `TestCanonicalStateRejectsMultipleActiveWritersPerTask` |
-| Каждая Task имеет Domain Event создания; у каждого Event есть TaskID существующей Task и, если задан RunID, этот Run принадлежит той же Task; для каждой Task Revision последнего события мутации совпадает с `Task.Revision`; Fence события последней передачи ownership совпадает с `Task.Fence`; Outbox record ссылается на Event той же атомарной команды | CM-01; TM-06; ST-01, ST-04 | `TestCanonicalStateRejectsDanglingOrInconsistentEvent`; `TestCanonicalStateChecksLatestTaskRevisionAndFenceEvents` |
-| Outbox и Inbox receipts имеют допустимые ссылки/идентичность; transition, Event, Outbox и обязательный Inbox receipt согласованы | CM-01; ST-01, RT-04 | `TestCanonicalStateRejectsDanglingInboxOrOutbox`; `TestCanonicalTransitionCommitsStateEventOutboxAtomically` |
+| Каждый `Task.ID` каноничен; ключ совпадает с ID; сохранённые ID уникальны | TM-01, TM-22; TID-01, TID-06; ST-07 | `TestCanonicalStateRejectsInvalidOrDuplicateTaskID` (целевой) |
+| Каждая новая Run имеет непустой TaskID на существующую Task; legacy Task остаётся отдельным полем | TM-02…TM-04 | `TestCanonicalStateRejectsRunWithoutMappedTask` (целевой); `TestCanonicalStateValidatesTaskEventAndRunRelations` |
+| Каждая Run принадлежит ровно одной Task; связь не выводится из Task string | TM-02, TM-03 | `TestCanonicalStateRejectsConflictingRunTaskMapping` (целевой) |
+| Каждый Task Event имеет непрерывный `EventSeq`, начиная с 1; `Task.LastEventSeq` равен sequence последнего события | TM-26 (R56) | `TestCanonicalStateRejectsEventSeqGap` (целевой); `TestCanonicalStateRejectsEventSequenceGapAfterFirstEvent`; `TestCanonicalStateRequiresLastEventSequenceToMatchHistoryLength` |
+| Task fields, Revision, StagePlan, Status и CurrentStage удовлетворяют структурным правилам; `OwnerID` здесь проверяется только как непустая ссылка, не как доказанная human identity или capability | TM-06…TM-12 | `TestCanonicalStateRejectsInvalidTaskAggregate` (целевой); Owner authorization проверяется отдельной command-boundary моделью до P0-3 |
+| Run Status допустим; Attempt и RunID корректны; SUPERSEDED — только после принятого перехода | TM-16…TM-22 | `TestCanonicalStateRejectsInvalidRunAggregate` (целевой) |
+| Run fence snapshot не выше Task.Fence; текущий writer соответствует Task ownership; Fence не уменьшается при команде | RT-06, ST-06, TM-18, TM-20 | `TestTaskFenceIsAuthoritativeAndMonotonic` (целевой); `TestCanonicalStateRejectsTerminalRunFenceAboveTaskFence` |
+| На Task не больше одного active writer; нарушение блокирует startup и мутации | RT-03 шаг 5, RT-06, ST-04, TM-18, TM-20 | `TestCanonicalStateRejectsMultipleActiveWritersPerTask` (целевой); `TestCanonicalStateRejectsMultipleActiveRunsPerTask` |
+| Каждая Task имеет Domain Event создания; у каждого Event есть TaskID существующей Task и, если задан RunID, этот Run принадлежит той же Task; Event revisions непрерывны и завершаются `Task.Revision`; Event ownership transfer фиксирует Fence; Outbox record ссылается на Event той же атомарной команды | CM-01; TM-06; ST-01, ST-04 | `TestCanonicalStateRejectsDanglingOrInconsistentEvent` (целевой); `TestCanonicalStateRejectsTaskRevisionGapInEventHistory`; `TestCanonicalStateRejectsTaskRevisionAheadOfEventHistory`; проверка Event Fence пока не реализована |
+| Outbox и Inbox receipts имеют допустимые ссылки/идентичность; transition, Event, Outbox и обязательный Inbox receipt согласованы; stale expected Revision отклоняется до handler | CM-01; ST-01, RT-04 | `TestCanonicalStateRejectsInvalidInboxOutboxAndSchema`; `TestCanonicalTaskOutboxRequiresEventFromSameCommit`; `TestApplyInboxCommandCommitsReceiptWithTaskEventAndDeduplicates`; `TestApplyInboxCommandRejectsStaleExpectedRevision` |
 
 Проверки change-time, которым нужно сравнить прежнее и новое состояние
 (Revision/Fence/Run ownership), выполняются внутри command transaction; простой
@@ -298,16 +369,19 @@ read-only startup validator не может доказать, что значе�
 ## 7. Readiness P0-2
 
 P0-1 готовит текущий Run runtime и namespace ownership. P0-2 добавляет до
-readiness:
+readiness поэтапно.
 
-1. Чтение ожидаемой schema version и отказ на неизвестной версии без side effect
+1. **22a:** чтение ожидаемой schema version и отказ на неизвестной версии без state side effect
    (ST-04).
-2. Обнаружение legacy `runs.json`: незавершённый Run удерживает daemon в
+2. **22a:** обнаружение legacy `runs.json`: незавершённый Run удерживает daemon в
    `NOT_READY` с диагностикой; только завершённые Runs не открываются на запись
    и не считаются каноническими. При одних только завершённых legacy Runs daemon
    может стать ready на новом canonical namespace, если пройдены остальные
    readiness checks (R51).
-3. Полную structural/reference/FSM validation `CanonicalState`, включая
+3. **22a:** проверка текущих Run-инвариантов и того, что `Tasks`, `Events` и
+   верхнеуровневый `Outbox` пусты. Такая readiness означает только готовность
+   текущего Run runtime и не заявляет полную RT-03 readiness.
+4. **22b:** полная structural/reference/FSM validation `CanonicalState`, включая
    TaskID↔Run.TaskID mapping, Event/Outbox/Inbox, Revision и StagePlan (RT-03
    шаг 2; ST-04). Согласованность истории проверяется по явным ссылкам Event →
    Task/Run, последнему событию мутации каждой Task с её Revision, событию
@@ -315,13 +389,29 @@ readiness:
    Event той же команды. R56 задаёт непрерывный Task-scoped `EventSeq` и
    `Task.LastEventSeq`; readiness остаётся закрытой, если проверка этих
    соответствий не проходит.
-4. Проверку Task.Fence и всех Run fence snapshots; отсутствие конкурирующих
+5. **22b:** проверка Task.Fence и всех Run fence snapshots; отсутствие конкурирующих
    active writers на Task. Нарушение держит daemon not-ready (RT-03 шаг 5,
    RT-06, ST-04).
-5. Восстановление индексов/проекций в памяти из единственного canonical
+6. Восстановление индексов/проекций в памяти из единственного canonical
    snapshot; это не создаёт персистентную копию.
-6. Reopen после неопределённой ошибки commit, повторную полную validation и
+7. Reopen после неопределённой ошибки commit, повторную применимую validation и
    закрытие mutations до успешного завершения (RT-03, ST-03).
+
+Если загрузка canonical state обнаружила неизвестную schema version,
+compatibility lock занят legacy writer либо проверка legacy `runs.json`
+обнаружила незавершённый Run, `coordd` не завершается и не пытается восстановить
+или переписать состояние. P0-2 добавляет
+diagnostic-only runtime без `Coordinator`: он связывает настроенные loopback
+listeners, `/readyz` возвращает `503` с причиной, та же причина попадает в
+stderr, metrics listener отдаёт только startup diagnostics. Namespace lock
+остаётся удержанным; если compatibility lock был получен, он также удерживается.
+Обычные и recovery mutations, `Tick`, запуск Telepathy transport, receive и
+outbox delivery не запускаются. Control endpoints недоступны; доступны только
+`/readyz` и диагностические metrics. Если legacy lock уже занят другим writer,
+daemon не читает legacy file и остаётся not-ready с причиной `legacy writer owns
+namespace`. После исправления причины требуется явный restart и полная повторная
+загрузка/проверка. Этот заблокированный startup не публикует успешную readiness
+и не создаёт нового writer.
 
 P0-2 не называет runtime готовым к безопасному запуску нового агента, если для
 него ещё нет committed stop proof прежнего writer или не выполнен иной
@@ -335,8 +425,8 @@ P0-2 не называет runtime готовым к безопасному за
 - Discussion Graph и Project Dependency Graph — ADR-0001 CM-11 и ADR-0002.
 - External References и синхронизация с provider — ADR-0003.
 - Read API, Dashboard, Startup Card и публичный API contract — ADR-0006.
-- Перенос агентского Telepathy write path на новую командную границу, новый wire
-  `TaskID` и проверка Worktree/Artifact refs — P0-3.
+- Перенос production CLI и Telepathy write paths на новую командную границу,
+  новый wire `TaskID` и проверка Worktree/Artifact refs — P0-3.
 - Production executor/worktree lifecycle, task-specific stop proof integration
   и OS isolation — P0-4/P0-5.
 
@@ -346,35 +436,117 @@ P0-2 обязан оставить совместимость с текущим 
 
 ## 9. Проверяемые критерии P0-2
 
-Реализация принимается только после тестов на текущей canonical persistence
-boundary. Имена ниже — целевые; они ещё не являются существующими доказательствами.
+### Срез 22a: storage boundary
+
+- CanonicalState загружается и сохраняется через одну persistence boundary;
+  Save atomic, Run API сохраняет прежнюю семантику, а память публикуется только
+  после успешного durable Save (`TestCanonicalCommitFailureDoesNotPublishOrContinue`).
+- Ошибка Save закрывает дальнейшие изменения до reopen; legacy Run file никогда
+  не открывается для записи.
+- Legacy snapshot с активным Run оставляет процесс в диагностическом not-ready;
+  терминальный legacy snapshot не становится каноническим и остаётся побайтно
+  неизменным (`TestCoorddActiveLegacyRunKeepsNotReadyWithoutStartingTransport`,
+  `TestCoorddTerminalLegacyRunIsNotImported`).
+- Если legacy `runs.json.lock` занят старым writer, daemon остаётся диагностически
+  not-ready, не читает legacy snapshot и не начинает side effects; если daemon
+  захватил compatibility lock первым, legacy writer не может открыть Store до
+  освобождения daemon namespace (`TestCoorddLegacyWriterLockKeepsDaemonNotReady`,
+  `TestCoorddSecondProcessCannotOpenOwnedNamespace`).
+- Неизвестная схема, активный legacy Run и занятый compatibility lock удерживают
+  процесс в diagnostic-only runtime: `/readyz`=503 с причиной, доступна только
+  диагностика, процесс живёт до SIGTERM и удерживает уже взятые ownership locks.
+- Неизвестная schema version оставляет процесс в диагностическом not-ready без
+  state mutation, Tick, transport receive или outbox delivery
+  (`TestCoorddUnknownCanonicalSchemaKeepsNotReady`).
+- P0-1 process acceptance и текущие Run retry/recovery тесты проходят с теми же
+  смысловыми assertions; фикстуры создают состояние через persistence boundary.
+
+### Срез 22b: Task aggregate foundation (в работе)
+
+- Типизированные `task.Task`, `StagePlan`, `TaskStatus` и `DomainEvent` валидируют
+  TaskID, Stage/Status, версию policy, терминальность, EventSeq и связи.
+- Внутренняя `taskservice` создаёт Task с `task_<ULID>` и `TASK_CREATED`; Task и
+  событие сохраняются одним `CanonicalStore.UpdateCanonical`. Коллизия ID
+  повторяет генерацию под той же serialized commit boundary
+  (`TestCreateTaskGeneratesCanonicalTaskID`,
+  `TestTaskIDCollisionRetriesBeforeCommit`). Операторский/public write path не
+  добавлен (R52).
+- `fsm.Run.TaskID` отделён от неизменённого `fsm.Run.Task`; canonical validation
+  отвергает висячую связь, несколько active Runs на Task, Fence выше Task.Fence и
+  несогласованную историю и некорректные persisted Run FSM комбинации
+  (`TestCanonicalStateValidatesTaskEventAndRunRelations`,
+  `TestCanonicalStateRejectsMultipleActiveRunsPerTask`,
+  `TestRunValidateRejectsPersistedFSMInvariantViolations`).
+- `CanonicalStore.UpdateCanonical` проверяет Revision/Fence monotonicity,
+  append-only Events и обязательное same-commit событие на новой Task Revision
+  для доменных Run mutations до единственного snapshot Save. Transport-only Run
+  bookkeeping сохраняется без DomainEvent; отказ Save не публикует память
+  (`TestCanonicalTransitionRequiresTaskRevisionAndEventForRunDomainChange`,
+  `TestCanonicalTransitionAllowsTransportOnlyRunUpdateWithoutDomainEvent`,
+  `TestCanonicalTransitionRejectsTaskMutationWithoutEvent`,
+  `TestCanonicalStoreRejectsTaskMutationWithoutEvent`). Task event history
+  проверяет ревизию последнего события, непрерывность EventSeq и соответствие
+  `LastEventSeq` длине истории (`TestCanonicalStateRejectsTaskRevisionAheadOfEventHistory`,
+  `TestCanonicalStateRejectsEventSequenceGapAfterFirstEvent`,
+  `TestCanonicalStateRequiresLastEventSequenceToMatchHistoryLength`).
+- Canonical schema v1 содержит typed Inbox receipts и дедуплицирующую
+  `ApplyInboxCommand`, которая коммитит receipt с Task/Run, DomainEvent и Outbox;
+  неизвестная версия отвергается без изменения snapshot
+  (`TestCanonicalFileRejectsUnknownSchemaWithoutModifyingFile`,
+  `TestCanonicalRunStorePersistsSingleTopLevelOutbox`,
+  `TestCanonicalTaskOutboxRequiresEventFromSameCommit`,
+  `TestApplyInboxCommandCommitsReceiptWithTaskEventAndDeduplicates`,
+  `TestApplyInboxCommandRejectsStaleExpectedRevision`,
+  `TestApplyInboxCommandRequiresSameCommitEventAndPreservesStateOnFailure`).
+- Event пока не содержит структурированный снимок `Task.Fence`, поэтому startup
+  не может проверить соответствие последнего ownership transfer event текущему
+  Fence. Нельзя восстановить это значение из `Summary` или текущего Run без
+  догадки. Расширение Event schema и переход на неё требуют отдельного решения;
+  применяется процедура backup по ADR-0005 ST-05.
+- Storage transition пока принимает смену OwnerSession без повышения
+  `Task.Fence` (подтверждено probe 2026-10-08). В production этот путь пока
+  недостижим: Task-scoped Runs не создаются; инвариант закрывается отдельным
+  срезом Task-wide Fence до завершения P0-2.
+- Осталось до завершения 22b: полная structural/reference validation за
+  пределами текущих проверок и startup rejection для всех нарушений. По решению
+  OWNER R69 Owner authorization boundary и production commands не входят в P0-2;
+  принятая Owner и Agent command-boundary модели являются обязательными
+  зависимостями P0-3 (см. ROADMAP и `COMMAND-BOUNDARY.md`).
+
+### Полный P0-2: Task aggregate и транзакции
+
+Реализация принимается только после тестов на полной canonical persistence
+boundary.
 
 - TaskID создаётся как канонический `task_<ULID>`; коллизия при сохранении
   порождает повтор генерации; идентичность не зависит от external ref
   (`TestCreateTaskGeneratesCanonicalTaskID`,
   `TestTaskIDCollisionRetriesBeforeCommit`).
 - `Run.TaskID` является явной связью, а legacy `Run.Task` сохраняется без
-  переинтерпретации (`TestRunTaskIDIsExplicit`; `TestMigrationPreservesLegacyRunTask`).
+  переинтерпретации (`TestCanonicalStateValidatesTaskEventAndRunRelations`).
 - Task, Run, DomainEvent, Outbox и обязательный Inbox receipt либо все commit,
   либо ни один; после ошибки памяти не публикуется и новые writes закрыты до
-  reopen (`TestCanonicalTransitionCommitsStateEventOutboxAtomically`,
+  reopen (`TestCanonicalTransitionCommitsStateEventOutboxAtomically` (целевой),
   `TestCanonicalCommitFailureDoesNotPublishOrContinue`).
 - Task.Fence authoritative, монотонен, сравнивается до дедупликации/ownership
   side effects; recovery/rework не оставляют двух writers
-  (`TestTaskFenceIsAuthoritativeAndMonotonic`,
-  `TestRecoveryAcrossRunsRejectsOldTaskFence`,
-  `TestAssignTickRecoveryFailClosedWithMultipleWriters`).
+  (`TestTaskFenceIsAuthoritativeAndMonotonic` (целевой),
+  `TestRecoveryAcrossRunsRejectsOldTaskFence` (целевой),
+  `TestAssignTickRecoveryFailClosedWithMultipleWriters` (целевой)).
 - Legacy state с незавершённым Run удерживает daemon not-ready, а только
   терминальные legacy Runs не открываются на запись и не считаются canonical
-  (`TestCoorddLegacyRunsWithActiveRunKeepsNotReady`,
-  `TestCoorddLegacyTerminalRunsAreNotCanonical`).
+  (`TestCoorddActiveLegacyRunKeepsNotReadyWithoutStartingTransport`,
+  `TestCoorddTerminalLegacyRunIsNotImported`).
+- Неизвестная schema version удерживает процесс в диагностическом not-ready
+  режиме без state mutation, Tick, transport receive или outbox delivery
+  (`TestCoorddUnknownCanonicalSchemaKeepsNotReady`).
 - Повреждённая/неподдерживаемая CanonicalState, висячая ссылка либо нарушение
   Fence/Writer/Event/Inbox/Outbox consistency блокирует `/readyz` и mutation
-  (`TestCoorddReadinessRejectsInvalidCanonicalState`).
+  (`TestCoorddReadinessRejectsInvalidCanonicalState` (целевой)).
 - После restart сохраняются TaskID, Task/Run relation, Fence, Event Log,
   dedup receipts и незавершённый Outbox; доставленный transport ACK не
   подменяет Domain acceptance
-  (`TestCoorddRestartRestoresCanonicalTaskStateAndOutbox`).
+  (`TestCoorddRestartRestoresCanonicalTaskStateAndOutbox` (целевой)).
 - Все ранее принятые P0-1 process acceptance и существующие Run retry/recovery
   tests остаются зелёными; тесты текущего per-Run Fence продолжают защищать
   wire-совместимость до P0-3.
@@ -396,8 +568,10 @@ boundary. Имена ниже — целевые; они ещё не являю�
   тестами; внешний путь появляется вместе с ADR-0006/P0-3.
 - **R53 — полная грамматика, ограниченное исполнение.** StagePlan хранится и
   валидируется по TM-08; P0-2 запускает только `EXECUTION`. Остальные стадии не
-  запускаются; план с этапом, который runtime не умеет исполнять, отклоняется
-  fail-closed.
+  запускаются; `taskservice.Create` с конкретной причиной отклоняет план,
+  содержащий этап, который runtime не умеет исполнять, до выделения TaskID и
+  любого durable write. Проверки: `TestTaskCreateRejectsUnsupportedStageWithoutCommit`,
+  `TestTaskCreateRejectsRequiredOwnerDecisionWithoutCommit`.
 - **R54 — два dedup namespace до P0-3.** `Run.Seen` сохраняется для
   legacy-протокола; Inbox обслуживает новые команды. Сведение выполняется в
   P0-3. TTL и pruning не вводятся.

@@ -24,14 +24,27 @@ flowchart LR
 
 ## Идентичность
 
-`task` обозначает логическую задачу; `run` — её запуск; `attempt` — назначенную
-попытку выполнения; `target_sha` — базовый commit worktree. Повторная доставка
-не изменяет эти поля. `owner_session` обозначает текущую сессию, `fence` — поколение
-владения. Recovery сохраняет attempt, увеличивает fence и меняет owner.
+В текущем wire/storage протоколе `Run.Task` и `Envelope.Task` — legacy task
+label для корреляции исполнения; его исторические значения не гарантируют
+идентичность будущей канонической Task и не преобразуются автоматически в
+`TaskID` (см. [TASK-MODEL.md](TASK-MODEL.md) TM-03). `run` обозначает исполнение,
+`attempt` — номер запуска, `target_sha` — базовый commit worktree. Повторная
+доставка не изменяет эти поля. `owner_session` обозначает текущую сессию,
+`fence` — поколение владения. Recovery сохраняет attempt, увеличивает fence и
+меняет owner.
 
 `agent_id` — доверенная стабильная identity, привязанная оператором к сессии.
 Одно agent_id может иметь несколько session addresses. Проверка независимости
 AUDITOR использует agent_id и историю владельцев, а не название модели или адрес.
+
+`coordd` хранит Run runtime в versioned `canonical.json`; перед ним удерживаются
+namespace lock и временный compatibility lock `runs.json.lock`. Legacy snapshot
+не импортируется: активный Run или неизвестная schema оставляет daemon в
+diagnostic-only `NOT_READY`. В P0-2 появились typed `task.Task`, `DomainEvent` и
+внутренний atomic Task creation path. Операторские команды, production Task
+assignment, полная Task FSM и верхнеуровневые Inbox/Outbox ещё не подключены.
+`fsm.Run.TaskID` является отдельной связью и может быть пустым только у
+переходного legacy Run; `Run.Task` не переинтерпретируется.
 
 ## Рабочий цикл
 

@@ -1,5 +1,113 @@
 # История изменений
 
+## 2026-10-08 — P0-2: fail-closed для неисполняемого StagePlan
+
+- Сохранили полную грамматику StagePlan, но `taskservice.Create` теперь до
+  генерации TaskID отвергает этапы, которые текущий runtime ещё не исполняет;
+  отказ не меняет Task, Revision или DomainEvent; обязательное Owner decision
+  также отклоняется (`TestTaskCreateRejectsUnsupportedStageWithoutCommit`,
+  `TestTaskCreateRejectsRequiredOwnerDecisionWithoutCommit`).
+
+## 2026-10-08 — P0-2: ревизии событий одной транзакции
+
+- Переход Task теперь требует, чтобы все новые Domain Events этой транзакции
+  ссылались на новую Revision, а не только последнее событие
+  (`TestCanonicalTransitionRejectsSameCommitEventAtPreviousRevision`).
+- Ссылка на решение OWNER R61 перенесена в критерий compatibility lock ADR-0005.
+  P0-1 writer-path inventory дополнен auxiliary localchat state и legacy Rooms
+  history export. (документация)
+
+## 2026-10-08 — P0-2, срез 22b: canonical schema v1 и Inbox receipts
+
+- Переход отвергает изменение Task без увеличения Revision даже при добавлении
+  корректного события с прежней Revision; регрессия проверена мутацией
+  (`TestCanonicalTransitionRejectsTaskMutationWithoutRevisionIncrement`).
+- Canonical validation отвергает Outbox-сообщение, связанное с DomainEvent
+  другого Run (`TestCanonicalStateRejectsOutboxReferenceToDifferentRunEvent`).
+- Начальная canonical schema v1 сохраняет typed Inbox receipts с ключом из стабильного
+  actor ID и message ID, ссылкой на Task и DomainEvent. `ApplyInboxCommand`
+  фиксирует receipt с изменением состояния, событием и Outbox; повтор возвращает
+  сохранённый receipt и не вызывает handler повторно
+  (`TestApplyInboxCommandCommitsReceiptWithTaskEventAndDeduplicates`,
+  `TestApplyInboxCommandRequiresSameCommitEventAndPreservesStateOnFailure`,
+  `TestCanonicalStateRejectsDanglingInboxEventReference`).
+- Неизвестная версия canonical snapshot отвергается без изменения исходного
+  файла (`TestCanonicalFileRejectsUnknownSchemaWithoutModifyingFile`). Будущий
+  переход схемы требует отдельного решения и backup-процедуры по ST-05.
+
+## 2026-10-08 — P0-2, срез 22b: durable Outbox
+
+- Единственная durable Outbox очередь теперь
+  находится в верхнем уровне canonical state; Run API гидратирует прежние поля
+  для coordinator, не сохраняя вторую дисковую копию. Envelope order, message ID,
+  retry timestamp и retry count сохраняются
+  (`TestCanonicalRunStorePersistsSingleTopLevelOutbox`).
+- Старый `runs.json` не импортируется.
+- Task-scoped Outbox record ссылается на DomainEvent той же durable transaction;
+  Run-only legacy envelopes сохраняют идентичность без выдумывания Task/Event
+  (`TestCanonicalTaskOutboxRequiresEventFromSameCommit`,
+  `TestCanonicalOutboxExistingMessageIdentityAndOrderAreImmutable`).
+
+## 2026-10-08 — P0-2, срез 22b: Task aggregate foundation
+
+- Добавлены typed Task, StagePlan, Task status и DomainEvent; проверяются TaskID,
+  версии, Stage/Status и последовательность EventSeq
+  (`TestTaskValidationSeparatesStageAndStatus`,
+  `TestTaskValidationRejectsInvalidPlanAndTerminalStage`,
+  `TestCanonicalStateValidatesTaskEventAndRunRelations`).
+- Внутренний taskservice создаёт `task_<ULID>` и `TASK_CREATED` одной транзакцией
+  canonical snapshot; столкновение с уже сохранённым ID повторяет генерацию
+  (`TestCreateTaskGeneratesCanonicalTaskID`,
+  `TestTaskIDCollisionRetriesBeforeCommit`). Public create API не добавлен (R52).
+- `fsm.Run.TaskID` отделён от прежнего `Run.Task`. Startup validation требует
+  существующую Task, историю события Run, Task-wide active-writer uniqueness и
+  согласованный Fence и целостную persisted Run FSM (`TestCanonicalStateRejectsMultipleActiveRunsPerTask`,
+  `TestRunValidateRejectsPersistedFSMInvariantViolations`,
+  `TestCanonicalStateRejectsInvalidRunFSMState`,
+  `TestCanonicalTransitionRequiresRevisionEventAndMonotonicFence`,
+  `TestCanonicalTransitionRequiresEventForTaskRunMutation`).
+- `CanonicalStore.UpdateCanonical` валидирует весь candidate state и transition
+  до одного durable Save; Task events append-only, Revision и Fence не убывают.
+  Технические transport updates не создают DomainEvent, а доменное изменение
+  Run требует события на новой Task Revision
+  (`TestCanonicalTransitionRequiresRevisionEventAndMonotonicFence`,
+  `TestCanonicalCommitFailureDoesNotPublishOrContinue`,
+  `TestCanonicalTransitionRequiresTaskRevisionAndEventForRunDomainChange`,
+  `TestCanonicalTransitionAllowsTransportOnlyRunUpdateWithoutDomainEvent`).
+  Полная P0-2 command transaction для Task/Run и Inbox receipts, а также
+  production Task workflow остаются в работе.
+
+## 2026-10-08 — P0-2, срез 22a: каноническая граница Run storage
+
+- `coordd` хранит текущие Runs в versioned `canonical.json` через отдельную
+  `CanonicalState` persistence boundary; commit публикует память только после
+  durable Save, а ошибка Save запрещает следующие записи до reopen. Срез
+  сохраняет текущие Run и вложенный Outbox без импорта legacy данных
+  (`TestCanonicalCommitFailureDoesNotPublishOrContinue`,
+  `TestCoorddProcessRestartRestoresAndReplaysOutboxBeforeReady`).
+- До открытия canonical store daemon удерживает compatibility lock старого
+  `runs.json`. Активный или невалидный legacy snapshot, неизвестная canonical
+  schema и занятый legacy lock оставляют процесс в живом diagnostic-only
+  `NOT_READY`; transport, Tick и replay не запускаются. Завершённые legacy Runs
+  остаются неизменными и не импортируются
+  (`TestCoorddActiveLegacyRunKeepsNotReadyWithoutStartingTransport`,
+  `TestCoorddTerminalLegacyRunIsNotImported`,
+  `TestCoorddLegacyWriterLockKeepsDaemonNotReady`,
+  `TestCoorddUnknownCanonicalSchemaKeepsNotReady`).
+- P0-1 process fixtures переведены на canonical persistence boundary. Сценарии
+  проверяют retry/replay после рестарта, активный и terminal legacy state,
+  занятый compatibility lock с обеих сторон, неизвестную schema и отказ
+  durable commit (`TestCoorddProcessRestartRestoresAndReplaysOutboxBeforeReady`,
+  `TestCoorddActiveLegacyRunKeepsNotReadyWithoutStartingTransport`,
+  `TestCoorddTerminalLegacyRunIsNotImported`,
+  `TestCoorddLegacyWriterLockKeepsDaemonNotReady`,
+  `TestCoorddSecondProcessCannotOpenOwnedNamespace`,
+  `TestCoorddUnknownCanonicalSchemaKeepsNotReady`,
+  `TestCanonicalCommitFailureDoesNotPublishOrContinue`).
+- Проверяемые критерии среза 22a в `docs/plans/p0-2-task/DESIGN.md` теперь
+  ссылаются на реализованные сценарии; Task aggregate, Event Store и
+  Task-wide Fence остаются последующими срезами. (документация)
+
 ## 2026-10-08 — production Run daemon (P0-1)
 
 - Добавлен `coordd` с единственным `-config`, строгим JSON schema v1,

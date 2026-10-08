@@ -1,10 +1,11 @@
 # Эксплуатация и команды
 
 Текущая поставка содержит библиотеку coordinator, production executable `coordd`
-для существующей Run-модели, локальное демо и отдельный watchdog CLI. Есть также
+для текущего Run runtime на versioned canonical snapshot, локальное демо и отдельный watchdog CLI. Есть также
 ограниченный самостоятельный Telepathy host/worker
-([TELEPATHY_HOST.md](TELEPATHY_HOST.md)). `coordd` пока не реализует canonical
-Task runtime из P0-2.
+([TELEPATHY_HOST.md](TELEPATHY_HOST.md)). P0-2 вводит typed Task/Event model и
+внутреннее создание Task, но полный Task workflow, Run assignment и production
+Task write path ещё не подключены.
 
 ## Значения по умолчанию
 
@@ -105,12 +106,17 @@ key. Защитите эти файлы правами ОС. Пример стр
 namespace lock, Store и RoleRegistry закрываются при ошибке.
 
 Перед Store и RoleRegistry daemon получает эксклюзивную `namespace.lock` на весь
-каталог `state_dir`. Второй процесс с тем же каталогом завершается до listeners.
-Файловые locks Store и RoleRegistry сохраняются как дополнительная защита.
+каталог `state_dir`, затем compatibility lock `runs.json.lock`, canonical store
+lock `canonical.json.lock` и lock RoleRegistry. Второй daemon с тем же каталогом
+завершается до listeners. Legacy Run writers блокируются compatibility lock.
+Файловые locks компонентов сохраняются как дополнительная защита.
 После SIGINT/SIGTERM daemon завершает HTTP handlers и coordinator loop, закрывает
 transport process, RoleRegistry и Store, затем освобождает namespace lock.
 `/readyz` закрыт до startup tick и инициализации transport receive, а также при
-pending supervisor recovery. Это readiness текущей Run-модели, не canonical Task.
+pending supervisor recovery. При активном legacy Run, занятом compatibility
+lock или неизвестном canonical schema `coordd` остаётся живым в diagnostic-only
+режиме: `/readyz`=503, transport и coordinator loop не запускаются. Обычная
+readiness пока не является полной RT-03 проверкой Task workflow.
 
 Exit codes:
 

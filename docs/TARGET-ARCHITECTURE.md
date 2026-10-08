@@ -16,8 +16,8 @@
 | Library daemon host (listeners, readiness по Run) | частично | ADR-0004 RT-03 |
 | Standalone daemon `cmd/coordd` (Run-only), namespace lock, process-kill acceptance | частично: P0-1 в работе, приёмка не закрыта | ADR-0004 RT-01, RT-03; docs/plans/p0-daemon/DESIGN.md |
 | Единый command path для всех writer | нет: localchat host пишет runs.json напрямую | ADR-0004 RT-04 |
-| Task aggregate, `task_<ULID>`, Task.Fence | нет (P0-2); пакет `taskid` есть | TASK-MODEL; ADR-0003; ADR-0004 RT-06 |
-| Agent write path Telepathy → daemon → Task | нет (P0-3) | ADR-0001 шаг 11 |
+| Task aggregate, `task_<ULID>`, Task.Fence | частично: Task aggregate, TaskID, canonical store и транзакция state/event/outbox/inbox есть; authoritative Task.Fence при передаче владения (R75) и production command path (P0-3) — нет | TASK-MODEL; ADR-0003; ADR-0004 RT-06 |
+| Production CLI/agent write path → daemon → Task | нет (P0-3) | ADR-0004 RT-04; ADR-0001 шаг 11 |
 | ReviewResult, AuditResult | нет | ADR-0001 шаг 8 |
 | Discussion Graph | нет | ADR-0001 «Discussion Graph» |
 | Project Dependency Graph | нет | ADR-0002 |
@@ -204,8 +204,10 @@ flowchart TB
 ## 9. Порядок P0
 
 P0-1 daemon runtime skeleton (ADR-0001 шаг 6) → P0-2 Task aggregate +
-Task.Fence + транзакция state/event/outbox (шаг 7) → P0-3 Telepathy → daemon →
-Task (шаг 11) → P0-4 executor lifecycle → P0-5 supervisor. TaskID adoption
+Task.Fence + транзакция state/event/outbox (шаг 7) → Review/Audit и Discussion
+Graph (шаги 8–9) → Shadow Validation (шаг 10) → P0-3 production CLI и
+Telepathy write paths → daemon → Task (RT-04; шаг 11) → P0-4 executor lifecycle
+→ P0-5 supervisor. TaskID adoption
 входит в P0-2. Источник — docs/ROADMAP.md.
 
 ## Как сверяться агенту

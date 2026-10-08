@@ -89,15 +89,22 @@ production config отсутствует. Неподдержанный kind и �
 конфигурация отклоняются с exit 2 до namespace lock. Запуск MCP и проверка его
 реальной версии/сессии выполняются после lock; отказ закрывает уже открытые
 ресурсы, возвращает exit 1 и сообщает, что ownership освобождён. Подключение
-Telepathy agent writes к Task command path — P0-3, ADR-0001 шаг 11; доставка не
+Production CLI и Telepathy agent writes к Task command path — P0-3, ADR-0004 RT-04,
+ADR-0001 шаг 11; доставка не
 равна acceptance.
 
 ## 3. Single owner и state namespace
 
 RT-01 требует отказ второму daemon до обслуживания запросов; ST-02 уточняет
 exclusive process lock на весь state namespace. Перед открытием Store и
-RoleRegistry `coordd` захватывает одну namespace lock; file-level locks этих
-компонентов остаются дополнительной защитой. Отсутствие обязательного transport
+RoleRegistry `coordd` захватывает одну namespace lock; затем P0-2 composition
+получает compatibility lock legacy `runs.json`, canonical Store захватывает lock
+`canonical.json`, после чего открывается RoleRegistry. При обычном отказе startup
+освобождает уже взятые locks в обратном порядке и не начинает serve. Если
+canonical state или legacy run делает startup not-ready, P0-2 удерживает namespace
+lock и запускает только diagnostic runtime согласно `p0-2-task/DESIGN.md` §7;
+при занятом legacy lock этот runtime не читает snapshot. File-level locks компонентов
+остаются дополнительной защитой. Отсутствие обязательного transport
 проверяется до этой lock, как определено в R38. Unix snapshot lock использует
 kernel `flock`; процессное завершение освобождает его, lock file может остаться.
 На неподдерживаемой платформе checkpoint lock возвращает `ErrUnavailable`, и
@@ -117,6 +124,16 @@ serve. Текущие проверки Store/RoleRegistry по отдельно�
 заменяет этот сценарий. Отдельный тест `TestCoorddTakesNamespaceLockBeforeStores`
 проверяет, что namespace lock захвачена прежде любых file-level lock Store и
 RoleRegistry.
+
+P0-2 добавляет временный compatibility lock для legacy `runs.json`. `coordd`
+берёт его после namespace lock и до lock `canonical.json`, удерживает до
+shutdown, включая запуск на пустом или терминальном legacy snapshot. Это
+закрывает гонку, в которой legacy `localchat` или standalone host мог бы открыть
+прежний Run Store уже после readiness нового daemon. Если lock занят, `coordd`
+остаётся диагностически `NOT_READY`, не читает legacy файл и не запускает
+mutations/transport. Этот
+compatibility lock удаляется только после перевода production writers на daemon
+command path в P0-3.
 
 ## 4. Durable boundary и P0-2
 
@@ -242,9 +259,11 @@ process-kill acceptance.
 
 | Путь | Текущее поведение | P0 цель / ограничение |
 |---|---|---|
-| `cmd/coord` обычные Run-команды и localchat executor | Создают localchat service; он открывает свой Store на `runs.json` (`internal/localchat/service.go:148`) и Coordinator (`:159-161`). Executor checkpoints пишутся отдельно в `executors/<run>.json` (`:431`, `:503`). Это отдельный host, не production daemon. | Новые canonical writes — только через daemon RT-04. Legacy rooms заморожены шагом 1 ADR-0001; executor state остаётся отдельной областью, а production binding требует P0-2/P0-4. |
+| `cmd/coord` обычные Run-команды и localchat executor | Создают localchat service; он открывает свой Store на `runs.json` (`internal/localchat/service.go:148`) и Coordinator (`:159-161`). Executor checkpoints пишутся отдельно в `executors/<run>.json` (`:431`, `:503`). Это отдельный host, не production daemon. | До P0-3 legacy Run writes используют старый Store только если daemon не владеет namespace. P0-2 `coordd` удерживает общий `runs.json.lock`; после захвата daemon локальный host не может параллельно открыть Store. Legacy rooms заморожены шагом 1 ADR-0001; executor state остаётся отдельной областью. |
 | `cmd/coord` rooms/session API и TUI | `rooms.Open` открывает отдельный `rooms.json` с собственным lock (`internal/localchat/service.go:181`, `internal/rooms/rooms.go:135`). | Legacy/compatibility до перевода нужных операций; не считать их Task/Run write path. Не добавлять новые rooms workflow (ADR-0001 шаг 1). |
-| `cmd/coord-telepathy` standalone host | `telepathyhost.Run` сам открывает `state/runs.json`, создаёт Coordinator и делает `Assign` (`internal/telepathyhost/host.go:21-97`). | Одно-run integration/reference path сегодня; не допускать параллельный доступ к тому же namespace. В P0-3 превратить в adapter/command client daemon, без второго Store/Coordinator. |
+| Auxiliary localchat state | `connection.json` сохраняет выбранный маршрут Telepathy (`internal/localchat/service.go:168`, `:308`); `answers/<run>.json` сохраняет текстовый ответ на запрос (`:336`); `events.jsonl` записывает отправленные Envelope целиком (`:522`); `owner.key` содержит локальный owner credential (`internal/localchat/owner.go:16`). | Это routing, handoff, transport diagnostic и credential state, не canonical Task state. Не включать в Task Event Log. До P0-3 отдельно проверить secret redaction для ответов/Envelope, доступ к credential и дальнейшую судьбу каждого файла. |
+| Rooms history export | `rooms.Export` проецирует историю Rooms в `state/history`; `include_content` намеренно может включать текст (`internal/rooms/history.go`, `internal/localchat/http.go:271-272`). | Legacy Git projection, не canonical history. До вывода Rooms сохранить явно выбранный режим экспорта и отдельно проверить отсутствие секретов в export path; без `include_content` содержание событий очищается, но это не заменяет ingest quarantine P0-3. |
+| `cmd/coord-telepathy` standalone host | `telepathyhost.Run` сам открывает `state/runs.json`, создаёт Coordinator и делает `Assign` (`internal/telepathyhost/host.go:21-97`). | Одно-run integration/reference path сегодня. До P0-3 он и coordd взаимно исключаются тем же `runs.json.lock`; P0-3 превращает host в adapter/command client daemon, без второго Store/Coordinator. |
 | `cmd/coord-telepathy` worker и `executor.Executor` | Worker пишет executor checkpoint `executor.json` (`internal/telepathyhost/worker.go:117-122`); `executor.Executor` сохраняет checkpoint через внедрённый `checkpoint.File` (`executor/checkpoint.go:180-201`). Это отдельное executor state, не каноническое Coord state. | Сохраняет границу executor vs coordinator; production binding к Task/Run — после P0-2/P0-3. Checkpoint writer ownership должен быть проверен вместе с worktree writer lock; он не заменяет daemon ownership. |
 | `cmd/coord-watchdog` | Использует authenticated control API и внешние fence/spawn/stop commands (`cmd/coord-watchdog/main.go:16-33`). | Supervisor остаётся внешним владельцем процессов; P0-5 конкретизирует stop proof. Никаких прямых storage writes. |
 | `integration/telepathy` | Integration harness отдельно открывает `runs.json` в `main.go:346-366` и `checks.go:86-100`, создаёт Coordinator и вызывает `Assign`; worker fixture сохраняет собственное scripted state через `save`. Это test/integration writer, не production daemon. | Использовать только уникальный временный state directory. Не запускать параллельно с daemon на общем namespace; не считать lock refusal этого harness проверкой production daemon. |
@@ -257,13 +276,14 @@ process-kill acceptance.
 
 ## 8. Порядок P0 и зависимости
 
-Порядок соответствует ADR-0001 шагам 6, 7 и 11 и `TARGET-ARCHITECTURE.md`:
+Порядок соответствует ADR-0001 шагам 6–11 и `TARGET-ARCHITECTURE.md`:
 
 | Slice | Содержание | Проверяемый результат |
 |---|---|---|
 | P0-1 | Daemon runtime skeleton: executable composition, namespace ownership, lifecycle, Run-only crash/restart acceptance | Второй OS process отвергается; process kill/restart восстанавливает Run snapshot; ready и mutation guard fail-closed |
 | P0-2 | Task aggregate, `task_<ULID>` adoption, Task↔Run mapping, Task.Fence и единый State+Event+Outbox commit | Идентичность не выводится из legacy `Run.Task`; Assign/Tick/recovery/startup допускают не более одного active writer на Task |
-| P0-3 | Telepathy agent writes через daemon command boundary к Task/Run | Проверяются TaskID, RunID, Attempt, session generation и Task.Fence; delivery не означает acceptance |
+| После P0-2 | Review/Audit и Discussion Graph; затем ограниченная Shadow Validation | Канонические structured results и event-backed graph готовы до подключения production writers; сверяются только факты с однозначным соответствием |
+| P0-3 | Production CLI и Telepathy agent writes через daemon command boundary к Task/Run | После Review/Audit, Discussion Graph и Shadow Validation все production Task/Run mutations идут через daemon; проверяются TaskID, RunID, Attempt, session generation и Task.Fence; delivery не означает acceptance |
 | P0-4 | Production executor lifecycle и writer lock | Повторный TASK не запускает второго writer; ABORT/lease-loss и неоднозначный restart fail-safe |
 | P0-5 | Supervisor конкретной установки и end-to-end recovery | Stop proof предшествует ownership transfer; acceptance проверена на целевой установке |
 
@@ -275,7 +295,7 @@ API/Dashboard и ADR-0006 находятся после runtime readiness и can
 - Task aggregate, TaskID runtime enforcement, Task.Fence и Task-level ownership:
   P0-2.
 - Полная Task/Event/Outbox transaction и её startup validation: P0-2.
-- Telepathy canonical Task write path: P0-3.
+- Production CLI and Telepathy canonical Task write paths: P0-3.
 - Production executor lifecycle и конкретный supervisor: P0-4/P0-5.
 - API/Integration contract: ADR-0006; Dashboard, Discussion Graph, Project Map.
 - Review/Audit, External References, synchronization.

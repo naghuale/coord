@@ -41,7 +41,7 @@ func DefaultConfig() Config {
 type Coordinator struct {
 	mu           sync.Mutex
 	tp           transport.Transport
-	store        *store.Store
+	store        store.RunStore
 	cfg          Config
 	Metrics      *Metrics
 	RoleRegistry *roles.Registry
@@ -85,7 +85,7 @@ func (c *Coordinator) RecoveryPending() bool {
 	return false
 }
 
-func New(tp transport.Transport, s *store.Store, cfg Config) (*Coordinator, error) {
+func New(tp transport.Transport, s store.RunStore, cfg Config) (*Coordinator, error) {
 	if tp == nil || s == nil || tp.WhoAmI() == "" || cfg.Now == nil || cfg.AckTimeout <= 0 || cfg.ProbeTimeout <= 0 || cfg.SendTimeout <= 0 || cfg.TickInterval <= 0 {
 		return nil, fmt.Errorf("invalid coordinator configuration")
 	}
@@ -94,8 +94,11 @@ func New(tp transport.Transport, s *store.Store, cfg Config) (*Coordinator, erro
 	}
 	c := &Coordinator{tp: tp, store: s, cfg: cfg, Metrics: NewMetrics()}
 	for id, r := range s.All() {
-		if id != r.RunID || !r.Status.Valid() || r.Worktree == "" || r.Deadline.IsZero() {
+		if id != r.RunID {
 			return nil, fmt.Errorf("invalid canonical snapshot run %q", id)
+		}
+		if err := r.Validate(); err != nil {
+			return nil, fmt.Errorf("invalid canonical snapshot run %q: %w", id, err)
 		}
 		e := c.base(envelope.Result, r)
 		e.From = r.OwnerSession

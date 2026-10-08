@@ -15,13 +15,13 @@
 - **TM-01 — TaskID принадлежит Coord и использует ULID.** `Task.ID` имеет тип `taskid.ID` и формат `task_<ULID>`. Он выдаётся Coord и
   не зависит от `Run.Task`, issue number, имени репозитория или других внешних
   идентификаторов.
-  Проверка: частично — `TestGeneratorProducesCanonicalRoundTrippableID`, `TestParseRejectsNonCanonicalIDs`; не реализовано: поле `Task.ID` и выдача TaskID самим Coord (Task aggregate нет)
+  Проверка: частично — `TestCreateTaskGeneratesCanonicalTaskID`, `TestTaskIDCollisionRetriesBeforeCommit`; не реализовано: public/operator command (R52).
 
 - **TM-02 — Run.TaskID — явная связь с Task.** Каждая новая каноническая Run содержит отдельное поле `Run.TaskID`, которое
   ссылается на `Task.ID`. Это отношение — каноническая связь Task ↔ Run.
   `Task` не хранит дублирующий список Run IDs: участники и история Runs находятся
   через индекс/поиск по `Run.TaskID`.
-  Проверка: не реализовано
+  Проверка: частично — `TestCanonicalStateValidatesTaskEventAndRunRelations`; не реализовано: production assignment не пишет Task-scoped Run.
 
 - **TM-03 — Legacy Run.Task не переинтерпретируется.** Историческое `Run.Task` сохраняется byte-for-byte как legacy execution/protocol
   identity. Его смысл может быть описанием, названием, внешним ключом или
@@ -29,7 +29,7 @@
   В новом wire contract `TaskID` передаётся отдельным типизированным полем; старое
   поле `Task` остаётся до отдельного protocol migration и не служит заменой
   TaskID.
-  Проверка: не реализовано
+  Проверка: частично — `TestCanonicalStateValidatesTaskEventAndRunRelations`; не реализовано: wire migration отдельного поля TaskID.
 
 - **TM-04 — Импорт требует однозначной mapping table.** Миграция существующего Run требует явной таблицы соответствий и проверки
   коллизий; строки без однозначного соответствия остаются legacy и не импортируются
@@ -69,18 +69,18 @@ Run
   Events, Review/Audit, Discussion and Outbox records are associated with TaskID and
   written in the same transaction as the state transition. Derived projections do
   not add stored Task status fields.
-  Проверка: не реализовано
+  Проверка: частично — `TestCanonicalTransitionRejectsTaskMutationWithoutEvent`, `TestCanonicalStoreRejectsTaskMutationWithoutEvent`, `TestCanonicalTransitionRejectsTaskMutationWithoutRevisionIncrement`, `TestCanonicalStateRejectsTaskRevisionAheadOfEventHistory`; не реализовано: authenticated expected-Revision Owner command boundary.
 - **TM-26 — EventSeq непрерывен внутри Task.** Каждый Domain Event Task имеет
   `EventSeq`: монотонный, уникальный и непрерывный с 1 в пределах Task.
   `Task.LastEventSeq` равен номеру последнего события и присваивается в той же
   фиксации, что изменение Task/Run, событие и Outbox. Пропуск или повтор номера
   блокирует readiness. Решение owner 2026-10-08 (R56).
-  Проверка: не реализовано
+  Проверка: частично — `TestCanonicalStateRejectsEventSequenceGapAfterFirstEvent`, `TestCanonicalStateRequiresLastEventSequenceToMatchHistoryLength`; не реализовано: фиксация EventSeq при Task/Run переходе вместе с Outbox.
 
 ## Независимые оси Task
 
 - **TM-07 — Stage и Status — разные оси.** `CurrentStage` и `Status` — разные поля и разные значения.
-  Проверка: не реализовано
+  Проверка: частично — `TestTaskValidationSeparatesStageAndStatus`; не реализовано: переходы workflow, которые меняют Stage отдельно от Status.
 
 ### Stage
 
@@ -97,8 +97,11 @@ Stage отвечает, какой этап workflow сейчас выполня
   `REVIEW` и `AUDIT` могут быть опущены согласно policy, но если оба включены,
   `REVIEW` предшествует `AUDIT`. Требование финального решения Owner задаётся
   отдельным флагом policy. `OWNER_DECISION` — условное прерывание, не этап,
-  который можно добавлять или удалять произвольным текстом.
-  Проверка: не реализовано
+  который можно добавлять или удалять произвольным текстом. До реализации
+  workflow handlers P0-2 принимает при создании Task только исполняемый
+  `EXECUTION` без обязательного Owner decision; остальные допустимые по грамматике
+  планы отвергаются `taskservice.Create` до записи состояния.
+  Проверка: частично — `TestTaskValidationRejectsInvalidPlanAndTerminalStage`, `TestTaskCreateRejectsUnsupportedStageWithoutCommit`, `TestTaskCreateRejectsRequiredOwnerDecisionWithoutCommit`; не реализовано: runtime переходы и policy-driven пропуск стадий.
 
 - **TM-09 — StagePlan меняется только Owner-командой с revision.** Task хранит валидированный StagePlan и его `PolicyVersion` как канонические
   данные. Это не скрытая вторая policy: переходы Coord используют только текущий
@@ -110,7 +113,7 @@ Stage отвечает, какой этап workflow сейчас выполня
 
 - **TM-10 — Терминальный Task не имеет CurrentStage.** У терминального Task `CurrentStage` отсутствует; завершение
   представлено `Status=COMPLETED`.
-  Проверка: не реализовано
+  Проверка: частично — `TestTaskValidationRejectsInvalidPlanAndTerminalStage`; не реализовано: terminal workflow command и сохранение результата.
 
 ### Status
 
@@ -127,7 +130,7 @@ Status отвечает, может ли работа продолжаться �
   разрешёнными вариантами. Агентский `RunStatus=BLOCKED` не автоматически делает
   Task заблокированной: текущий Run может быть восстановлен в рамках того же
   назначения после устранения причины.
-  Проверка: не реализовано
+  Проверка: частично — `TestTaskValidationRejectsInvalidPlanAndTerminalStage`; не реализовано: Attention projection и Owner decision workflow.
 
 - **TM-12 — BLOCKED сохраняет текущий Stage.** Если продвижение остановилось, Task получает `Status=BLOCKED` и сохраняет текущий Stage.
   Проверка: не реализовано
@@ -172,7 +175,7 @@ Run — одно назначение одной роли внутри одно�
   принимаются FSM и не записываются как RunStatus. View также обязан явно сохранять
   `STALLED` и `RESULT_READY`, чтобы не выдавать устаревшую работу или неподтверждённый
   результат за обычный `WORKING`/`COMPLETED`.
-  Проверка: частично — `TestRestartRejectsUnknownCanonicalStatus`; не реализовано: RunViewStatus и статус SUPERSEDED
+  Проверка: частично — `TestRestartRejectsUnknownCanonicalStatus`, `TestCanonicalStateRejectsInvalidRunFSMState`, `TestRunValidateRejectsPersistedFSMInvariantViolations`; не реализовано: RunViewStatus и статус SUPERSEDED
 
 - **TM-17 — Attempt начинается с 1 и общий для Review/Audit прохода.** Начальный Executor Run начинает Attempt `1`.
   Reviewer и Auditor Runs, назначенные в том же проходе workflow, используют тот

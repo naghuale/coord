@@ -11,7 +11,7 @@
 ## Ролевые сессии
 
 `make build`, затем `bin/coord prompt` — общий вход AI-агента.
-Production Run daemon skeleton P0-1: `make build`, затем `bin/coordd -config /absolute/path/coordd.json`; он владеет текущей Run-моделью. Canonical Task runtime остаётся следующим этапом P0-2. Формат и exit codes описаны в [OPERATIONS.md](docs/OPERATIONS.md).
+Production daemon: `make build`, затем `bin/coordd -config /absolute/path/coordd.json`. Он хранит текущий Run runtime в versioned `canonical.json`, удерживает legacy compatibility lock и fail-closed блокирует readiness при небезопасном старом или неизвестном состоянии. Внутренняя основа Task aggregate реализуется в P0-2; полный workflow и production Task write path ещё не подключены. Формат и exit codes описаны в [OPERATIONS.md](docs/OPERATIONS.md).
 `bin/coord --state state/team --server none rooms` запускает локальный room host
 с Unix socket API. Это host для `internal/rooms`, не production daemon из
 ADR-0004 и не часть `coordd`.
@@ -58,8 +58,8 @@ in-process транспорт, сохраняя snapshot в собственно
 | `envelope` | Строгое декодирование, типизированные payload, полные SHA, UUID, Ed25519 |
 | `transport` | Интерфейсы `Transport`/`Client`, byte adapter, подписанные frames |
 | `fsm` | Разрешённые переходы, запрет раннего RESULT, обработка FAILURE/PARTIAL |
-| `store` | Изолированные копии, mutex, публикация состояния после durable commit |
-| `checkpoint` | JSON snapshot, temp + fsync + rename + fsync directory, права 0600 |
+| `store` | Run store и versioned canonical Task state с Events, typed Inbox/Outbox, изолированными копиями и публикацией после durable commit |
+| `checkpoint` | Legacy Run и canonical JSON snapshots, temp + fsync + rename + fsync directory, права 0600 |
 | `retry` | Экспоненциальный backoff, jitter и верхний предел задержки |
 | `executor` | Проверка HEAD, ACK, progress/result checkpoint, retry, replay |
 | `watchdog` | Recovery claim, fencing, проверка HEAD, spawn, CAS transfer |
@@ -69,7 +69,7 @@ in-process транспорт, сохраняя snapshot в собственно
 
 ## Подключение к приложению
 
-Создайте `store.New(checkpoint.File{Path: "state/runs.json"})`, затем
+Для встроенного legacy Run coordinator создайте `store.New(checkpoint.File{Path: "state/runs.json"})`, затем
 `coord.New(tp, store, coord.DefaultConfig())`. Запустите `Coordinator.Run(ctx)`;
 используйте `Assign(ctx, fsm.Run{...})` для назначения задач. `Attempt` и `Fence`
 начинаются с 1; для существующего attempt можно указать его номер. `TargetSHA`
@@ -80,14 +80,14 @@ in-process транспорт, сохраняя snapshot в собственно
 автоматически удерживает kernel flock snapshot до Close: два координатора с одним
 canonical snapshot одновременно не запускаются. На других платформах checkpoint
 storage возвращает `ErrUnavailable` и не открывается без process lock.
-Один coordinator владеет своим run snapshot и role registry. Daemon принимает
-только loopback control/metrics listeners; удалённый доступ размещается за TLS
-proxy. Host может передать
+`coordd` использует `store.NewCanonical(checkpoint.CanonicalFile{Path: "state/canonical.json"})`; это versioned state boundary, где P0-2 вводит typed Task и DomainEvent. Старые `runs.json` не импортируются. Один coordinator владеет state namespace и role registry. Daemon принимает только loopback control/metrics listeners; удалённый доступ размещается за TLS proxy. Host может передать
 его в `daemon.New`: runtime запускает control/metrics listeners, публикует
 `/readyz` после успешного startup tick и инициализации transport receive; он
 остаётся 503, пока есть Run с `RecoveryNeeded`, и сообщает одну из причин
-not-ready. Это readiness текущего Run runtime, не полная проверка RT-03 для
-будущей canonical Task модели. Recovery control endpoints доступны после
+not-ready. Обычная readiness проверяет Run runtime, но пока не реализует полную
+RT-03 readiness Task workflow. При небезопасном canonical/legacy startup
+`coordd` держит диагностические listeners с `/readyz`=503 без Coordinator и
+transport. Recovery control endpoints доступны после
 инициализации receive даже при not-ready, чтобы supervisor мог завершить
 recovery. При остановке закрывает Store и подключённый RoleRegistry. Для
 прямого встраивания

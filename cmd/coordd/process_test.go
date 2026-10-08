@@ -9,6 +9,7 @@ import (
 	"coord/envelope"
 	"coord/fsm"
 	"coord/internal/coorddconfig"
+	"coord/internal/filelock"
 	"coord/store"
 	"coord/transport"
 	"encoding/json"
@@ -102,6 +103,9 @@ func TestCoorddSecondProcessCannotOpenOwnedNamespace(t *testing.T) {
 	first := startCoorddProcess(t, configPath, filepath.Join(t.TempDir(), "owner.jsonl"), false)
 	defer stopCoorddProcess(t, first)
 	waitProcessReady(t, first, cfg.ControlAddr)
+	if got := invokeDaemonHelper(t, "try_store", cfg.StateDir); got != "REFUSED\n" {
+		t.Fatalf("legacy writer opened runs.json while coordd owned compatibility lock: %q", got)
+	}
 	before := durableProcessFiles(t, cfg.StateDir)
 
 	second := startCoorddProcess(t, configPath, filepath.Join(t.TempDir(), "second.jsonl"), false)
@@ -115,6 +119,33 @@ func TestCoorddSecondProcessCannotOpenOwnedNamespace(t *testing.T) {
 	}
 	if after := durableProcessFiles(t, cfg.StateDir); !equalBytesMap(before, after) {
 		t.Fatalf("second coordd changed durable state: before=%v after=%v", before, after)
+	}
+}
+
+func TestCoorddLegacyWriterLockKeepsDaemonNotReady(t *testing.T) {
+	cfg, configPath := processConfig(t)
+	legacyPath := filepath.Join(cfg.StateDir, "runs.json")
+	legacyWriter, _ := startDaemonHelper(t, "lock", legacyPath+".lock")
+	defer killDaemonHelper(t, legacyWriter)
+	if release, err := filelock.Lock(legacyPath + ".lock"); err == nil {
+		_ = release()
+		t.Fatal("legacy helper did not retain the compatibility lock")
+	} else if !errors.Is(err, filelock.ErrLocked) {
+		t.Fatalf("unexpected legacy lock check error: %v", err)
+	}
+	journal := filepath.Join(t.TempDir(), "must-not-exist.jsonl")
+	proc := startCoorddProcess(t, configPath, journal, false)
+	defer stopCoorddProcess(t, proc)
+	waitProcessStatus(t, proc, cfg.ControlAddr, http.StatusServiceUnavailable)
+	if _, err := os.Stat(journal); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("transport ran while legacy writer held ownership: stat err=%v", err)
+	}
+	if got := durableProcessFiles(t, cfg.StateDir); len(got) != 0 {
+		t.Fatalf("diagnostic-only daemon changed durable state: %v", got)
+	}
+	stopCoorddProcess(t, proc)
+	if !strings.Contains(proc.stderr.String(), "legacy writer owns namespace") {
+		t.Fatalf("daemon did not report the held compatibility lock: %q", proc.stderr.String())
 	}
 }
 
@@ -213,27 +244,33 @@ func startCoorddProcess(t *testing.T, configPath, journal string, fail bool) *co
 }
 
 func waitProcessReady(t *testing.T, p *coorddProcess, address string) {
+	waitProcessStatus(t, p, address, http.StatusOK)
+}
+
+func waitProcessStatus(t *testing.T, p *coorddProcess, address string, want int) {
 	t.Helper()
 	client := &http.Client{Timeout: 250 * time.Millisecond}
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 	timer := time.NewTimer(8 * time.Second)
 	defer timer.Stop()
+	lastStatus := 0
 	for {
 		response, err := client.Get("http://" + address + "/readyz")
 		if err == nil {
+			lastStatus = response.StatusCode
 			_ = response.Body.Close()
-			if response.StatusCode == http.StatusOK {
+			if response.StatusCode == want {
 				return
 			}
 		}
 		select {
 		case waitErr := <-p.waitCh:
 			p.waited, p.waitError = true, waitErr
-			t.Fatalf("coordd exited before ready: %v (%s)", waitErr, p.stderr.String())
+			t.Fatalf("coordd exited before HTTP status %d: %v (%s)", want, waitErr, p.stderr.String())
 		case <-ticker.C:
 		case <-timer.C:
-			t.Fatalf("coordd did not become ready: last HTTP error=%v stderr=%q", err, p.stderr.String())
+			t.Fatalf("coordd did not return HTTP status %d: last status=%d HTTP error=%v stderr=%q", want, lastStatus, err, p.stderr.String())
 		}
 	}
 }
@@ -269,7 +306,9 @@ func stopCoorddProcess(t *testing.T, p *coorddProcess) {
 		if err != nil {
 			t.Errorf("coordd shutdown: %v (%s)", err, p.stderr.String())
 		}
-	case <-time.After(5 * time.Second):
+	// The daemon's configured graceful-shutdown deadline is 10 seconds; leave
+	// room for process scheduling under the race-enabled full suite.
+	case <-time.After(12 * time.Second):
 		_ = p.cmd.Process.Kill()
 		_ = p.wait()
 		t.Error("coordd did not stop after SIGTERM")
@@ -281,7 +320,7 @@ func seedProcessRun(t *testing.T, stateDir string, result bool) {
 	if err := os.MkdirAll(stateDir, 0700); err != nil {
 		t.Fatal(err)
 	}
-	snapshot, err := store.New(checkpoint.File{Path: filepath.Join(stateDir, "runs.json")})
+	snapshot, err := store.NewCanonical(checkpoint.CanonicalFile{Path: filepath.Join(stateDir, "canonical.json")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,12 +331,20 @@ func seedProcessRun(t *testing.T, stateDir string, result bool) {
 		Status: fsm.Pending, AssignedAt: now, LastUpdate: now,
 		NextUpdateBy: now.Add(time.Hour), Deadline: now.Add(24 * time.Hour), Worktree: stateDir,
 		TaskMessages: []string{"task-message"},
-		Outbox:       []envelope.Envelope{{SchemaVersion: 1, MessageID: "outbox-message", Timestamp: now, From: "coordd-process-test", To: "executor-session", Kind: envelope.Task, Task: "task-process", Run: "run-process", Attempt: 4, Fence: 19}},
+		Outbox: []envelope.Envelope{{
+			SchemaVersion: 1, MessageID: "outbox-message", Timestamp: now,
+			From: "coordd-process-test", To: "executor-session", Kind: envelope.Task,
+			Task: "task-process", Run: "run-process", Attempt: 4, Fence: 19,
+			TargetSHA:   strings.Repeat("a", 40),
+			TaskPayload: &envelope.TaskPayload{Worktree: stateDir, Deadline: now.Add(24 * time.Hour)},
+		}},
 	}
 	if result {
 		run.Status = fsm.Done
 		run.Result = &envelope.ResultPayload{Outcome: "SUCCESS", Summary: "durable result"}
 		run.Outbox[0].Kind = envelope.ResultAck
+		run.Outbox[0].TaskPayload = nil
+		run.Outbox[0].InReplyTo = "result-message"
 		run.Outbox[0].ResultAckPayload = &envelope.ResultAckPayload{Outcome: "SUCCESS"}
 	}
 	if err := snapshot.Update(func(runs map[string]fsm.Run) error { runs[run.RunID] = run; return nil }); err != nil {
@@ -310,7 +357,7 @@ func seedProcessRun(t *testing.T, stateDir string, result bool) {
 
 func resetRetryForRestart(t *testing.T, stateDir, runID string) {
 	t.Helper()
-	snapshot, err := store.New(checkpoint.File{Path: filepath.Join(stateDir, "runs.json")})
+	snapshot, err := store.NewCanonical(checkpoint.CanonicalFile{Path: filepath.Join(stateDir, "canonical.json")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -329,7 +376,7 @@ func resetRetryForRestart(t *testing.T, stateDir, runID string) {
 
 func loadProcessRun(t *testing.T, stateDir, runID string) fsm.Run {
 	t.Helper()
-	snapshot, err := store.New(checkpoint.File{Path: filepath.Join(stateDir, "runs.json")})
+	snapshot, err := store.NewCanonical(checkpoint.CanonicalFile{Path: filepath.Join(stateDir, "canonical.json")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -374,7 +421,7 @@ func readJournal(t *testing.T, path string) []journalEntry {
 func durableProcessFiles(t *testing.T, stateDir string) map[string][]byte {
 	t.Helper()
 	result := make(map[string][]byte)
-	for _, name := range []string{"runs.json", "roles.json"} {
+	for _, name := range []string{"runs.json", "canonical.json", "roles.json"} {
 		path := filepath.Join(stateDir, name)
 		data, err := os.ReadFile(path)
 		if errors.Is(err, os.ErrNotExist) {

@@ -20,7 +20,7 @@ Coord сегодня объявляет `READY_FOR_COMMIT` и ждёт кома�
 
 - P0-1 — production daemon skeleton;
 - P0-2 — Task aggregate, TaskID adoption и Task-wide Fence;
-- P0-3 — Telepathy agent write path через daemon command boundary;
+- P0-3 — production CLI и Telepathy write paths через daemon command boundary;
 - P0-4 — production executor lifecycle и writer lock;
 - P0-5 — supervisor конкретной установки и end-to-end stop proof;
 - шаг 8 ADR-0001 — структурированные ReviewResult и AuditResult.

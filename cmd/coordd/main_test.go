@@ -20,11 +20,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -165,15 +167,17 @@ func TestCoorddTakesNamespaceLockBeforeStores(t *testing.T) {
 			for _, path := range []string{
 				filepath.Join(cfg.StateDir, "namespace.lock"),
 				filepath.Join(cfg.StateDir, "runs.json.lock"),
+				filepath.Join(cfg.StateDir, "canonical.json.lock"),
 				filepath.Join(cfg.StateDir, "roles.json.lock"),
 			} {
 				assertHeld(path)
 			}
 			return nil, nil, factoryErr
 		},
-		func(path string) (*store.Store, error) {
+		func(path string) (store.RunStore, error) {
 			assertHeld(filepath.Join(cfg.StateDir, "namespace.lock"))
-			return store.New(checkpoint.File{Path: path})
+			assertHeld(filepath.Join(cfg.StateDir, "runs.json.lock"))
+			return store.NewCanonical(checkpoint.CanonicalFile{Path: path})
 		},
 		func(path string) (*roles.Registry, error) {
 			assertHeld(filepath.Join(cfg.StateDir, "namespace.lock"))
@@ -183,13 +187,144 @@ func TestCoorddTakesNamespaceLockBeforeStores(t *testing.T) {
 	if !errors.Is(err, factoryErr) {
 		t.Fatalf("run error = %v, want factory error", err)
 	}
-	for _, path := range []string{filepath.Join(cfg.StateDir, "namespace.lock"), filepath.Join(cfg.StateDir, "runs.json.lock"), filepath.Join(cfg.StateDir, "roles.json.lock")} {
+	for _, path := range []string{filepath.Join(cfg.StateDir, "namespace.lock"), filepath.Join(cfg.StateDir, "runs.json.lock"), filepath.Join(cfg.StateDir, "canonical.json.lock"), filepath.Join(cfg.StateDir, "roles.json.lock")} {
 		release, lockErr := filelock.Lock(path)
 		if lockErr != nil {
 			t.Fatalf("lock remains after failed transport startup (%s): %v", path, lockErr)
 		}
 		_ = release()
 	}
+}
+
+func TestCoorddActiveLegacyRunKeepsNotReadyWithoutStartingTransport(t *testing.T) {
+	cfg := testConfig(t)
+	cfg.ControlAddr, cfg.MetricsAddr = freeLoopbackAddrs(t)
+	legacyPath := filepath.Join(cfg.StateDir, "runs.json")
+	now := time.Now().UTC()
+	active := fsm.Run{RunID: "legacy-active", Attempt: 1, Fence: 1, OwnerSession: "executor", Status: fsm.Pending, AssignedAt: now, LastUpdate: now}
+	if err := (checkpoint.File{Path: legacyPath}).Save(map[string]fsm.Run{active.RunID: active}); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(legacyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var stderr strings.Builder
+	factoryCalled := make(chan struct{}, 1)
+	done := make(chan error, 1)
+	go func() {
+		done <- runWithWriter(ctx, cfg, func(context.Context, coorddconfig.Config) (transport.Transport, func() error, error) {
+			factoryCalled <- struct{}{}
+			return nil, nil, errors.New("transport must not start")
+		}, &stderr)
+	}()
+	waitForStatus(t, "http://"+cfg.ControlAddr+"/readyz", http.StatusServiceUnavailable)
+	select {
+	case <-factoryCalled:
+		t.Fatal("transport started while an active legacy Run blocks migration")
+	default:
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("diagnostic runtime shutdown: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "active legacy run legacy-active") {
+		t.Fatalf("missing active legacy diagnostic: %q", stderr.String())
+	}
+	after, err := os.ReadFile(legacyPath)
+	if err != nil || string(after) != string(before) {
+		t.Fatalf("legacy snapshot changed: err=%v", err)
+	}
+}
+
+func TestCoorddTerminalLegacyRunIsNotImported(t *testing.T) {
+	cfg := testConfig(t)
+	legacyPath := filepath.Join(cfg.StateDir, "runs.json")
+	terminal := fsm.Run{RunID: "legacy-done", Attempt: 1, Fence: 1, OwnerSession: "executor", Status: fsm.Done, LastUpdate: time.Now().UTC()}
+	if err := (checkpoint.File{Path: legacyPath}).Save(map[string]fsm.Run{terminal.RunID: terminal}); err != nil {
+		t.Fatal(err)
+	}
+	legacyBefore, err := os.ReadFile(legacyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := errors.New("stop after confirming terminal legacy state was accepted")
+	err = runWithWriter(context.Background(), cfg, func(context.Context, coorddconfig.Config) (transport.Transport, func() error, error) {
+		return nil, nil, want
+	}, io.Discard)
+	if !errors.Is(err, want) {
+		t.Fatalf("terminal legacy Run prevented normal startup: %v", err)
+	}
+	legacyAfter, err := os.ReadFile(legacyPath)
+	if err != nil || string(legacyAfter) != string(legacyBefore) {
+		t.Fatalf("legacy snapshot changed: err=%v", err)
+	}
+	canonical, err := (checkpoint.CanonicalFile{Path: filepath.Join(cfg.StateDir, "canonical.json")}).Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(canonical.Runs) != 0 {
+		t.Fatalf("terminal legacy Run was imported into canonical state: %+v", canonical.Runs)
+	}
+}
+
+func TestCoorddUnknownCanonicalSchemaKeepsNotReady(t *testing.T) {
+	cfg := testConfig(t)
+	cfg.ControlAddr, cfg.MetricsAddr = freeLoopbackAddrs(t)
+	if err := os.MkdirAll(cfg.StateDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(cfg.StateDir, "canonical.json")
+	if err := os.WriteFile(path, []byte(`{"schema_version":999,"tasks":{},"runs":{},"events":[],"inbox":{},"outbox":{}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	factoryCalled := make(chan struct{}, 1)
+	done := make(chan error, 1)
+	go func() {
+		done <- runWithWriter(ctx, cfg, func(context.Context, coorddconfig.Config) (transport.Transport, func() error, error) {
+			factoryCalled <- struct{}{}
+			return nil, nil, errors.New("transport must not start")
+		}, io.Discard)
+	}()
+	waitForStatus(t, "http://"+cfg.ControlAddr+"/readyz", http.StatusServiceUnavailable)
+	select {
+	case <-factoryCalled:
+		t.Fatal("transport started with an unknown canonical schema")
+	default:
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("diagnostic runtime shutdown: %v", err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || string(after) != string(before) {
+		t.Fatalf("unknown canonical snapshot changed: err=%v", err)
+	}
+}
+
+func waitForStatus(t *testing.T, url string, want int) {
+	t.Helper()
+	client := &http.Client{Timeout: 250 * time.Millisecond}
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		response, err := client.Get(url)
+		if err == nil {
+			_ = response.Body.Close()
+			if response.StatusCode == want {
+				return
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("endpoint %s did not return status %d", url, want)
 }
 
 func TestCoorddTransportStartupFailureReleasesOwnership(t *testing.T) {
@@ -239,6 +374,7 @@ func TestDaemonGracefulShutdownReleasesNamespaceAfterHandlers(t *testing.T) {
 				for _, path := range []string{
 					filepath.Join(cfg.StateDir, "namespace.lock"),
 					filepath.Join(cfg.StateDir, "runs.json.lock"),
+					filepath.Join(cfg.StateDir, "canonical.json.lock"),
 					filepath.Join(cfg.StateDir, "roles.json.lock"),
 				} {
 					release, err := filelock.Lock(path)
@@ -332,7 +468,10 @@ func TestStoreAndFilelockHelperProcess(t *testing.T) {
 		}
 		_ = release
 		_, _ = os.Stdout.WriteString("LOCKED\n")
-		select {}
+		for {
+			runtime.KeepAlive(release)
+			time.Sleep(time.Hour)
+		}
 	case "seed_run", "seed_result":
 		seedHelper(os.Getenv("COORDD_HELPER_STATE"), os.Getenv("COORDD_HELPER_MODE") == "seed_result")
 		_, _ = os.Stdout.WriteString("SEEDED\n")

@@ -3,8 +3,10 @@ package fsm
 import (
 	"coord/envelope"
 	"coord/roles"
+	"coord/taskid"
 	"errors"
 	"fmt"
+	"reflect"
 	"time"
 )
 
@@ -36,6 +38,7 @@ func (s Status) Valid() bool {
 // Run contains protocol state and durable retry/outbox bookkeeping.
 type Run struct {
 	Task                                           string
+	TaskID                                         taskid.ID `json:"task_id,omitempty"`
 	RunID                                          string
 	Attempt                                        uint64
 	TargetSHA                                      string
@@ -68,6 +71,57 @@ type Run struct {
 }
 
 func (r Run) Terminal() bool { return r.Status == Done || r.Status == Failed }
+
+// SameDomainState reports whether a durable Run update changes task history.
+// Delivery bookkeeping and heartbeat timestamps are intentionally excluded:
+// they are transport/runtime facts, not DomainEvents.
+func (r Run) SameDomainState(other Run) bool {
+	return r.Task == other.Task && r.TaskID == other.TaskID && r.RunID == other.RunID &&
+		r.Attempt == other.Attempt && r.TargetSHA == other.TargetSHA &&
+		r.OwnerSession == other.OwnerSession && r.Fence == other.Fence &&
+		r.Status == other.Status && r.ResumeStatus == other.ResumeStatus &&
+		r.AssignedAt.Equal(other.AssignedAt) && r.Deadline.Equal(other.Deadline) &&
+		r.Worktree == other.Worktree && r.PayloadRef == other.PayloadRef &&
+		r.ProgressPct == other.ProgressPct && r.Blocker == other.Blocker &&
+		reflect.DeepEqual(r.Result, other.Result) && r.RecoveryNeeded == other.RecoveryNeeded &&
+		r.RecoveryClaim == other.RecoveryClaim &&
+		reflect.DeepEqual(r.RequiredRole, other.RequiredRole) &&
+		reflect.DeepEqual(r.RoleHistory, other.RoleHistory) &&
+		reflect.DeepEqual(r.RoleSelection, other.RoleSelection)
+}
+
+// Validate checks invariants required of a durable Run snapshot. It does not
+// validate workflow transitions; those are enforced by Apply and the
+// coordinator command boundary.
+func (r Run) Validate() error {
+	if r.RunID == "" || r.Attempt == 0 || r.Fence == 0 || r.OwnerSession == "" {
+		return fmt.Errorf("run identity, attempt, fence and owner session are required")
+	}
+	if !r.Status.Valid() || r.Worktree == "" || r.Deadline.IsZero() {
+		return fmt.Errorf("run status, worktree and deadline must be valid")
+	}
+	if r.Status == Stalled {
+		if r.ResumeStatus == "" || !r.ResumeStatus.Valid() || r.ResumeStatus == Stalled || r.ResumeStatus == Done || r.ResumeStatus == Failed {
+			return fmt.Errorf("stalled run requires a resumable status")
+		}
+	} else if r.ResumeStatus != "" {
+		return fmt.Errorf("non-stalled run cannot retain a resume status")
+	}
+	if r.RecoveryClaim != "" && (!r.RecoveryNeeded || r.Status != Stalled) {
+		return fmt.Errorf("recovery claim requires a stalled run marked for recovery")
+	}
+	if r.RecoveryNeeded && r.Status != Stalled {
+		return fmt.Errorf("run marked for recovery must be stalled")
+	}
+	if r.Terminal() && (r.RecoveryNeeded || r.RecoveryClaim != "") {
+		return fmt.Errorf("terminal run cannot require recovery or retain a claim")
+	}
+	if r.Status == Done && r.Result == nil {
+		return fmt.Errorf("done run requires an accepted result")
+	}
+	return nil
+}
+
 func (r *Run) Timeout(now time.Time) error {
 	if r.Terminal() || r.Status == Stalled {
 		return fmt.Errorf("cannot time out %s", r.Status)

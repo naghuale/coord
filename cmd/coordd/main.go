@@ -26,7 +26,7 @@ import (
 )
 
 type transportFactory func(context.Context, coorddconfig.Config) (transport.Transport, func() error, error)
-type storeFactory func(string) (*store.Store, error)
+type storeFactory func(string) (store.RunStore, error)
 type roleRegistryFactory func(string) (*roles.Registry, error)
 
 func main() { os.Exit(mainRun(os.Args[1:], productionTransport)) }
@@ -55,7 +55,7 @@ func mainRunWithWriter(args []string, factory transportFactory, stderr io.Writer
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err = run(ctx, cfg, factory); err != nil {
+	if err = runWithWriter(ctx, cfg, factory, stderr); err != nil {
 		var startErr *startupFailure
 		if errors.As(err, &startErr) {
 			writeStartupFailure(stderr, startErr.section, startErr.err.Error(), cfg.Transport.Kind, startErr.ownership, startErr.namespaceLock)
@@ -98,13 +98,24 @@ func writeStartupFailure(w io.Writer, section, reason, kind, ownership, namespac
 }
 
 func run(ctx context.Context, cfg coorddconfig.Config, factory transportFactory) (err error) {
-	return runWithFactories(ctx, cfg, factory,
-		func(path string) (*store.Store, error) { return store.New(checkpoint.File{Path: path}) },
+	return runWithWriter(ctx, cfg, factory, os.Stderr)
+}
+
+func runWithWriter(ctx context.Context, cfg coorddconfig.Config, factory transportFactory, stderr io.Writer) (err error) {
+	return runWithWriterFactories(ctx, cfg, factory,
+		func(path string) (store.RunStore, error) {
+			return store.NewCanonical(checkpoint.CanonicalFile{Path: path})
+		},
 		roles.New,
+		stderr,
 	)
 }
 
-func runWithFactories(ctx context.Context, cfg coorddconfig.Config, factory transportFactory, openStore storeFactory, openRoles roleRegistryFactory) (err error) {
+func runWithFactories(ctx context.Context, cfg coorddconfig.Config, factory transportFactory, openStore storeFactory, openRoles roleRegistryFactory) error {
+	return runWithWriterFactories(ctx, cfg, factory, openStore, openRoles, io.Discard)
+}
+
+func runWithWriterFactories(ctx context.Context, cfg coorddconfig.Config, factory transportFactory, openStore storeFactory, openRoles roleRegistryFactory, stderr io.Writer) (err error) {
 	if err = cfg.Validate(); err != nil {
 		return err
 	}
@@ -117,9 +128,32 @@ func runWithFactories(ctx context.Context, cfg coorddconfig.Config, factory tran
 	}
 	defer func() { err = errors.Join(err, releaseNamespace()) }()
 
-	canonical, err := openStore(filepath.Join(cfg.StateDir, "runs.json"))
+	legacyPath := filepath.Join(cfg.StateDir, "runs.json")
+	releaseLegacy, err := (checkpoint.File{Path: legacyPath}).Lock()
+	if errors.Is(err, filelock.ErrLocked) {
+		return runDiagnostic(ctx, cfg, stderr, "legacy writer owns namespace")
+	}
 	if err != nil {
-		return &startupFailure{section: "runtime", ownership: "released", namespaceLock: "released", exitCode: 1, err: fmt.Errorf("open run store: %w", err)}
+		return &startupFailure{section: "runtime", ownership: "released", namespaceLock: "released", exitCode: 1, err: fmt.Errorf("acquire legacy compatibility lock: %w", err)}
+	}
+	defer func() { err = errors.Join(err, releaseLegacy()) }()
+
+	legacyRuns, legacyErr := (checkpoint.File{Path: legacyPath}).Load()
+	if legacyErr != nil {
+		return runDiagnostic(ctx, cfg, stderr, "legacy snapshot is invalid: "+legacyErr.Error())
+	}
+	for id, run := range legacyRuns {
+		if !run.Terminal() {
+			return runDiagnostic(ctx, cfg, stderr, fmt.Sprintf("active legacy run %s requires explicit recovery", id))
+		}
+	}
+
+	canonical, err := openStore(filepath.Join(cfg.StateDir, "canonical.json"))
+	if errors.Is(err, filelock.ErrUnavailable) {
+		return &startupFailure{section: "runtime", ownership: "released", namespaceLock: "released", exitCode: 1, err: fmt.Errorf("open canonical store: %w", err)}
+	}
+	if err != nil {
+		return runDiagnostic(ctx, cfg, stderr, "canonical state is not ready: "+err.Error())
 	}
 	registry, err := openRoles(filepath.Join(cfg.StateDir, "roles.json"))
 	if err != nil {
@@ -161,6 +195,12 @@ func runWithFactories(ctx context.Context, cfg coorddconfig.Config, factory tran
 		return &startupFailure{section: "runtime", ownership: "released", namespaceLock: "released", exitCode: 1, err: err}
 	}
 	return nil
+}
+
+func runDiagnostic(ctx context.Context, cfg coorddconfig.Config, stderr io.Writer, reason string) error {
+	reason = strings.Join(strings.Fields(reason), " ")
+	_, _ = fmt.Fprintf(stderr, "coordd: not ready: %s\n", reason)
+	return daemon.RunDiagnostic(ctx, cfg.ControlAddr, cfg.MetricsAddr, reason, 10*time.Second)
 }
 
 func productionTransport(ctx context.Context, cfg coorddconfig.Config) (transport.Transport, func() error, error) {

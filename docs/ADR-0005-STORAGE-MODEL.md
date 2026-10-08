@@ -98,7 +98,7 @@ Canonical State + Domain Event + Outbox [+ Inbox receipt when required] = One Du
 пересобирает одну сторону из другой. Входящий Inbox receipt включается в тот же
 commit, если он нужен для durable deduplication обработанной команды/сообщения.
 
-Проверка: не реализовано
+Проверка: частично — `TestCanonicalStoreRejectsTaskMutationWithoutEvent`, `TestCanonicalTaskOutboxRequiresEventFromSameCommit`, `TestCanonicalCommitFailureDoesNotPublishOrContinue`; не реализовано: production daemon command boundary.
 
 ### ST-02 — Единственный writer
 
@@ -118,7 +118,7 @@ loop daemon. Task-level правило «не более одного актив
 само по себе этого правила не обеспечивает. После падения daemon новый процесс
 может получить lock и продолжить только после проверки durable state.
 
-Проверка: частично — `TestCoorddSecondProcessCannotOpenOwnedNamespace`, `TestRefusedOwnershipFailsBeforeLoadingState`, `TestLockExclusivityOrFailClosed`; не реализовано: все изменения только через daemon command path (localchat host пишет runs.json напрямую), один активный writer Run на Task
+Проверка: частично — `TestCoorddSecondProcessCannotOpenOwnedNamespace`, `TestRefusedOwnershipFailsBeforeLoadingState`, `TestLockExclusivityOrFailClosed`; не реализовано: все изменения только через daemon command path (localchat host пишет runs.json напрямую), совместное владение namespace при переходе на canonical snapshot, один активный writer Run на Task
 
 ### ST-03 — Commit-or-reopen
 
@@ -225,6 +225,9 @@ backup/restore и неопределённый commit. PostgreSQL требует
 - вся каноническая Task state, Event и Outbox запись атомарна;
 - в каноническом write path нет отдельных файлов, создающих вторую commit границу;
 - второй daemon не может открыть тот же state для записи;
+- переход между storage-схемами удерживает compatibility lock, исключающий
+  параллельные legacy writers того же namespace, пока они не переведены на
+  daemon command path (R61, решение OWNER 2026-10-08);
 - ошибки durability блокируют дальнейшие изменения до reopen/recovery;
 - readiness объявляется только после проверки и восстановления state;
 - версия snapshot явно проверяется, а неизвестная версия закрывает readiness;
