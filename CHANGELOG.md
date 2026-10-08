@@ -1,5 +1,12 @@
 # История изменений
 
+## 2026-10-08 — Учёт работ в GitHub Issues ([#10](https://github.com/naghuale/coord/issues/10))
+
+- (документация) AGENTS.md: каждая единица работы ведётся в issue репозитория
+  `naghuale/coord` наравне с CHANGELOG; commit и запись CHANGELOG ссылаются на
+  issue. Issue — трекер работ и внешняя ссылка (ADR-0003), а не источник истины;
+  опубликованная история ради ссылок не переписывается.
+
 ## 2026-10-08 — CI: make check на Linux и macOS ([#2](https://github.com/naghuale/coord/issues/2))
 
 - (не проверено) Добавлен `.github/workflows/ci.yml`: на push и pull request выполняется
