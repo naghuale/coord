@@ -203,6 +203,9 @@ func ValidateCanonicalState(state CanonicalState) error {
 	if err := validateTaskEventHistories(state); err != nil {
 		return err
 	}
+	if err := validateCanonicalRoleIndependence(state); err != nil {
+		return err
+	}
 	if err := validateTaskResultEvents(state); err != nil {
 		return err
 	}
@@ -811,6 +814,9 @@ func ValidateCanonicalTransition(previous, next CanonicalState) error {
 		if err := requireTaskRunEvent(previous, next, newEvents, id, newRun.TaskID); err != nil {
 			return err
 		}
+	}
+	if err := validateCanonicalRoleIndependence(next); err != nil {
+		return err
 	}
 	return nil
 }

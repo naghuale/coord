@@ -1,5 +1,30 @@
 # История изменений
 
+## 2026-10-08 — RA-2: независимость Reviewer и Auditor
+
+- Canonical Task startup и переходы проверяют stable `AgentID` Reviewer/Auditor
+  против истории Executor assignments по EventSeq. Reviewer следует TASK-MODEL
+  TM-23; Auditor сравнивается с Executor согласно ADR-0001 CM-03, без нового
+  запрета Auditor против Reviewer. Ошибки `NO_INDEPENDENT_REVIEWER` и
+  `NO_INDEPENDENT_AUDITOR` типизированы, rejected transition не сохраняется
+  (`TestReviewerRejectsExecutorAgentIDAcrossHistory`,
+  `TestAuditorRejectsExecutorAgentIDAcrossTaskRuns`,
+  `TestCanonicalTransitionRejectsRoleIdentityConflict`,
+  `TestSameAgentMayHoldRolesInDifferentTasks`,
+  `TestExecutorWithoutStableSelectionFailsClosedBeforeReviewer`).
+- Durable blocker reason, Attention projection и stage-scheduler переход не
+  реализованы; требуют решения OWNER. При отсутствии DomainEvent, точно
+  связывающего RoleHistory selection и событие, extra Executor selection
+  получает самый ранний возможный EventSeq, extra Reviewer/Auditor — самый
+  поздний. Ограничения и
+  тесты fail-closed: `TestNoIndependentReviewerOrAuditorFailsClosed` и
+  `TestCanonicalRoleIndependenceFailsClosedWithoutStableAgentID`.
+  Отсутствие post-transfer anchors проверяет
+  `TestRoleHistoryExtraSelectionRequiresEventAfterTransfer`; отсутствие transfer
+  marker проверяют `TestCanonicalStartupRejectsTaskScopedRunWithoutTransferMarker`
+  и `validateTaskOwnershipTransfers`. Подробности —
+  [RA-2](docs/plans/p0-review-audit/RA-2.md).
+
 ## 2026-10-08 — RA-1: Review/Audit result core
 
 - Добавлены типизированные `ReviewResult` и `AuditResult` в DomainEvent schema v1
