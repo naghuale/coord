@@ -1,5 +1,72 @@
 # История изменений
 
+## 2026-10-08 — Статус AgentSession в карте реализации ([#11](https://github.com/naghuale/coord/issues/11))
+
+- (документация) TARGET-ARCHITECTURE разошёлся с кодом: после части 1
+  (`93f36b0`) в нём не было строки AgentSession. Добавлена строка «AgentSession
+  (CM-13, TM-27)» со статусом «частично» и со ссылками на код, сверенными по
+  файлам: проекция `agentsession.Session` и append-only история
+  `agentsession.Event` в типе `CanonicalState` schema v1, поля `AgentSessions` и
+  `AgentSessionEvents` (`store/canonical.go`),
+  нормализация пустых коллекций при загрузке старого файла
+  (`NormalizeCanonicalState` в `store/canonical.go`), проверка истории при
+  startup (`agentsession.ValidateHistory` в `ValidateCanonicalState`) и на переходе
+  (`agentsession.ValidateTransition` в `ValidateCanonicalTransition`), правила
+  проверки в `agentsession/session.go:28-54`, `:61`, `:141`. После части 2
+  (`11c36e8`) в строку добавлены store-level операции `RegisterAgentSession`,
+  `RotateAgentSessionKey` и `ReplaceAgentSessionAddress`
+  (`store/canonical_agentsession.go`), каждая как одна durable запись через
+  `UpdateCanonical`, и `NewCanonicalWithClock` (`store/canonical.go`); ссылки на
+  store-файлы даны именами, номера строк в `agentsession/session.go` сверены заново и
+  не изменились. Перечислены все 12
+  проверок `agentsession/session_test.go` —
+  `TestValidateHistoryRebuildsRegisteredRotatedAndRevokedSession`,
+  `TestValidateHistoryRejectsProjectionThatDisagreesWithEvents`,
+  `TestValidateHistoryRejectsProjectionWithDifferentPublicKey`,
+  `TestValidateHistoryRejectsEventsWithoutCurrentProjection`,
+  `TestValidateHistoryRejectsSkippedGeneration`,
+  `TestValidateHistoryRejectsRevocationWithWrongGeneration`,
+  `TestValidateHistoryRejectsRotationWithoutChangingPublicKey`,
+  `TestValidateHistoryRejectsEventTimeBeforePriorAddressEvent`,
+  `TestValidateHistoryRejectsEventsAfterRevocation`,
+  `TestValidateHistoryAllowsOneAgentAcrossMultipleAddresses`,
+  `TestValidateTransitionAcceptsRevocationAndRejectsProjectionChangeWithoutEvent`,
+  `TestValidateTransitionRejectsRewrittenOrDeletedHistory`, а также
+  `TestCanonicalValidationChecksAgentSessionHistory` и
+  `TestCanonicalFileReadsAndRewritesCreationOnlyV1WithoutFenceField`, и все 7
+  проверок части 2 `store/canonical_agentsession_test.go` —
+  `TestCanonicalAgentSessionRegistrationPersistsOperatorBinding`,
+  `TestCanonicalAgentSessionKeyRotationIncrementsGenerationAtomically`,
+  `TestCanonicalAgentSessionRotationRejectsRevokedBindingWithoutWrite`,
+  `TestCanonicalAgentSessionAddressChangeRevokesAndRegistersInOneCommit`,
+  `TestCanonicalAgentSessionAddressChangeFailureDoesNotPartiallyRevoke`,
+  `TestCanonicalAgentSessionAddressChangeRejectsInactiveOrExistingAddressWithoutWrite`,
+  `TestNewCanonicalWithClockRejectsNilClock`.
+- (документация) В той же строке перечислено, что не реализовано: подключение
+  регистрации и ротации к операторскому command path и OwnerCredential, отдельная
+  операция отзыва без новой привязки, запись поколения в `Run`, `AuthenticatedFrame`
+  и проверка входящих команд по `AgentSession` в порядке R121 (CM-15, TM-29),
+  обязательный непустой `AgentID` для любого command-capable Task-scoped Run
+  (R116, CM-14, TM-28), readiness fail-closed для старого canonical state без
+  действующей `AgentSession` (R123); повторная регистрация отозванного адреса
+  отмечена как открытый вопрос
+  [#8](https://github.com/naghuale/coord/issues/8). Заголовок строки и колонка
+  «Норма» ограничены CM-13 и TM-27: часть 1 не реализует CM-14/CM-15 и
+  TM-28/TM-29, поэтому зрелость не завышается.
+- (документация) В TARGET-ARCHITECTURE исправлены сдвинутые коммитом `93f36b0`
+  ссылки на `store/canonical.go` (в HEAD было `:67-74`, `:87-94`, `:206`, `:818`)
+  и затем номера строк в этом файле заменены именами, чтобы вторая часть
+  AgentSession снова не сдвигала ссылки: тип `CanonicalState` с полями
+  `AgentSessions`/`AgentSessionEvents`, интерфейс `CanonicalPersistence`,
+  нормализация в `NormalizeCanonicalState`, проверки истории —
+  `agentsession.ValidateHistory` в `ValidateCanonicalState` и
+  `agentsession.ValidateTransition` в `ValidateCanonicalTransition`, вызовы
+  `validateCanonicalRoleIndependence` в `ValidateCanonicalState` и
+  `ValidateCanonicalTransition`. Номера строк в `agentsession/session.go` и
+  остальных файлах оставлены и сверены; другие документы не трогались.
+- (документация) Нормы не менялись: CM-13 и TM-27 остаются «Проверка: не
+  реализовано», строки ADR-0001, TASK-MODEL и статусы ADR не тронуты.
+
 ## 2026-10-08 — Каноническая история AgentSession ([#5](https://github.com/naghuale/coord/issues/5))
 
 - (`TestValidateHistoryRebuildsRegisteredRotatedAndRevokedSession`, `TestValidateHistoryAllowsOneAgentAcrossMultipleAddresses`, `TestValidateHistoryRejectsProjectionWithDifferentPublicKey`, `TestValidateHistoryRejectsEventsWithoutCurrentProjection`, `TestValidateHistoryRejectsRevocationWithWrongGeneration`, `TestValidateHistoryRejectsRotationWithoutChangingPublicKey`, `TestValidateHistoryRejectsEventTimeBeforePriorAddressEvent`, `TestCanonicalValidationChecksAgentSessionHistory`, `TestCanonicalFileReadsAndRewritesCreationOnlyV1WithoutFenceField`) добавлены типы текущей `AgentSession` projection и её append-only event history; проверяются согласованность projection с событиями, поколение и монотонность времени; schema v1 принимает старые snapshots без новых полей и записывает их при следующем сохранении.
