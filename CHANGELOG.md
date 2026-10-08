@@ -1,5 +1,13 @@
 # История изменений
 
+## 2026-10-08 — CI: make check на Linux и macOS ([#2](https://github.com/naghuale/coord/issues/2))
+
+- (не проверено) Добавлен `.github/workflows/ci.yml`: на push и pull request выполняется
+  `make check` на `ubuntu-latest` и `macos-latest` (`fail-fast: false`), Go
+  берётся из `go.mod`, права workflow — только чтение содержимого.
+- (документация) Проверка изоляции P0-5 (fail-closed на Linux) в этот workflow не входит и
+  остаётся отдельной частью P0-5.
+
 ## 2026-10-08 — Нормативная запись решений OWNER (NORM-AS)
 
 - (документация) Три решения OWNER от 2026-10-08 записаны как нормативная
