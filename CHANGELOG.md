@@ -1,5 +1,34 @@
 # История изменений
 
+## 2026-10-08 — P0-2, срез 22c: атомарность, восстановление и проверки canonical state
+
+- Добавлены acceptance-тесты, подтверждающие один durable commit для Task, Run,
+  DomainEvent, Outbox и Inbox receipt; проверяются сохранённый snapshot и
+  восстановление Task-scoped состояния с replay Outbox после перезапуска.
+  Неуспешная первая доставка сохраняет EventID; успешный transport replay не
+  добавляет DomainEvent, не меняет Task Revision и не создаёт Inbox receipt
+  (`TestCanonicalTransitionCommitsStateEventOutboxAtomically`,
+  `TestCanonicalCommitFailureDoesNotPublishOrContinue`,
+  `TestCoorddRestartRestoresCanonicalTaskStateAndOutbox`).
+- coordd остаётся not-ready при структурно невалидном, но декодируемом
+  canonical snapshot; transport не запускается, исходный файл не меняется
+  (`TestCoorddReadinessRejectsInvalidCanonicalState`).
+- Startup validation отвергает Inbox receipt, ссылающийся на события вне
+  `CommittedRevision`, и Task-scoped Run, чья текущая RoleSelection не совпадает
+  с последней записью RoleHistory
+  (`TestCanonicalStartupRejectsInboxEventOutsideCommittedRevision`,
+  `TestCanonicalStartupRejectsRoleSelectionNotMatchingLatestHistory`).
+- Canonical uncertain-commit regression подтверждает отказ старого handle,
+  повторную проверку snapshot при reopen и успешную следующую mutation только
+  через новый store; process lock helper удерживает владельца flock до конца
+  subprocess (`TestCanonicalCommitFailureRequiresReopenAndRevalidatesDurableState`,
+  `TestStoreSecondProcessCannotOpenWhileStoreOwnerRunning`).
+- По решению OWNER R100 проверки входного Task Fence, передачи между Runs,
+  Assign/Tick/recovery с несколькими writers и Fence в Outbox envelope
+  перенесены из критериев P0-2 в P0-3. Полнота Profile и реестр EventType
+  остаются открытыми вопросами контракта, а не условиями завершения P0-2
+  (документация).
+
 ## 2026-10-08 — P0-2, R75b: снимок Fence в истории событий и проверка при загрузке
 
 - DomainEvent schema v1 теперь сохраняет `task_fence`. Startup валидирует единственный

@@ -11,6 +11,8 @@ import (
 	"coord/internal/coorddconfig"
 	"coord/internal/filelock"
 	"coord/store"
+	"coord/task"
+	"coord/taskid"
 	"coord/transport"
 	"encoding/json"
 	"errors"
@@ -194,6 +196,94 @@ func TestCoorddProcessRestartPreservesResultAndReceipt(t *testing.T) {
 	if run.Status != fsm.Done || run.Result == nil || run.Result.Outcome != "SUCCESS" || run.Attempt != 4 || run.Fence != 19 {
 		t.Fatalf("committed result changed across restart: status=%s result=%+v attempt=%d fence=%d", run.Status, run.Result, run.Attempt, run.Fence)
 	}
+}
+
+func TestCoorddRestartRestoresCanonicalTaskStateAndOutbox(t *testing.T) {
+	cfg, configPath := processConfig(t)
+	eventID := seedCanonicalTaskRestartState(t, cfg.StateDir)
+
+	firstJournal := filepath.Join(t.TempDir(), "first.jsonl")
+	first := startCoorddProcess(t, configPath, firstJournal, true)
+	waitProcessReady(t, first, cfg.ControlAddr)
+	firstEntries := readJournal(t, firstJournal)
+	if len(firstEntries) != 1 || firstEntries[0].Success || firstEntries[0].Kind != envelope.ResultAck {
+		t.Fatalf("first startup send = %+v; want one failed ResultAck delivery", firstEntries)
+	}
+	killCoorddProcess(t, first)
+
+	canonicalFile := checkpoint.CanonicalFile{Path: filepath.Join(cfg.StateDir, "canonical.json")}
+	afterFailure, err := canonicalFile.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	queued := afterFailure.Outbox["run-task-process"].Messages
+	if len(queued) != 1 || queued[0].EventID != eventID {
+		t.Fatalf("failed first send did not retain seeded EventID %q: %+v", eventID, queued)
+	}
+	resetRetryForRestart(t, cfg.StateDir, "run-task-process")
+
+	replayJournal := filepath.Join(t.TempDir(), "replay.jsonl")
+	second := startCoorddProcess(t, configPath, replayJournal, false)
+	waitProcessReady(t, second, cfg.ControlAddr)
+	secondEntries := readJournal(t, replayJournal)
+	if len(secondEntries) != 1 || !secondEntries[0].Success || secondEntries[0].Kind != envelope.ResultAck ||
+		secondEntries[0].Run != "run-task-process" || secondEntries[0].Attempt != 1 || secondEntries[0].Fence != 1 {
+		t.Fatalf("restored Outbox not replayed before readiness: %+v", secondEntries)
+	}
+	stopCoorddProcess(t, second)
+
+	restored, err := canonicalFile.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := taskid.ID("task_01ARZ3NDEKTSV4RRFFQ69G5FAV")
+	if restored.Tasks[id].Revision != 2 || restored.Tasks[id].Fence != 1 || restored.Tasks[id].LastEventSeq != 2 {
+		t.Fatalf("Task state changed across Outbox replay: %+v", restored.Tasks[id])
+	}
+	run := restored.Runs["run-task-process"]
+	if run.TaskID != id || run.Status != fsm.Done || run.Attempt != 1 || run.Fence != 1 {
+		t.Fatalf("Task-scoped Run relation/state changed across restart: %+v", run)
+	}
+	if len(restored.Events) != 2 || restored.Events[1].ID != eventID || len(restored.Inbox) != 1 {
+		t.Fatalf("transport delivery changed Task Events or Inbox acceptance: events=%+v inbox=%+v", restored.Events, restored.Inbox)
+	}
+	if _, exists := restored.Outbox[run.RunID]; exists {
+		t.Fatalf("successfully delivered Outbox was not removed: %+v", restored.Outbox[run.RunID])
+	}
+}
+
+func seedCanonicalTaskRestartState(t *testing.T, stateDir string) string {
+	t.Helper()
+	if err := os.MkdirAll(stateDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	id := taskid.ID("task_01ARZ3NDEKTSV4RRFFQ69G5FAV")
+	now := time.Now().UTC().Truncate(time.Second)
+	state := store.EmptyCanonicalState()
+	state.Tasks[id] = task.Task{ID: id, Title: "restart persistence", OwnerID: "owner", Revision: 2, LastEventSeq: 2, Fence: 1,
+		StagePlan: task.StagePlan{Stages: []task.Stage{task.Execution}, PolicyVersion: task.StagePlanPolicyVersion},
+		Status:    task.Completed, CreatedAt: now, UpdatedAt: now.Add(time.Second)}
+	run := fsm.Run{Task: "legacy task label", TaskID: id, RunID: "run-task-process", Attempt: 1, Fence: 1,
+		TargetSHA: strings.Repeat("a", 40), OwnerSession: "executor-session", Worktree: stateDir, Deadline: now.Add(time.Hour), Status: fsm.Done,
+		Result: &envelope.ResultPayload{Outcome: "SUCCESS", Summary: "durable result"}, ResultMessageID: "result-message"}
+	state.Runs[run.RunID] = run
+	created := task.DomainEvent{ID: task.EventID(id, 1), TaskID: id, EventSeq: 1, TaskRevision: 1,
+		Type: task.TaskCreated, ActorID: "owner", CreatedAt: now}
+	transferred := task.DomainEvent{ID: task.EventID(id, 2), TaskID: id, RunID: run.RunID, EventSeq: 2, TaskRevision: 2,
+		TaskFence: 1, Type: task.TaskOwnershipTransferred, CreatedAt: now.Add(time.Second)}
+	state.Events = []task.DomainEvent{created, transferred}
+	env := envelope.Envelope{SchemaVersion: 1, MessageID: "task-outbox-message", Timestamp: now.Add(2 * time.Second),
+		From: "coordd-process-test", To: run.OwnerSession, Kind: envelope.ResultAck, Task: run.Task, Run: run.RunID,
+		Attempt: run.Attempt, Fence: run.Fence, TargetSHA: strings.Repeat("a", 40), InReplyTo: "result-message",
+		ResultAckPayload: &envelope.ResultAckPayload{Outcome: "SUCCESS"}}
+	state.Outbox[run.RunID] = store.OutboxQueue{Messages: []store.OutboxMessage{{Envelope: env, EventID: transferred.ID}}}
+	receipt := store.InboxReceipt{ActorID: "owner", MessageID: "owner-command", TaskID: id, RunID: run.RunID,
+		EventIDs: []string{transferred.ID}, ExpectedRevision: 1, CommittedRevision: 2, RecordedAt: now.Add(time.Second)}
+	state.Inbox[store.InboxKey(receipt.ActorID, receipt.MessageID)] = receipt
+	if err := (checkpoint.CanonicalFile{Path: filepath.Join(stateDir, "canonical.json")}).Save(state); err != nil {
+		t.Fatal(err)
+	}
+	return transferred.ID
 }
 
 func TestCoorddProcessGracefulShutdownReleasesNamespace(t *testing.T) {

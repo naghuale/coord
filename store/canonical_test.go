@@ -186,6 +186,37 @@ func TestCanonicalStateRejectsDanglingInboxEventReference(t *testing.T) {
 	}
 }
 
+func TestCanonicalStartupRejectsInboxEventOutsideCommittedRevision(t *testing.T) {
+	state := taskStateWithRun()
+	id := taskid.ID("task_01ARZ3NDEKTSV4RRFFQ69G5FAV")
+	first := state.Events[1]
+	last := task.DomainEvent{ID: task.EventID(id, 3), TaskID: id, RunID: "run-1", EventSeq: 3,
+		TaskRevision: 3, TaskFence: 1, Type: "WORK_PROGRESS", CreatedAt: state.Tasks[id].UpdatedAt.Add(time.Second)}
+	value := state.Tasks[id]
+	value.Revision, value.LastEventSeq = 3, 3
+	value.UpdatedAt = last.CreatedAt
+	state.Tasks[id] = value
+	state.Events = append(state.Events, last)
+	receipt := InboxReceipt{ActorID: "owner", MessageID: "cmd-1", TaskID: id, RunID: "run-1",
+		EventIDs: []string{first.ID, last.ID}, ExpectedRevision: 2, CommittedRevision: 3, RecordedAt: time.Unix(202, 0).UTC()}
+	state.Inbox[InboxKey(receipt.ActorID, receipt.MessageID)] = receipt
+	if err := ValidateCanonicalState(state); err == nil || !strings.Contains(err.Error(), "outside committed Task revision") {
+		t.Fatalf("ValidateCanonicalState error=%v, want Inbox event revision rejection", err)
+	}
+}
+
+func TestCanonicalStartupRejectsRoleSelectionNotMatchingLatestHistory(t *testing.T) {
+	state := taskStateWithRoleRun(roles.Executor, 1)
+	run := state.Runs["run-1"]
+	selection := *run.RoleSelection
+	selection.AgentID = "different-agent"
+	run.RoleHistory = []roles.Selection{selection}
+	state.Runs[run.RunID] = run
+	if err := ValidateCanonicalState(state); err == nil || !strings.Contains(err.Error(), "selected role must match the latest RoleHistory entry") {
+		t.Fatalf("ValidateCanonicalState error=%v, want RoleHistory mismatch rejection", err)
+	}
+}
+
 func TestCanonicalStateRejectsOutboxReferenceToDifferentRunEvent(t *testing.T) {
 	state := taskStateWithRun()
 	id := taskid.ID("task_01ARZ3NDEKTSV4RRFFQ69G5FAV")
@@ -911,9 +942,6 @@ func TestCanonicalTransitionRejectsTaskRunRoleMutation(t *testing.T) {
 	run.RoleSelection.Profile.Role = roles.Reviewer
 	next.Runs[run.RunID] = run
 	appendTaskDomainEvent(&next, run.TaskID, run.RunID, "ROLE_CHANGED")
-	if err := ValidateCanonicalState(next); err != nil {
-		t.Fatalf("candidate state invalid: %v", err)
-	}
 	if err := ValidateCanonicalTransition(previous, next); err == nil || !strings.Contains(err.Error(), "role is immutable") {
 		t.Fatalf("Run role mutation error=%v; want rejection", err)
 	}
@@ -966,8 +994,10 @@ func TestCanonicalTransitionRequiresRoleSelectionHistory(t *testing.T) {
 			}
 			next.Runs[run.RunID] = run
 			appendTaskDomainEvent(&next, run.TaskID, run.RunID, "ROLE_SELECTION_CHANGED")
-			if err := ValidateCanonicalState(next); err != nil {
-				t.Fatalf("candidate state invalid: %v", err)
+			if tc.wantErr == "" {
+				if err := ValidateCanonicalState(next); err != nil {
+					t.Fatalf("candidate state invalid: %v", err)
+				}
 			}
 			transitionErr := ValidateCanonicalTransition(previous, next)
 			if tc.wantErr != "" {
@@ -1042,7 +1072,7 @@ func TestCanonicalTransitionRejectsExtraTransferMarker(t *testing.T) {
 
 func TestCanonicalTransitionRoleHistoryIsAppendOnly(t *testing.T) {
 	selection := func(agent string, role roles.Role) roles.Selection {
-		return roles.Selection{AgentID: agent, Session: agent, Profile: roles.Profile{Role: role}}
+		return roles.Selection{AgentID: agent, Session: "executor", Profile: roles.Profile{Role: role}}
 	}
 	for _, tc := range []struct {
 		name   string
@@ -1062,6 +1092,8 @@ func TestCanonicalTransitionRoleHistoryIsAppendOnly(t *testing.T) {
 			previous := taskStateWithRoleRun(roles.Executor, 1)
 			run := previous.Runs["run-1"]
 			run.RoleHistory = []roles.Selection{selection("agent-a", roles.Executor), selection("agent-b", roles.Executor), selection("agent-c", roles.Executor)}
+			selected := selection("agent-c", roles.Executor)
+			run.RoleSelection = &selected
 			previous.Runs[run.RunID] = run
 			next, err := copyCanonicalState(previous)
 			if err != nil {
@@ -1071,9 +1103,6 @@ func TestCanonicalTransitionRoleHistoryIsAppendOnly(t *testing.T) {
 			run.RoleHistory = tc.change(run.RoleHistory)
 			next.Runs[run.RunID] = run
 			appendTaskDomainEvent(&next, run.TaskID, run.RunID, "ROLE_HISTORY_UPDATED")
-			if err := ValidateCanonicalState(next); err != nil {
-				t.Fatalf("candidate state invalid: %v", err)
-			}
 			if err := ValidateCanonicalTransition(previous, next); err == nil || !strings.Contains(err.Error(), "RoleHistory is append-only") {
 				t.Fatalf("RoleHistory mutation error=%v; want append-only rejection", err)
 			}
@@ -1083,14 +1112,18 @@ func TestCanonicalTransitionRoleHistoryIsAppendOnly(t *testing.T) {
 	t.Run("append at end", func(t *testing.T) {
 		previous := taskStateWithRoleRun(roles.Executor, 1)
 		run := previous.Runs["run-1"]
-		run.RoleHistory = []roles.Selection{selection("agent-a", roles.Executor)}
+		selected := selection("agent-a", roles.Executor)
+		run.RoleSelection = &selected
+		run.RoleHistory = []roles.Selection{selected}
 		previous.Runs[run.RunID] = run
 		next, err := copyCanonicalState(previous)
 		if err != nil {
 			t.Fatal(err)
 		}
 		run = next.Runs[run.RunID]
-		run.RoleHistory = append(run.RoleHistory, selection("agent-b", roles.Executor))
+		selected = selection("agent-b", roles.Executor)
+		run.RoleSelection = &selected
+		run.RoleHistory = append(run.RoleHistory, selected)
 		next.Runs[run.RunID] = run
 		appendTaskDomainEvent(&next, run.TaskID, run.RunID, "ROLE_HISTORY_UPDATED")
 		if err := ValidateCanonicalState(next); err != nil {
@@ -1223,6 +1256,7 @@ func taskStateWithRoleRun(role roles.Role, attempt uint64) CanonicalState {
 	run.Attempt = attempt
 	run.RequiredRole = roles.Requirement{Role: role}
 	run.RoleSelection = &roles.Selection{AgentID: "agent-" + strings.ToLower(string(role)), Session: run.OwnerSession, Profile: roles.Profile{Role: role}}
+	run.RoleHistory = []roles.Selection{*run.RoleSelection}
 	state.Runs[run.RunID] = run
 	return state
 }
@@ -1272,11 +1306,11 @@ func ownershipTransferCandidate(t *testing.T, previous CanonicalState, runID str
 	next.Tasks[id] = taskValue
 	if _, exists := next.Runs[runID]; !exists {
 		owner := "agent-" + strings.ToLower(string(role))
+		selection := roles.Selection{AgentID: owner, Session: owner, Profile: roles.Profile{Role: role}}
 		next.Runs[runID] = fsm.Run{
 			Task: "legacy label", TaskID: id, RunID: runID, Attempt: attempt, Fence: fence,
 			OwnerSession: owner, Worktree: "worktree", Deadline: taskValue.UpdatedAt.Add(time.Hour), Status: fsm.Pending,
-			RequiredRole:  roles.Requirement{Role: role},
-			RoleSelection: &roles.Selection{AgentID: owner, Session: owner, Profile: roles.Profile{Role: role}},
+			RequiredRole: roles.Requirement{Role: role}, RoleSelection: &selection, RoleHistory: []roles.Selection{selection},
 		}
 	}
 	next.Events = append(next.Events, task.DomainEvent{

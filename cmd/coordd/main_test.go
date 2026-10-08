@@ -13,6 +13,8 @@ import (
 	"coord/internal/filelock"
 	"coord/roles"
 	"coord/store"
+	"coord/task"
+	"coord/taskid"
 	"coord/transport"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -38,6 +40,11 @@ type idleTransport struct {
 	sendErr error
 	sent    int
 }
+
+// Keep helper-owned storage roots alive for the lifetime of the subprocess.
+// Otherwise GC can close the flock file descriptor and make the lock test flaky.
+var processHelperStore *store.Store
+var processHelperCoordinator *coord.Coordinator
 
 func (t *idleTransport) WhoAmI() string { return t.session }
 func (t *idleTransport) Send(context.Context, string, envelope.Envelope) error {
@@ -310,6 +317,68 @@ func TestCoorddUnknownCanonicalSchemaKeepsNotReady(t *testing.T) {
 	}
 }
 
+func TestCoorddReadinessRejectsInvalidCanonicalState(t *testing.T) {
+	cfg := testConfig(t)
+	cfg.ControlAddr, cfg.MetricsAddr = freeLoopbackAddrs(t)
+	if err := os.MkdirAll(cfg.StateDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(cfg.StateDir, "canonical.json")
+	id := taskid.ID("task_01ARZ3NDEKTSV4RRFFQ69G5FAV")
+	now := time.Unix(100, 0).UTC()
+	stage := task.Execution
+	state := store.EmptyCanonicalState()
+	state.Tasks[id] = task.Task{ID: id, Title: "task", OwnerID: "owner", Revision: 1, LastEventSeq: 2,
+		StagePlan:    task.StagePlan{Stages: []task.Stage{task.Execution}, PolicyVersion: task.StagePlanPolicyVersion},
+		CurrentStage: &stage, Status: task.Pending, CreatedAt: now, UpdatedAt: now}
+	state.Events = []task.DomainEvent{{ID: task.EventID(id, 1), TaskID: id, EventSeq: 1, TaskRevision: 1,
+		Type: task.TaskCreated, ActorID: "owner", CreatedAt: now}}
+	seed, err := json.Marshal(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, seed, 0600); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	factoryCalled := make(chan struct{}, 1)
+	done := make(chan error, 1)
+	go func() {
+		done <- runWithWriter(ctx, cfg, func(context.Context, coorddconfig.Config) (transport.Transport, func() error, error) {
+			factoryCalled <- struct{}{}
+			return nil, nil, errors.New("transport must not start")
+		}, io.Discard)
+	}()
+	waitForStatus(t, "http://"+cfg.ControlAddr+"/readyz", http.StatusServiceUnavailable)
+	response, err := http.Get("http://" + cfg.ControlAddr + "/readyz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, readErr := io.ReadAll(response.Body)
+	_ = response.Body.Close()
+	if readErr != nil || !strings.Contains(string(body), "event history does not reach last event sequence") {
+		t.Fatalf("/readyz body=%q readErr=%v; want ValidateCanonicalState event-history failure", body, readErr)
+	}
+	select {
+	case <-factoryCalled:
+		t.Fatal("transport started with invalid canonical state")
+	default:
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("diagnostic runtime shutdown: %v", err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || string(after) != string(before) {
+		t.Fatalf("invalid canonical snapshot changed: err=%v", err)
+	}
+}
+
 func waitForStatus(t *testing.T, url string, want int) {
 	t.Helper()
 	client := &http.Client{Timeout: 250 * time.Millisecond}
@@ -473,9 +542,13 @@ func TestStoreAndFilelockHelperProcess(t *testing.T) {
 			time.Sleep(time.Hour)
 		}
 	case "seed_run", "seed_result":
-		seedHelper(os.Getenv("COORDD_HELPER_STATE"), os.Getenv("COORDD_HELPER_MODE") == "seed_result")
+		processHelperCoordinator, processHelperStore = seedHelper(os.Getenv("COORDD_HELPER_STATE"), os.Getenv("COORDD_HELPER_MODE") == "seed_result")
 		_, _ = os.Stdout.WriteString("SEEDED\n")
-		select {}
+		for {
+			runtime.KeepAlive(processHelperCoordinator)
+			runtime.KeepAlive(processHelperStore)
+			time.Sleep(time.Hour)
+		}
 	case "inspect":
 		inspectHelper(os.Getenv("COORDD_HELPER_STATE"))
 	case "replay":
@@ -650,7 +723,7 @@ func TestStoreProcessRestartPreservesCommittedResult(t *testing.T) {
 	}
 }
 
-func seedHelper(stateDir string, terminal bool) {
+func seedHelper(stateDir string, terminal bool) (*coord.Coordinator, *store.Store) {
 	snapshot, err := store.New(checkpoint.File{Path: filepath.Join(stateDir, "runs.json")})
 	if err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err)
@@ -691,6 +764,7 @@ func seedHelper(stateDir string, terminal bool) {
 			stored, _ = snapshot.Get(run.RunID)
 		}
 	}
+	return coordinator, snapshot
 }
 
 func inspectHelper(stateDir string) {

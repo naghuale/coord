@@ -241,6 +241,9 @@ func validateInbox(state CanonicalState) error {
 			if !ok || event.TaskID != receipt.TaskID || (receipt.RunID != "" && event.RunID != receipt.RunID) {
 				return fmt.Errorf("inbox receipt %q references missing or unrelated DomainEvent %q", key, eventID)
 			}
+			if event.TaskRevision != receipt.CommittedRevision {
+				return fmt.Errorf("inbox receipt %q references DomainEvent %q outside committed Task revision %d", key, eventID, receipt.CommittedRevision)
+			}
 			if seen[eventID] {
 				return fmt.Errorf("inbox receipt %q repeats DomainEvent %q", key, eventID)
 			}
@@ -949,6 +952,9 @@ func validateTaskRunRole(run fsm.Run) error {
 	}
 	if run.RoleSelection.Session != run.OwnerSession {
 		return fmt.Errorf("selected role session must match Run owner session")
+	}
+	if len(run.RoleHistory) == 0 || !reflect.DeepEqual(run.RoleHistory[len(run.RoleHistory)-1], *run.RoleSelection) {
+		return fmt.Errorf("selected role must match the latest RoleHistory entry")
 	}
 	return nil
 }

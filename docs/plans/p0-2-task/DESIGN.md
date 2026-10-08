@@ -404,10 +404,17 @@ readiness поэтапно.
 5. **22b:** проверка Task.Fence и всех Run fence snapshots; отсутствие конкурирующих
    active writers на Task. Нарушение держит daemon not-ready (RT-03 шаг 5,
    RT-06, ST-04).
-6. Восстановление индексов/проекций в памяти из единственного canonical
-   snapshot; это не создаёт персистентную копию.
-7. Reopen после неопределённой ошибки commit, повторную применимую validation и
-   закрытие mutations до успешного завершения (RT-03, ST-03).
+6. Отдельных persisted или in-memory индексов canonical модели пока нет.
+   `CanonicalStore` загружает единственный snapshot, а Run compatibility
+   projection восстанавливает из canonical `Runs` и top-level Outbox через
+   `hydrateRuns`; это не создаёт вторую persisted копию. Проверки:
+   `TestCanonicalRunStorePersistsSingleTopLevelOutbox` и
+   `TestCoorddRestartRestoresCanonicalTaskStateAndOutbox`.
+7. После неопределённой ошибки commit failed handle отклоняет дальнейшие
+   mutations; новый `CanonicalStore` загружает фактический snapshot и повторно
+   проверяет его до разрешения записи. Проверка:
+   `TestCanonicalCommitFailureRequiresReopenAndRevalidatesDurableState` (RT-03,
+   ST-03).
 
 Если загрузка canonical state обнаружила неизвестную schema version,
 compatibility lock занят legacy writer либо проверка legacy `runs.json`
@@ -535,11 +542,22 @@ P0-2 обязан оставить совместимость с текущим 
   RecoveryNeeded и RecoveryClaim.
   Production Task command path и проверка входного message Fence против
   `Task.Fence` остаются открытыми.
-- Осталось до завершения 22b: полная structural/reference validation за
-  пределами текущих проверок и startup rejection для всех нарушений. По решению
-  OWNER R69 Owner authorization boundary и production commands не входят в P0-2;
-  принятая Owner и Agent command-boundary модели являются обязательными
-  зависимостями P0-3 (см. ROADMAP и `COMMAND-BOUNDARY.md`).
+- Storage validation P0-2 включает fail-closed startup-проверки: schema и
+  обязательные коллекции; Task/Run identity и значения; ссылки Run→Task,
+  Event→Task/Run, Outbox→Run/Event и Inbox→Task/Run/Event; единственный активный
+  writer и согласованные Task/Run Fence; непрерывные EventSeq/TaskRevision,
+  создание Task, transfer marker и цепочку Fence; Inbox receipt с EventIDs
+  только из `CommittedRevision`; RoleSelection, совпадающий с последней записью
+  RoleHistory. Прямые проверки последних двух правил —
+  `TestCanonicalStartupRejectsInboxEventOutsideCommittedRevision` и
+  `TestCanonicalStartupRejectsRoleSelectionNotMatchingLatestHistory`.
+- Полнота Profile и реестр допустимых EventType остаются открытыми вопросами
+  контракта и не являются критерием завершения P0-2. Owner authorization,
+  production commands, проверка входного message Fence до dedup/side effects,
+  Fence в Outbox envelope относительно Task.Fence и production Assign/Tick/
+  recovery гарантия одного writer перенесены в P0-3 решением OWNER R100.
+  Принятые Owner и Agent command-boundary модели остаются зависимостями P0-3
+  (см. ROADMAP и `COMMAND-BOUNDARY.md`).
 
 ### Полный P0-2: Task aggregate и транзакции
 
@@ -554,13 +572,18 @@ boundary.
   переинтерпретации (`TestCanonicalStateValidatesTaskEventAndRunRelations`).
 - Task, Run, DomainEvent, Outbox и обязательный Inbox receipt либо все commit,
   либо ни один; после ошибки памяти не публикуется и новые writes закрыты до
-  reopen (`TestCanonicalTransitionCommitsStateEventOutboxAtomically` (целевой),
-  `TestCanonicalCommitFailureDoesNotPublishOrContinue`).
-- Task.Fence authoritative, монотонен, сравнивается до дедупликации/ownership
-  side effects; recovery/rework не оставляют двух writers
-  (`TestTaskFenceIsAuthoritativeAndMonotonic` (целевой),
-  `TestRecoveryAcrossRunsRejectsOldTaskFence` (целевой),
-  `TestAssignTickRecoveryFailClosedWithMultipleWriters` (целевой)).
+  reopen (`TestCanonicalTransitionCommitsStateEventOutboxAtomically`,
+  `TestCanonicalCommitFailureDoesNotPublishOrContinue`). Успешный тест проверяет
+  один durable Save и повторное чтение всех пяти частей из canonical snapshot.
+- Task.Fence — авторитетное монотонное поле canonical storage; transition
+  проверяет согласованность Fence, transfer event и отсутствие нескольких
+  активных Task-scoped writers (`TestCanonicalTransitionRejectsSecondActiveWriter`,
+  `TestCanonicalTransitionRecoveryPreservesAttemptAndIncrementsTaskFence`).
+  Сравнение входного message Fence до dedup/ownership side effects,
+  `TestTaskFenceIsAuthoritativeAndMonotonic`,
+  `TestRecoveryAcrossRunsRejectsOldTaskFence`,
+  `TestAssignTickRecoveryFailClosedWithMultipleWriters` и проверка Fence Outbox
+  envelope относительно Task.Fence перенесены в P0-3 решением OWNER R100.
 - Legacy state с незавершённым Run удерживает daemon not-ready, а только
   терминальные legacy Runs не открываются на запись и не считаются canonical
   (`TestCoorddActiveLegacyRunKeepsNotReadyWithoutStartingTransport`,
@@ -570,11 +593,13 @@ boundary.
   (`TestCoorddUnknownCanonicalSchemaKeepsNotReady`).
 - Повреждённая/неподдерживаемая CanonicalState, висячая ссылка либо нарушение
   Fence/Writer/Event/Inbox/Outbox consistency блокирует `/readyz` и mutation
-  (`TestCoorddReadinessRejectsInvalidCanonicalState` (целевой)).
+  (`TestCoorddReadinessRejectsInvalidCanonicalState`). Тест сверяет сообщение
+  причины, отсутствие запуска transport и неизменность исходного snapshot.
 - После restart сохраняются TaskID, Task/Run relation, Fence, Event Log,
   dedup receipts и незавершённый Outbox; доставленный transport ACK не
-  подменяет Domain acceptance
-  (`TestCoorddRestartRestoresCanonicalTaskStateAndOutbox` (целевой)).
+  подменяет Domain acceptance (`TestCoorddRestartRestoresCanonicalTaskStateAndOutbox`).
+  Проверка использует terminal Task-scoped Run: Outbox сохраняет EventID после
+  первой неудачной доставки и replay не меняет Task Revision, Events или Inbox.
 - Все ранее принятые P0-1 process acceptance и существующие Run retry/recovery
   tests остаются зелёными; тесты текущего per-Run Fence продолжают защищать
   wire-совместимость до P0-3.
