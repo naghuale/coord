@@ -28,7 +28,7 @@
 | External References | нет | ADR-0003 |
 | Startup Card, read-only API, Dashboard | нет: read-only API Task не написан, ни один endpoint не отдаёт проекцию Task. Внешний control interface у daemon есть (bearer-token handler, `control.go:20-36`), но его `GET /runs` возвращает только stalled-результаты для supervisor recovery — это не `RunViewStatus` и не проекция Task | ADR-0001; ADR-0006 (не написан) |
 | Project/Task Brief | Proposed: MVP остаётся контрактом, а не функцией; данных Task и Run уже достаточно, отсутствует read-only API для Task. Проекция сессии в `internal/rooms` — legacy и опорой Brief не служит | ADR-0007 |
-| Автономная приёмка и git commit | Proposed; до пересмотра — ручной commit по AGENTS.md «Commit Readiness» | ADR-0008 |
+| Автономная приёмка и git commit | Proposed; до пересмотра — локальный commit координатором по AGENTS.md «Commit Readiness» (R127) | ADR-0008 |
 
 ## Номера ADR
 
