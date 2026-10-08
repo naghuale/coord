@@ -37,14 +37,27 @@ label для корреляции исполнения; его историче�
 Одно agent_id может иметь несколько session addresses. Проверка независимости
 AUDITOR использует agent_id и историю владельцев, а не название модели или адрес.
 
-`coordd` хранит Run runtime в versioned `canonical.json`; перед ним удерживаются
-namespace lock и временный compatibility lock `runs.json.lock`. Legacy snapshot
-не импортируется: активный Run или неизвестная schema оставляет daemon в
-diagnostic-only `NOT_READY`. В P0-2 появились typed `task.Task`, `DomainEvent` и
-внутренний atomic Task creation path. Операторские команды, production Task
-assignment, полная Task FSM и верхнеуровневые Inbox/Outbox ещё не подключены.
-`fsm.Run.TaskID` является отдельной связью и может быть пустым только у
-переходного legacy Run; `Run.Task` не переинтерпретируется.
+`coordd` владеет versioned `canonical.json` (Task, Run, DomainEvent, Inbox и
+Outbox) и `roles.json` (role registry); startup валидирует canonical state, а
+изменение Task/Event/Outbox/Inbox receipt сохраняется одной durable mutation.
+Процесс удерживает `namespace.lock`, storage locks и временный compatibility
+lock `runs.json.lock`. Legacy `runs.json` только читается при startup: активный
+Run или неизвестная schema оставляет daemon в diagnostic-only `NOT_READY`,
+импорта нет. P0-2 завершён, но production Task command path, операторские
+команды, полная Task FSM и проверка входного Task Fence ещё не подключены; эти
+работы остаются в P0-3. `fsm.Run.TaskID` является отдельной связью и может быть
+пустым только у переходного legacy Run; `Run.Task` не переинтерпретируется.
+
+У проекта пока несколько отдельных runtime state owners. Локальный
+`cmd/coord`/localchat пишет legacy `runs.json`, `rooms.json`, `connection.json`,
+`answers/<run>.json`, `executors/<run>.json`, `events.jsonl`, `owner.key` и
+credential-файлы `clients/<session>-<generation>.json`. Standalone
+`cmd/coord-telepathy` host/worker пишет `runs.json`, `binding.json`,
+`executor.json` и `task.json`; эти файлы принадлежат transport/executor
+сценарию, а не canonical Task model. Rooms history export создаёт отдельную
+Git-проекцию `history/projection.json`, а `daemon.log` — диагностический журнал
+локального CLI. Эти legacy и standalone процессы не входят в namespace lock
+`coordd`; production mutations должны перейти на daemon command path в P0-3.
 
 ## Рабочий цикл
 

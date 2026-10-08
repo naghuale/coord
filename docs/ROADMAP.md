@@ -32,12 +32,13 @@ owner capability; scoped service identity остаётся открытой гр
 | До P0-1 | Заморозка legacy Rooms | ADR-0001 шаг 1 | `internal/rooms`, `state/rooms` и `rooms.json` поддерживаются только bugfix/stability/compatibility; запрещены новые workflow-функции, состояния и сущности |
 | Выполнено локально | Telepathy 0.8.0 MCP byte bridge и standalone CLI | — | Подписанный полный lifecycle и worker restart проверены make test-telepathy-host; arbitrary frontend и canonical Crewflow отдельно |
 | P0-1 | Daemon runtime skeleton | Заморозка legacy Rooms; ADR-0001 шаг 6; ADR-0004 RT-01…RT-04; ADR-0005 ST-01…ST-06 | Production executable composition, ownership namespace, lifecycle, control/metrics и process-kill acceptance для текущего Run snapshot; design: [P0-1 Daemon Runtime](plans/p0-daemon/DESIGN.md) |
-| P0-2 | Canonical Task state и TaskID adoption | P0-1: закоммиченный каркас `89a77b4` удовлетворяет зависимости P0-2 по R82; полная приёмка P0-1 остаётся OPEN; ADR-0001 шаг 7; ADR-0003; ADR-0004 RT-04/RT-06; ADR-0005 ST-01/ST-04/ST-05/ST-06; TM-01…TM-04, TM-06 (storage contract) | Task aggregate использует `task_<ULID>`; Task↔Run mapping не выводится из `fsm.Run.Task`; Task.Fence authoritative; state/event/outbox/inbox атомарны. `OwnerID` хранится как principal reference, но P0-2 не аутентифицирует его. Canonical snapshot использует начальную schema v1; неизвестная версия отвергается без записи. Будущий переход схемы требует отдельной процедуры и backup по ST-05; `runs.json` не импортируется. Internal Inbox dedup не заменяет Owner и agent command boundaries, указанные как обязательные зависимости P0-3; статический control token и legacy Rooms auth не заменяют эти контракты. До P0-3 daemon удерживает compatibility lock `runs.json`, а неизвестная схема/активный legacy Run оставляет diagnostic-only `NOT_READY`; design: [P0-2 Canonical Task State](plans/p0-2-task/DESIGN.md) |
+| P0-2 | Canonical Task state и TaskID adoption | P0-1: закоммиченный каркас `89a77b4` удовлетворяет зависимости P0-2 по R82; полная приёмка P0-1 остаётся OPEN; ADR-0001 шаг 7; ADR-0003; ADR-0004 RT-04/RT-06; ADR-0005 ST-01/ST-04/ST-05/ST-06; TM-01…TM-04, TM-06 (storage contract) | **Выполнено** коммитами `be7820a`, `f280440`, `66c0ddf`, `8eb6e38`. Canonical snapshot schema v1 хранит Task aggregate, явную связь Task↔Run, Task.Fence, DomainEvent, Inbox и Outbox; commit атомарен, startup validation и restart/replay проверены. `OwnerID` остаётся principal reference без аутентификации; production command/write path не подключён. `runs.json` не импортируется; до P0-3 daemon удерживает compatibility lock, а неизвестная схема/активный legacy Run оставляет diagnostic-only `NOT_READY`. Проверки входного Task Fence, передачи между Runs, Assign/Tick/recovery при нескольких writers и Fence в Outbox envelope перенесены решением OWNER R100 в P0-3. Полнота Profile и реестр EventType остаются вне критерия P0-2; design: [P0-2 Canonical Task State](plans/p0-2-task/DESIGN.md) |
 | После P0-2 | Review/Audit и Discussion Graph | P0-2; ADR-0001 шаги 8–9, CM-08 | ReviewResult и AuditResult — структурированные канонические результаты; конфликт Review/Audit фиксируется DomainEvent и Discussion fact до Owner escalation, решение Owner ссылается на конфликт; Discussion nodes/edges строятся из событий без второй авторитетной копии |
 | После Discussion Graph | Ограниченная Shadow Validation | P0-2; ADR-0001 шаг 10 | Новая модель сверяется с legacy только по фактам с однозначным соответствием; нет двойной записи и ложных равенств `room participant = Run`, `room message = DomainEvent` |
 | До P0-3 | Owner command boundary | R69/R70; [проект границы команд Task](plans/p0-2-task/COMMAND-BOUNDARY.md) | Проект принят OWNER после проверки Task-scoped capability, OwnerAuthSession/event/receipt model, доверенного подтверждения конкретной команды, защиты от replay и обновления схемы; до принятия Owner write path не подключается |
 | До P0-3 | Agent command boundary | ADR-0001 шаг 11; ADR-0004 RT-04/RT-06; P0-2 | Принят отдельный проект команд агента: stable agent identity, session generation, RunID/Attempt/TaskID/Task.Fence, ограничения роли и worktree/artifact references, stale/replay handling; все проверки и Domain Event/Inbox/Outbox фиксируются через одну daemon command boundary. До принятия agent write path не подключается |
 | P0-3 | Production write path через daemon | P0-2, Review/Audit + Discussion Graph, Shadow Validation, принятые Owner и Agent command boundary projects; ADR-0001 шаг 11; ADR-0004 RT-04 | Все production CLI-команды и Telepathy agent writes, меняющие каноническое состояние, проходят daemon command boundary; localchat/transport adapters не пишут его напрямую. Проверяются TaskID, RunID, Attempt, generation, входной Task.Fence до dedup/ownership side effects и разрешённость команды; delivery не означает acceptance. Recovery/rework/Assign/Tick не создают второго Task writer; входящее сообщение старого Run с прежним Task Fence отвергается. Outbox envelope Fence сверяется с принятой семантикой Task.Fence при retry/recovery. Targets: `TestTaskFenceIsAuthoritativeAndMonotonic`, `TestRecoveryAcrossRunsRejectsOldTaskFence`, `TestAssignTickRecoveryFailClosedWithMultipleWriters`. Worktree и ссылки на артефакты результата принадлежат назначенному worktree. Свободный текст проходит quarantine/redaction до durable записи; history export и диагностические логи отдельно проверяются на отсутствие исходного секрета. Секрет/MFA передаётся защищённым каналом напрямую получателю, Coord хранит только безопасную ссылку и проверяемый исход (CM-06, CM-09, TM-25); отказ не меняет состояние |
+| P0-3 | Production write path через daemon | P0-2, Review/Audit + Discussion Graph, Shadow Validation, принятые Owner и Agent command boundary projects; ADR-0001 шаг 11; ADR-0004 RT-04; решение OWNER R100 | Все production CLI-команды и Telepathy agent writes, меняющие каноническое состояние, проходят daemon command boundary; localchat/transport adapters не пишут его напрямую. Проверяются TaskID, RunID, Attempt, generation, входной Task.Fence до dedup/ownership side effects и разрешённость команды; delivery не означает acceptance. Recovery/rework/Assign/Tick не создают второго Task writer; входящее сообщение старого Run с прежним Task Fence отвергается. Outbox envelope Fence сверяется с принятой семантикой Task.Fence при retry/recovery. Targets: `TestTaskFenceIsAuthoritativeAndMonotonic`, `TestRecoveryAcrossRunsRejectsOldTaskFence`, `TestAssignTickRecoveryFailClosedWithMultipleWriters`. Worktree и ссылки на артефакты результата принадлежат назначенному worktree. Свободный текст проходит quarantine/redaction до durable записи; history export и диагностические логи отдельно проверяются на отсутствие исходного секрета. Секрет/MFA передаётся защищённым каналом напрямую получателю, Coord хранит только безопасную ссылку и проверяемый исход (CM-06, CM-09, TM-25); отказ не меняет состояние |
 | P0-4 | Production executor lifecycle и writer lock | P0-2, P0-3; ADR-0004 RT-06 | Повторный TASK не запускает второй writer; ABORT/lease loss прекращают writer; неоднозначный restart не повторяет произвольные side effects; у каждой Task свой worktree и writer lock |
 | До P0-5 | Supervisor и OS identity/isolation ADR | R70; P0-1…P0-4; ADR-0004 RT-02/RT-03/RT-06 | Приняты deployment model и поддерживаемые платформы; отдельная OS identity агентов от Owner/daemon; правила доступа к owner credentials, worktree, `/tmp`, toolchain и кэшам; проверяемый stop proof, fail-closed политика без поддерживаемой изоляции и требования CI |
 | P0-5 | Supervisor конкретной установки | P0-1…P0-4; принятый Supervisor и OS identity/isolation ADR; ADR-0004 RT-03/RT-06; Linux CI с поддерживаемым механизмом изоляции (CI в репозитории пока нет); решение OWNER R70 | Fence/stop proof подтверждает остановку writer до transfer; replacement ждёт TASK; failed spawn очищается; process acceptance пройдена на целевом окружении. Supervisor запускает agent processes под отдельной OS identity, отличной от Owner и daemon; owner credentials и интерактивная авторизация недоступны агентам. Executor изолирован ОС: запись только в назначенный worktree, приватный `/tmp`, toolchain и кэши — только чтение; доступ вне worktree — только по выданному OWNER праву. Без поддерживаемой изоляции (сейчас — только Linux) executor не запускается, fail-closed; production-конфигурация не может отключить изоляцию; в тестах изоляция подставляется через интерфейс. Гарантии изоляции принимаются только из Linux CI с поддерживаемым backend; зелёные тесты на неподдерживаемой платформе изоляцию не доказывают. В обязательной CI-задаче изоляции недоступность backend — провал теста, а не `t.Skip` (переменная окружения требует изоляцию); пропуск допустим только для macOS/локальных прогонов |
@@ -75,22 +76,41 @@ executor lifecycle: worker привязан к одной заранее нас�
 к canonical Task daemon, а произвольные daemonizing subprocess остаются вне его
 гарантий.
 
-Для coordinator host ранее был проверен только in-process reopen Run snapshot;
-этот сценарий сам по себе не доказывает process recovery. Теперь добавлен
-`coordd` executable и process acceptance на реальной composition: SIGKILL/restart,
-отказ второго writer до открытия snapshots, Run/outbox replay до readiness,
-сохранение RESULT receipt и SIGTERM shutdown. Это покрывает skeleton P0-1 для
-текущего Run snapshot, но не canonical Task state и не production supervisor
-stop proof; P0-1 остаётся открытым до общей проверки репозитория и согласования
-всех эксплуатационных критериев. Design и проверяемые критерии описаны в
-[plans/p0-daemon/DESIGN.md](plans/p0-daemon/DESIGN.md). P0-1 не закрывает P0-2
-(Task/Event/Outbox), P0-3 (production write path через daemon), P0-4 (production executor)
-или P0-5 (изоляция ОС и stop proof).
+`coordd` теперь восстанавливает canonical Task state и Outbox вместе с Run state;
+P0-2 завершён и подтверждён коммитами, указанными в таблице. P0-1 process
+acceptance на реальной composition покрывает SIGKILL/restart, отказ второго
+writer, Run/outbox replay до readiness, сохранение RESULT receipt и SIGTERM
+shutdown. Полная приёмка P0-1 остаётся OPEN до общей проверки репозитория и
+согласования всех эксплуатационных критериев. Текущие process tests не доказывают
+production Task command path, supervisor stop proof, изоляцию ОС или полный
+production lifecycle executor; эти границы остаются в P0-3…P0-5. См.
+[P0-1 Daemon Runtime](plans/p0-daemon/DESIGN.md) и
+[проверяемые сценарии](VERIFICATION.md).
 
-Пакет `taskid` пока является проверенным самостоятельным строительным блоком,
-а не активным ограничением идентичности в runtime. Его тесты не подтверждают
-валидацию TaskID в Run, snapshot, wire protocol или миграции; это входит в
-интеграцию canonical Task aggregate.
+### Текущие runtime-файлы и владельцы записи
+
+- `coordd`: `canonical.json` (canonical Task/Run/Event/Inbox/Outbox snapshot) и
+  `roles.json` (role registry). `namespace.lock`, `canonical.json.lock` и
+  `roles.json.lock` — lock-файлы; `runs.json.lock` удерживается как временный
+  compatibility lock, а сам legacy `runs.json` только читается для проверки и
+  не импортируется и не перезаписывается.
+- Локальный `cmd/coord`/localchat runtime имеет отдельное legacy состояние:
+  `runs.json`, `rooms.json`, `connection.json`, `answers/<run>.json`,
+  `executors/<run>.json`, `events.jsonl`, `owner.key` и
+  `clients/<session>-<generation>.json`. Это Run/Rooms, routing, handoff,
+  transport journal, credential или executor state; это не canonical Task
+  aggregate `coordd`.
+- Отдельный `cmd/coord-telepathy` host сохраняет `runs.json` и
+  `binding.json`; его worker сохраняет `executor.json` и полученный `task.json`.
+  Это одно-run transport/executor state, а не production Task command path.
+- Rooms history export пишет `.coord-history` и `history/projection.json` в
+  отдельный Git projection directory. `daemon.log` — append-only log локального
+  `cmd/coord`, не источник состояния. Demo, examples, integration harness и
+  тесты имеют собственные пути записи и не считаются production runtime.
+
+Эти процессы и их каталоги состояния не образуют общего writer boundary. P0-3
+должен перевести production mutations на `coordd` command path; перечисление
+legacy файлов не означает, что они уже подчинены namespace lock `coordd`.
 
 Локальный reference host CLI/subprocess находится в examples/agent. Он проверен
 с тестовым executable, включая process-group cancellation, и не заменяет

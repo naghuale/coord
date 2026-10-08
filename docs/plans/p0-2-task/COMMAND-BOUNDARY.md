@@ -42,6 +42,13 @@ authorization» в DESIGN.md. Пункт 4 (свободный текст в с�
 реализовано». ADR-0006, в котором RT-05 предписывает определить аутентификацию,
 не написан.
 
+Расхождение норм (ждёт решения OWNER). ADR-0004 RT-05 (Accepted): «IPC/HTTP и
+аутентификация определяются в ADR-0006». ROADMAP ставит ADR-0006 после P0-3 и
+ограничивает его read API и проекциями, а аутентификацию Owner по R69 делает
+зависимостью до P0-3 через этот проект. Пока OWNER не выбрал, правится
+ссылка в RT-05 или порядок в ROADMAP, этот документ не может считаться
+согласованным с Accepted ADR.
+
 ## 2. Порядок работ (решено OWNER, R69)
 
 Противоречие, найденное при написании проекта: ROADMAP относил
@@ -128,6 +135,13 @@ Challenge — это не просто «хеш команды». Daemon выд�
 - ожидаемую Revision и generation сессии;
 - одноразовый nonce и срок действия.
 
+Для создания Task TaskID и Revision ещё нет. Challenge создания содержит вместо
+них: действие `create`, PrincipalID (будущий `OwnerID`), хеш канонически
+сериализованных параметров создания и generation сессии. TaskID назначает
+daemon после проверки подтверждения, в том же durable commit; подтверждение
+поэтому привязано к параметрам, а не к TaskID. Повтор той же команды отсекается
+по message ID и nonce, а не по ожидаемой Revision.
+
 Daemon помечает nonce использованным в том же durable commit, что и команду.
 Неиспользованные nonce после перезапуска daemon недействительны (fail-closed).
 Подтверждение с истёкшим, повторным или выданным на другую команду nonce
@@ -190,10 +204,12 @@ OS user может её прочитать. Подтверждение одно�
 изменение с собственными тестами, а не молчаливое обобщение.
 - Открытие новой сессии повышает `Generation` монотонно; все capability старых
   generation перестают действовать без отдельного отзыва.
-- Хранение в каноническом состоянии меняет схему. `CanonicalSchemaVersion = 1`
-  ещё не закоммичен, поэтому поле добавляется в версию 1 до первого коммита
-  canonical.json, либо отдельным переходом схемы по ST-05. Владелец
-  `store/canonical.go` — Codex; изменение согласуется с ним.
+- Хранение в каноническом состоянии меняет схему. Schema v1 уже закоммичена
+  (P0-2, `be7820a`…`8eb6e38`), но production-записи пока нет. Возможны два
+  пути: добавить поле в v1 до первой production-записи отдельным решением
+  OWNER, как это сделал R85 для `task_fence`, либо выполнить переход схемы
+  по ST-05. Выбор — решение OWNER. Владелец `store/canonical.go` — Codex;
+  изменение согласуется с ним.
 
 ### 3.3. Capability
 
@@ -210,11 +226,17 @@ OS user может её прочитать. Подтверждение одно�
 
 1. Аутентификация запроса → principal.
 2. `Generation` из capability равен текущей generation principal.
-3. TaskID и действие команды входят в scope capability.
+3. TaskID и действие команды входят в scope capability; для создания —
+   capability содержит действие `create` без TaskID.
 4. `Task.OwnerID == PrincipalID`; при создании `OwnerID` берётся из principal, а
    не из тела запроса.
-5. Ожидаемая `Revision` из запроса равна `Task.Revision` (TM-06).
-6. `Task.Fence` и допустимость перехода (RT-06, TASK-MODEL).
+5. Ожидаемая `Revision` из запроса равна `Task.Revision` (TM-06). При создании
+   пункт заменяется двумя проверками: message ID и nonce ещё не использованы;
+   message ID, действие, PrincipalID, хеш параметров и generation запроса
+   совпадают с теми, что связаны в подтверждённом challenge. Уникальный, но
+   другой message ID или другие параметры — отказ.
+6. `Task.Fence` и допустимость перехода (RT-06, TASK-MODEL). При создании
+   Fence равен 0 (R94).
 7. Переход, DomainEvent, Inbox receipt и Outbox — один durable commit (RT-04).
 
 Каждый отказ имеет свой код ошибки. Отказ ничего не пишет, кроме
@@ -235,6 +257,7 @@ OS user может её прочитать. Подтверждение одно�
 | 4 | TestTaskCommandIgnoresOwnerIDFromBody | OwnerID берётся из тела запроса |
 | 4 | TestTaskCommandRejectsNonOwnerPrincipal | сравнение OwnerID отключено |
 | 5 | TestTaskCommandRejectsStaleRevision | сравнение Revision отключено |
+| 5 (create) | TestTaskCreateRejectsCommandNotBoundToChallenge | сравнение message ID или хеша параметров с challenge отключено (challenge на создание A, запрос с новым message ID или параметрами B) |
 | порядок | TestTaskCommandChecksAuthorizationBeforeRevision | шаги 2–4 перенесены после 5 |
 | 7 | TestTaskCommandCommitsEventReceiptAtomically | событие пишется вторым commit |
 
