@@ -1,5 +1,42 @@
 # История изменений
 
+## 2026-10-08 — Документация: устранение дрейфа (DOC-DRIFT-1)
+
+- (документация) ADR-0005, контекст: Run-only `store.Persistence` и
+  `checkpoint.File` описаны как сохранённый слой с путями в коде
+  (`store/store.go:18-21`, `:106-133`), добавлен канонический слой —
+  `store.CanonicalPersistence` (`store/canonical.go:87-94`) и
+  `checkpoint.CanonicalFile` (`checkpoint/canonical.go:25-63`, `:65-74`), который
+  открывает `coordd` (`cmd/coordd/main.go:107`). В решении уточнено, что
+  Run-only persistence остаётся недостаточным контрактом, а требуемый контракт
+  реализован отдельно. Нормы и статус Accepted не менялись.
+- (документация) ADR-0007, MVP: «ни одно из требований не реализовано» заменено на
+  фактическое состояние на дату — TaskID adoption и канонический Task aggregate
+  реализованы (`TestCreateTaskGeneratesCanonicalTaskID`,
+  `TestCanonicalStateValidatesTaskEventAndRunRelations`), приёмка standalone daemon
+  не закрыта. Причина, по которой MVP Brief остаётся контрактом, теперь указана
+  верно: отсутствует read interface, ADR-0006 не написан. Статус Proposed и
+  зрелость не менялись.
+- (документация) UX_AUDIT помечен как исторический снимок с датой 2026-10-07 и
+  исходным commit `480df45`; отмечено, что этот commit не разрешается в текущей
+  истории репозитория и приведённые file:line относятся к тому срезу. Содержимое
+  аудита не переписывалось.
+- (документация) ROADMAP: удалён дубль строки P0-3, осталась строка, содержащая
+  ссылку на решение OWNER R100. Статусы этапов не менялись, P0-1 остаётся OPEN.
+- (документация) TARGET-ARCHITECTURE: строка про `cmd/coordd` больше не помечена
+  Run-only — daemon открывает канонический store и валидирует его до готовности,
+  но write path ещё не подключён; строка ReviewResult/AuditResult переведена из
+  «нет» в «частично» с точным описанием RA-1 (`a32acc6`) и RA-2 (`2d0cf60`):
+  типизированные результаты и приёмка одним commit, startup validation,
+  координаторские finding ID, refs только TASK/RUN/DOMAIN_EVENT и независимость
+  Reviewer/Auditor по стабильному AgentID
+  (`TestReviewResultCommitsWithTransitionEvent`,
+  `TestAuditResultCommitsWithTransitionEvent`,
+  `TestReviewAuditResultStartupValidationRejectsInvalidAssociations`,
+  `TestReviewerRejectsExecutorAgentIDAcrossHistory`). Явно перечислено не
+  реализованное: command path, supervisor stop proof, stage scheduler, Discussion
+  Graph, Artifact metadata, read-only API.
+
 ## 2026-10-08 — RA-2: независимость Reviewer и Auditor
 
 - Canonical Task startup и переходы проверяют stable `AgentID` Reviewer/Auditor

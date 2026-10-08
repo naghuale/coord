@@ -34,8 +34,20 @@ Archive фиксирует факт показа, а не воспроизвод
 
 В MVP только **Task Brief** в форме Live Brief, и только из данных Task и Run.
 Требования, без которых его не на чем построить: TaskID adoption, production
-daemon по ADR-0004 и Task aggregate по ADR-0001. Ни одно из них сейчас не
-реализовано, поэтому MVP Brief — это контракт, а не функция.
+daemon по ADR-0004 и Task aggregate по ADR-0001. Их фактическое состояние на
+2026-10-08: TaskID adoption реализован (`taskid.New`, `taskid.ID`,
+`TestCreateTaskGeneratesCanonicalTaskID`), канонический Task aggregate со связью
+Task ↔ Run, `Task.Fence` и историей DomainEvent — тоже
+(`store/canonical.go:67-74`, `TestCanonicalStateValidatesTaskEventAndRunRelations`,
+`TestCanonicalStoreRejectsTaskMutationWithoutEvent`), standalone daemon существует,
+но его приёмка не закрыта (`cmd/coordd/main.go`,
+`TestCoorddTakesNamespaceLockBeforeStores`, ROADMAP: P0-1 OPEN).
+
+Поэтому MVP Brief остаётся контрактом, а не функцией, но по другой причине, чем
+указано в ранней редакции этого документа: данных Task и Run теперь достаточно,
+а отсутствует read interface — ADR-0006 не написан, и ни одна проекция уровня
+Brief не выдаётся ни одним существующим endpoint. Статус этого ADR остаётся
+Proposed, и зрелость Brief не повышается.
 
 ## Вне MVP
 

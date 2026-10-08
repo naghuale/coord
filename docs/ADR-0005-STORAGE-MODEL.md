@@ -11,14 +11,28 @@ ADR-0004 требует одного владельца runtime state, атом�
 Domain Event и Outbox, exclusive ownership, fail-closed recovery и публикации
 нового состояния только после durable commit.
 
-Текущий `store.Persistence` сериализует только `map[RunID]Run`. `checkpoint.File`
-пишет versioned JSON snapshot через temp file, file sync, rename и directory
-sync; `store.Update` публикует память после успешного `Save` и требует reopen
-после неопределённого durable failure. На Linux, macOS, DragonFly BSD, FreeBSD,
-NetBSD, OpenBSD и illumos snapshot lock использует kernel `flock`; на остальных
-платформах checkpoint storage обязан завершаться `ErrUnavailable`, а не
-продолжать без process ownership. Это полезная основа, но она ещё не хранит
-Task, Event Log, Discussion, Review/Audit, Project Relations и Outbox как один
+Run-only путь сохранён и остаётся отдельным слоем. `store.Persistence` сериализует
+только `map[RunID]Run` (`store/store.go:18-21`), `checkpoint.File` пишет versioned
+JSON snapshot через temp file, file sync, rename и directory sync, а
+`store.Update` публикует память после успешного `Save` и требует reopen после
+неопределённого durable failure (`store/store.go:106-133`). На Linux, macOS,
+DragonFly BSD, FreeBSD, NetBSD, OpenBSD и illumos snapshot lock использует kernel
+`flock`; на остальных платформах checkpoint storage обязан завершаться
+`ErrUnavailable`, а не продолжать без process ownership.
+
+Канонический слой добавлен поверх этого. `store.CanonicalPersistence` принимает и
+возвращает полную `CanonicalState` — Tasks, Runs, Events, Inbox и Outbox — как один
+durable unit (`store/canonical.go:87-94`), а `checkpoint.CanonicalFile` читает и
+пишет этот документ через тот же atomic file replacement — temp file, fsync,
+rename, sync каталога (`internal/atomicfile/atomicfile.go:14-52`) — с проверкой
+schema version и инвариантов до и после записи
+(`checkpoint/canonical.go:25-63`, `:65-74`). Production composition `coordd`
+открывает именно его: `store.NewCanonical(checkpoint.CanonicalFile{Path:
+canonical.json})` (`cmd/coordd/main.go:107`), а активный legacy Run оставляет
+процесс в diagnostic-only `NOT_READY` (`cmd/coordd/main.go:145-149`).
+
+Остаются нереализованными Discussion, Project Relations и внешний API поверх
+этого состояния; Review/Audit Results и durable Inbox/Outbox уже входят в тот же
 канонический transaction unit.
 
 Текущие Runs, role registry и executor checkpoints — разные области состояния.
@@ -64,9 +78,10 @@ runtime. Multi-host/active-active этим ADR не вводится.
 Для первого production daemon использовать **один версионированный atomic
 snapshot** как backend полной канонической модели Coord. Ввести backend-neutral
 Persistence boundary, принимающую и возвращающую полную canonical State, чтобы
-позднее добавить SQLite без изменения доменных переходов. Существующий
-`store.Persistence` пока принимает только `map[string]fsm.Run` и не является
-достаточным контрактом для этого state boundary.
+позднее добавить SQLite без изменения доменных переходов. Run-only
+`store.Persistence` принимает только `map[string]fsm.Run` и остаётся недостаточным
+контрактом для этого state boundary; требуемый контракт реализован отдельно как
+`store.CanonicalPersistence` (`store/canonical.go:87-94`) поверх Run-only слоя.
 
 Это решение не означает, что текущий Run-only `checkpoint.File` уже является
 реализацией будущего хранилища. До Task API требуется новый state document и
