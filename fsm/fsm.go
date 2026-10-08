@@ -116,7 +116,10 @@ func (r Run) Validate() error {
 	if r.Terminal() && (r.RecoveryNeeded || r.RecoveryClaim != "") {
 		return fmt.Errorf("terminal run cannot require recovery or retain a claim")
 	}
-	if r.Status == Done && r.Result == nil {
+	// Legacy Runs carry their accepted result directly. Task-scoped Runs use
+	// canonical DomainEvents as the result source; CanonicalState validation
+	// verifies the corresponding typed result event before accepting the Run.
+	if r.Status == Done && r.Result == nil && r.TaskID == "" {
 		return fmt.Errorf("done run requires an accepted result")
 	}
 	return nil

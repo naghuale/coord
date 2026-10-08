@@ -1,5 +1,46 @@
 # История изменений
 
+## 2026-10-08 — RA-1: Review/Audit result core
+
+- Добавлены типизированные `ReviewResult` и `AuditResult` в DomainEvent schema v1
+  с закрытыми verdict sets, Coord-generated Finding IDs и валидацией при старте.
+  Принятие результата атомарно фиксирует Task в `BLOCKED` на текущем Stage,
+  terminal role Run, DomainEvent, Inbox receipt и `RESULT_ACK` Outbox. Ожидание
+  stop proof проецируется из отсутствующего proof; сам supervisor path вне среза
+  (`TestReviewResultCommitsWithTransitionEvent`,
+  `TestAuditResultCommitsWithTransitionEvent`,
+  `TestReviewVerdictWaitsForSupervisorStopProof`,
+  `TestAuditVerdictWaitsForSupervisorStopProof`).
+- Evidence refs на Task, Run той же Task и более ранние DomainEvent проверяются
+  fail-closed. Входные и выходные Artifact refs принимаются только пустыми:
+  канонические Artifact metadata и правила владения требуют отдельного решения OWNER
+  (`TestReviewResultRejectsInvalidAndOutOfScopeReferences`,
+  `TestResultArtifactReferenceFieldsRemainEmptyUntilMetadataExists`).
+- Методы внутренней записи RA-1 пока не принимают входные Task Fence, Attempt и
+  sender session, поэтому сами не ограждают поздний результат прежнего владельца
+  после recovery-передачи того же RunID. До production exposure это обязан
+  обеспечивать daemon command boundary по [Task-wide Fence и ownership](docs/TASK-MODEL.md#task-wide-fence-и-ownership),
+  с проверкой текущего Task.Fence до записи (TASK-MODEL.md:216–218). (не проверено)
+- Проверки: `TestReviewResultIsStructuredAndTaskScoped`,
+  `TestAuditResultIsStructuredAndTaskScoped`,
+  `TestReviewResultCommitsWithTransitionEvent`,
+  `TestAuditResultCommitsWithTransitionEvent`,
+  `TestReviewVerdictWaitsForSupervisorStopProof`,
+  `TestAuditVerdictWaitsForSupervisorStopProof`,
+  `TestReviewAndAuditVerdictSetsAreClosed`,
+  `TestFindingSchemaAndSeverityDoNotDriveTransitions`,
+  `TestReviewAuditResultStartupValidationRejectsInvalidAssociations`,
+  `TestReviewResultRejectsInvalidAndOutOfScopeReferences`,
+  `TestResultArtifactReferenceFieldsRemainEmptyUntilMetadataExists`,
+  `TestReviewAuditResultRejectsNonWorkingRoleRunsWithoutMutation`,
+  `TestReviewAndAuditRecordRejectWrongRoleRun`,
+  `TestReviewResultRejectsTimestampBeforeTaskUpdate`,
+  `TestReviewAuditResultStartupValidationRejectsInvalidTerminalProjection`,
+  `TestReviewAuditResultStartupValidationRejectsEventMetadataMismatch`,
+  `TestReviewAuditResultsRequireFindingsAndEvidence`,
+  `TestRecordReviewResultRejectsNilArtifactReferenceLists` and
+  `TestDomainEventRejectsReviewOrAuditPayloadForUnrelatedEventType`.
+
 ## 2026-10-08 — P0-2, срез 22c: атомарность, восстановление и проверки canonical state
 
 - Добавлены acceptance-тесты, подтверждающие один durable commit для Task, Run,

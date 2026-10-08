@@ -203,6 +203,9 @@ func ValidateCanonicalState(state CanonicalState) error {
 	if err := validateTaskEventHistories(state); err != nil {
 		return err
 	}
+	if err := validateTaskResultEvents(state); err != nil {
+		return err
+	}
 	return nil
 }
 
