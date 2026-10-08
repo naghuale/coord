@@ -114,6 +114,89 @@ func TestApplyInboxCommandRequiresSameCommitEventAndPreservesStateOnFailure(t *t
 	}
 }
 
+func TestApplyInboxCommandRejectsTransitionInvalidStateWithoutPersistence(t *testing.T) {
+	p := &canonicalMemory{state: taskStateWithRun()}
+	s, err := NewCanonical(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+
+	const actor, message = "owner-7", "cmd-invalid-transition"
+	id := taskid.ID("task_01ARZ3NDEKTSV4RRFFQ69G5FAV")
+	apply := func(state *CanonicalState) (InboxReceipt, error) {
+		// Rewriting an existing event is snapshot-valid, but violates the
+		// append-only history invariant enforced between commits.
+		state.Events[0].ActorID = "different-owner"
+		value := state.Tasks[id]
+		value.Revision++
+		value.LastEventSeq++
+		value.UpdatedAt = value.UpdatedAt.Add(time.Second)
+		state.Tasks[id] = value
+		event := task.DomainEvent{
+			ID: task.EventID(id, value.LastEventSeq), TaskID: id, RunID: "run-1",
+			EventSeq: value.LastEventSeq, TaskRevision: value.Revision,
+			TaskFence: value.Fence, Type: "OWNER_DECISION", ActorID: actor,
+			CreatedAt: value.UpdatedAt,
+		}
+		state.Events = append(state.Events, event)
+		return InboxReceipt{
+			ActorID: actor, MessageID: message, TaskID: id, RunID: "run-1",
+			EventIDs: []string{event.ID}, ExpectedRevision: value.Revision - 1,
+			CommittedRevision: value.Revision, RecordedAt: value.UpdatedAt,
+		}, nil
+	}
+
+	before := p.state
+	candidate, err := copyCanonicalState(before)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt, err := apply(&candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate.Inbox[InboxKey(actor, message)] = receipt
+	if err := ValidateCanonicalState(candidate); err != nil {
+		t.Fatalf("candidate must satisfy snapshot validation: %v", err)
+	}
+	if err := ValidateCanonicalTransition(before, candidate); err == nil || !strings.Contains(err.Error(), "append-only") {
+		t.Fatalf("candidate transition error=%v, want append-only history rejection", err)
+	}
+
+	_, replayed, err := s.ApplyInboxCommand(actor, message, id, 2, apply)
+	if err == nil || replayed {
+		t.Fatalf("transition-invalid command accepted: replayed=%v err=%v", replayed, err)
+	}
+	if p.saveCalls != 0 {
+		t.Fatalf("rejected command performed %d durable saves, want none", p.saveCalls)
+	}
+	if !reflect.DeepEqual(s.state, before) {
+		t.Fatal("rejected command changed in-memory canonical state")
+	}
+	if !reflect.DeepEqual(p.state, before) {
+		t.Fatal("rejected command changed persisted canonical state")
+	}
+	if _, exists := s.state.Inbox[InboxKey(actor, message)]; exists {
+		t.Fatal("rejected command persisted an Inbox receipt")
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := NewCanonical(p)
+	if err != nil {
+		t.Fatalf("reopen after rejected command: %v", err)
+	}
+	defer func() { _ = reopened.Close() }()
+	reopenedState, err := reopened.CanonicalSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(reopenedState, before) {
+		t.Fatal("reopened store differs from pre-command state")
+	}
+}
+
 func TestApplyInboxCommandRejectsStaleExpectedRevision(t *testing.T) {
 	p := &canonicalMemory{state: taskStateWithRun()}
 	s, err := NewCanonical(p)
