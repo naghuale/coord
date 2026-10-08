@@ -62,14 +62,14 @@ func TestHelperAgent(t *testing.T) {
 func testOptions(t *testing.T, mode string) options {
 	t.Helper()
 	dir := t.TempDir()
-	for _, args := range [][]string{{"init"}, {"-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-m", "base"}} {
+	for _, args := range [][]string{{"-c", "commit.gpgsign=false", "init"}, {"-c", "commit.gpgsign=false", "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-m", "base"}} {
 		cmd := exec.Command("git", args...)
 		cmd.Dir = dir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("git: %v: %s", err, out)
 		}
 	}
-	return options{Worktree: dir, StateDir: t.TempDir(), Prompt: "input", Timeout: 3 * time.Second, Heartbeat: 20 * time.Millisecond, Command: []string{os.Args[0], "-test.run=^TestHelperAgent$", "--", "coord-helper", mode}}
+	return options{Worktree: dir, StateDir: t.TempDir(), Prompt: "input", Timeout: 3 * time.Second, Heartbeat: time.Second, Command: []string{os.Args[0], "-test.run=^TestHelperAgent$", "--", "coord-helper", mode}}
 }
 func TestLocalAgentSuccessAndFailure(t *testing.T) {
 	for _, mode := range []string{"success", "failure"} {
