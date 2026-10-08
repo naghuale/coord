@@ -31,17 +31,17 @@
    вычисляемой проекции (`control.go:27-36`). Ни одно из этих наблюдений не
    является `RunViewStatus` и не подтверждает его существование.
 3. **Отсутствие read interface для Task и будущий Task Brief.** Read-only API
-   Task не написан: ADR-0006 не существует, и ни один endpoint не отдаёт проекцию
-   Task (см. §MVP). При этом внешний control interface у daemon есть — bearer-token
-   handler (`control.go:20-36`), чей `GET /runs` возвращает только stalled-результаты
-   для supervisor recovery; это не `RunViewStatus` и не проекция Task, и наличие
-   этого endpoint'а не означает read-only Task API. Task Brief остаётся контрактом
-   целевого ADR-0007 (Proposed).
+   Task не написан (статус — в [TARGET-ARCHITECTURE.md](TARGET-ARCHITECTURE.md),
+   строка «Startup Card, read-only API, Dashboard»), и ни один endpoint не отдаёт
+   проекцию Task (см. §MVP). Наличие внешнего control interface у daemon не
+   означает read-only Task API: его `GET /runs` возвращает только
+   stalled-результаты для supervisor recovery, а не `RunViewStatus` и не проекцию
+   Task. Task Brief остаётся контрактом целевого ADR-0007 (Proposed).
 
 Brief продолжает линию вычисляемых по запросу проекций для уровня задачи и
 проекта. В канонической модели таких проекций пока нет; проекция сессии в
-`internal/rooms` относится к legacy (ADR-0001, «Миграция от `internal/rooms`»,
-`:504-529`) и опорой для Brief не служит.
+`internal/rooms` относится к legacy (ADR-0001, «Миграция от `internal/rooms`»)
+и опорой для Brief не служит.
 
 Термин **snapshot** зарезервирован за storage snapshot из ADR-0005. Brief никогда
 не называется snapshot, чтобы не смешивать проекцию, читаемую по запросу, с
@@ -64,22 +64,18 @@ Archive фиксирует факт показа, а не воспроизвод
 
 В MVP только **Task Brief** в форме Live Brief, и только из данных Task и Run.
 Требования, без которых его не на чем построить: TaskID adoption, production
-daemon по ADR-0004 и Task aggregate по ADR-0001. Их фактическое состояние на
-2026-10-08: TaskID adoption реализован (`taskid.New`, `taskid.ID`,
-`TestCreateTaskGeneratesCanonicalTaskID`), канонический Task aggregate со связью
-Task ↔ Run, `Task.Fence` и историей DomainEvent — тоже
-(`store/canonical.go:67-74`, `TestCanonicalStateValidatesTaskEventAndRunRelations`,
-`TestCanonicalStoreRejectsTaskMutationWithoutEvent`), standalone daemon существует,
-но его приёмка не закрыта (`cmd/coordd/main.go`,
-`TestCoorddTakesNamespaceLockBeforeStores`, ROADMAP: P0-1 OPEN).
+daemon по ADR-0004 и Task aggregate по ADR-0001. Состояние реализации
+зависимостей Brief — TaskID adoption, канонический Task aggregate со связью
+Task ↔ Run, `Task.Fence`, история DomainEvent и standalone daemon с незакрытой
+приёмкой — приведено в [TARGET-ARCHITECTURE.md](TARGET-ARCHITECTURE.md) по
+состоянию на 2026-10-08; здесь оно не дублируется.
 
 Поэтому MVP Brief остаётся контрактом, а не функцией, но по другой причине, чем
 указано в ранней редакции этого документа: данных Task и Run теперь достаточно,
-а отсутствует read-only API для Task — ADR-0006 не написан, и ни одна проекция
-уровня Brief не выдаётся ни одним существующим endpoint. Внешний control endpoint
-daemon (`control.go:20-36`) отдаёт только stalled-результаты для supervisor
-recovery и проекцией Task не является. Статус этого ADR остаётся Proposed, и
-зрелость Brief не повышается.
+а отсутствует read-only API для Task (статус ADR-0006 — в
+[TARGET-ARCHITECTURE.md](TARGET-ARCHITECTURE.md)), и ни одна проекция уровня
+Brief не выдаётся ни одним существующим endpoint. Статус этого ADR остаётся
+Proposed, и зрелость Brief не повышается.
 
 ## Вне MVP
 
@@ -162,7 +158,8 @@ localchat: агент с действующим `Auth` получал 403 на o
 список читателей Brief не входит. Функция ORCHESTRATOR читает каноническое
 состояние напрямую, как другие внутренние функции, и сама Brief не запрашивает.
 OWNER получает Project Brief через авторизованный read path daemon (ADR-0004
-RT-05; контракт — ADR-0006, ещё не написан).
+RT-05; контракт — ADR-0006, статус которого приведён в
+[TARGET-ARCHITECTURE.md](TARGET-ARCHITECTURE.md)).
 
 **Startup Card агента** ссылается только на Task Brief. Это не ограничение
 удобства, а следствие границы доступа: карточка передаётся агенту и не должна

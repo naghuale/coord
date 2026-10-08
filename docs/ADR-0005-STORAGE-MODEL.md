@@ -11,29 +11,10 @@ ADR-0004 требует одного владельца runtime state, атом�
 Domain Event и Outbox, exclusive ownership, fail-closed recovery и публикации
 нового состояния только после durable commit.
 
-Run-only путь сохранён и остаётся отдельным слоем. `store.Persistence` сериализует
-только `map[RunID]Run` (`store/store.go:18-21`), `checkpoint.File` пишет versioned
-JSON snapshot через temp file, file sync, rename и directory sync, а
-`store.Update` публикует память после успешного `Save` и требует reopen после
-неопределённого durable failure (`store/store.go:106-133`). На Linux, macOS,
-DragonFly BSD, FreeBSD, NetBSD, OpenBSD и illumos snapshot lock использует kernel
-`flock`; на остальных платформах checkpoint storage обязан завершаться
-`ErrUnavailable`, а не продолжать без process ownership.
-
-Канонический слой добавлен поверх этого. `store.CanonicalPersistence` принимает и
-возвращает полную `CanonicalState` — Tasks, Runs, Events, Inbox и Outbox — как один
-durable unit (`store/canonical.go:87-94`), а `checkpoint.CanonicalFile` читает и
-пишет этот документ через тот же atomic file replacement — temp file, fsync,
-rename, sync каталога (`internal/atomicfile/atomicfile.go:14-52`) — с проверкой
-schema version и инвариантов до и после записи
-(`checkpoint/canonical.go:25-63`, `:65-74`). Production composition `coordd`
-открывает именно его: `store.NewCanonical(checkpoint.CanonicalFile{Path:
-canonical.json})` (`cmd/coordd/main.go:107`), а активный legacy Run оставляет
-процесс в diagnostic-only `NOT_READY` (`cmd/coordd/main.go:145-149`).
-
-Остаются нереализованными Discussion, Project Relations и внешний API поверх
-этого состояния; Review/Audit Results и durable Inbox/Outbox уже входят в тот же
-канонический transaction unit.
+Состояние реализации этого ADR приведено в
+[TARGET-ARCHITECTURE.md](TARGET-ARCHITECTURE.md): Run-only слой, канонический
+transaction unit, production composition `coordd` и платформы snapshot lock.
+Здесь они не дублируются.
 
 Текущие Runs, role registry и executor checkpoints — разные области состояния.
 Их существование не означает, что будущая Task-модель должна продолжать
@@ -131,10 +112,12 @@ FreeBSD, NetBSD, OpenBSD и illumos; он автоматически освоб�
 
 Snapshot backend не предоставляет database CAS. Межпроцессную эксклюзивность
 обеспечивает process lock, а сериализацию команд внутри владельца — mutex/command
-loop daemon. Task-level правило «не более одного активного writer Run» проверяет
-доменная логика daemon при Assign, Tick, recovery и загрузке; наличие process lock
-само по себе этого правила не обеспечивает. После падения daemon новый процесс
-может получить lock и продолжить только после проверки durable state.
+loop daemon. Правило единственного активного writer и его проверку задают
+[ADR-0001](ADR-0001-CANONICAL-COORDINATION-MODEL.md) и
+[TASK-MODEL.md](TASK-MODEL.md); storage не определяет его смысл и обязан
+проверять его fail-closed до выдачи владения. Наличие process lock само по себе
+этого правила не обеспечивает. После падения daemon новый процесс может получить
+lock и продолжить только после проверки durable state.
 
 Проверка: частично — `TestCoorddSecondProcessCannotOpenOwnedNamespace`, `TestRefusedOwnershipFailsBeforeLoadingState`, `TestLockExclusivityOrFailClosed`; не реализовано: все изменения только через daemon command path (localchat host пишет runs.json напрямую), совместное владение namespace при переходе на canonical snapshot, один активный writer Run на Task
 

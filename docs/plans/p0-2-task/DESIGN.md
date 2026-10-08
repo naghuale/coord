@@ -18,7 +18,7 @@
   `Task.Fence`, `Revision` и `Run.TaskID` нет.
 - `store.Persistence` (`store/store.go:18-20`) загружает и сохраняет только
   `map[string]fsm.Run`. `Store.Update` сериализует изменение, сохраняет снимок и
-  публикует новую память только после успешного `Save` (`store/store.go:106-137`).
+  публикует новую память только после успешного `Save` (`store/store.go:106-133`).
 - `checkpoint.Snapshot` (`checkpoint/checkpoint.go:12-15`) имеет `Version` и
   только `Runs`. `checkpoint.File` уже использует atomic file replacement, но
   не содержит новой канонической модели.

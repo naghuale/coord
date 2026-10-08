@@ -40,8 +40,8 @@ AUDITOR использует agent_id и историю владельцев, а
 `coordd` владеет versioned `canonical.json` (Task, Run, DomainEvent, Inbox и
 Outbox) и `roles.json` (role registry); startup валидирует canonical state, а
 изменение Task/Event/Outbox/Inbox receipt сохраняется одной durable mutation.
-Процесс удерживает `namespace.lock`, storage locks и временный compatibility
-lock `runs.json.lock`. Legacy `runs.json` только читается при startup: активный
+Процесс удерживает `namespace.lock`, storage locks `canonical.json.lock` и
+`roles.json.lock` и временный compatibility lock `runs.json.lock`. Legacy `runs.json` только читается при startup: активный
 Run или неизвестная schema оставляет daemon в diagnostic-only `NOT_READY`,
 импорта нет. P0-2 завершён, но production Task command path, операторские
 команды, полная Task FSM и проверка входного Task Fence ещё не подключены; эти
@@ -55,8 +55,10 @@ credential-файлы `clients/<session>-<generation>.json`. Standalone
 `cmd/coord-telepathy` host/worker пишет `runs.json`, `binding.json`,
 `executor.json` и `task.json`; эти файлы принадлежат transport/executor
 сценарию, а не canonical Task model. Rooms history export создаёт отдельную
-Git-проекцию `history/projection.json`, а `daemon.log` — диагностический журнал
-локального CLI. Эти legacy и standalone процессы не входят в namespace lock
+Git-проекцию `.coord-history` и `history/projection.json`, а `daemon.log` —
+append-only диагностический журнал локального CLI, не источник состояния. Demo,
+examples, integration harness и тесты имеют собственные пути записи и не считаются
+production runtime. Эти legacy и standalone процессы не входят в namespace lock
 `coordd`; production mutations должны перейти на daemon command path в P0-3.
 
 ## Рабочий цикл

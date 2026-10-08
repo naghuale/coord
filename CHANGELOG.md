@@ -1,5 +1,41 @@
 # История изменений
 
+## 2026-10-08 — Устранение дрейфа документации: ссылки, дубли, размещение статуса ([#3](https://github.com/naghuale/coord/issues/3))
+
+- (документация) Устаревшие line-ссылки заменены на ID правил и названия
+  разделов: проект границы команд агентов, планы P0-2 и P0-daemon, проект
+  границы команд Task. Сверка с кодом: `store/store.go:106-133`,
+  `daemon/daemon.go:53-79`, `integration/telepathy/main.go:346-366`,
+  `integration/telepathy/checks.go:86-100`.
+- (документация) В ROADMAP вместо `OwnerAuthSession` указан `OwnerCredential`
+  (R110) со ссылками на проект границы команд Task и CM-12; строка P0-3 вместо
+  упоминания «принятых проектов» содержит ссылки на оба принятых проекта. В
+  проекте границы команд Task устаревшее «файл ещё не создан» заменено ссылкой на
+  принятый проект границы команд агентов.
+- (документация) Ревизия Crewflow в плане интеграции прямо названа ревизией
+  внешнего репозитория: в истории coord такого объекта нет, поэтому проверить
+  её локально нельзя.
+- (документация) Сведения о состоянии реализации перенесены из ADR-0004,
+  ADR-0005 и ADR-0007 в TARGET-ARCHITECTURE, который остаётся единственным
+  источником статуса: текущий `/readyz` библиотечного daemon host, Run-only
+  storage слой, канонический persistence, платформы snapshot lock, TaskID adoption
+  (`taskid.New`, `taskid.ID`, `TestCreateTaskGeneratesCanonicalTaskID`), канонический
+  Task aggregate с `store/canonical.go:67-74` и проверками
+  `TestCanonicalStateValidatesTaskEventAndRunRelations`,
+  `TestCanonicalStoreRejectsTaskMutationWithoutEvent`, порядок владения в
+  `cmd/coordd` (`TestCoorddTakesNamespaceLockBeforeStores`), отсутствие read-only
+  API для Task и статус Project/Task Brief. В ADR оставлены краткие строки и
+  ссылки. Статусы ADR, строки «Проверка:» и решения OWNER не менялись.
+- (документация) ADR-0005 больше не определяет правило единственного активного
+  writer: оно отсылает к ADR-0001 и TASK-MODEL, сохраняя обязанность storage
+  проверять его fail-closed до выдачи владения.
+- (документация) Каталог runtime-файлов в ROADMAP заменён ссылкой на
+  ARCHITECTURE; недостающие детали (`canonical.json.lock`, `roles.json.lock`,
+  `.coord-history`, append-only `daemon.log`, demo и тестовые пути) сначала внесены
+  в ARCHITECTURE. Фраза об отсутствии CI в ROADMAP синхронизирована с CI
+  `6eb78e3`: в CI есть только общий `make check` на ubuntu-latest и macos-latest,
+  задачи с механизмом изоляции по-прежнему нет, норма P0-5 не ослаблена.
+
 ## 2026-10-08 — Учёт работ в GitHub Issues ([#10](https://github.com/naghuale/coord/issues/10))
 
 - (документация) AGENTS.md: каждая единица работы ведётся в issue репозитория

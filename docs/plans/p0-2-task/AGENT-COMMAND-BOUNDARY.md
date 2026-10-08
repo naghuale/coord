@@ -65,10 +65,9 @@ R122–R124 подтверждены OWNER и записаны в ADR-0001 (CM-1
 Факт кода, нормы нет: `actorID` в `recordRoleResult` берётся из persisted
 `Run.RoleSelection.AgentID` (`store/canonical_result.go:71-75`). Это уже
 правильная форма «актор назначен Coord, а не принят от агента», и она должна
-остаться. Норма, требующая actor из аутентифицированной сессии, есть в
-ADR-0001:355-359, но в Accepted ADR она сформулирована для Discussion facts,
-не для Review/Audit result; прямое применение к result path — вывод, а не
-цитата.
+остаться. Норма, требующая actor из аутентифицированной сессии, есть в ADR-0001,
+но в Accepted ADR она сформулирована для Discussion facts, не для Review/Audit
+result; прямое применение к result path — вывод, а не цитата.
 
 Факт кода, нормы нет: канонического Executor RESULT command не существует.
 `ACK`/`HEARTBEAT`/`RESULT` обрабатываются `fsm.Run.Apply` (`fsm/fsm.go:139`) в
@@ -76,9 +75,9 @@ legacy Run-представлении и сохраняются через `RunS
 legacy `Run.Task` без `TaskID`, `Task.Fence` и сессионной привязки. Канонический
 Task-scoped путь сегодня покрыт только Review/Audit
 (`store/canonical_result.go:17`, `:26`). Это согласуется с аннотациями
-ADR-0004:111 (RT-04 — «не реализовано») и ADR-0004:141 (RT-06 — не реализована
-именно проверка входящей записи против текущего `Task.Fence` в production
-command path).
+RT-04 в ADR-0004 («Проверка: не реализовано») и RT-06 в ADR-0004 (не
+реализована именно проверка входящей записи против текущего `Task.Fence` в
+production command path).
 
 ### 1.2. Что проверяется в persisted state (уже доказуемо)
 
@@ -128,10 +127,11 @@ UNKNOWN: как Telepathy 0.8.0 сам аутентифицирует проце
 ### 1.4. Чего нет в модели
 
 - Канонической сущности `Session` нет: `CanonicalState` (`store/canonical.go:67-74`)
-  содержит `Tasks`, `Runs`, `Events`, `Inbox`, `Outbox`. ADR-0001:37 перечисляет
-  `Session` среди целевых канонических сущностей, CM-10:231-235 говорит, что
-  поколение канонических Session не реализовано, и что проверены только legacy
-  rooms (`internal/rooms/sessions.go:45-50`).
+  содержит `Tasks`, `Runs`, `Events`, `Inbox`, `Outbox`. ADR-0001 перечисляет
+  `Session` среди целевых канонических сущностей (раздел «Целевые
+  канонические сущности»), а CM-10 в ADR-0001 говорит, что поколение
+  канонических Session не реализовано, и что проверены только legacy rooms
+  (`internal/rooms/sessions.go:45-50`).
 - Поля session generation нет ни в `fsm.Run` (`fsm/fsm.go:39-71`), ни в
   `envelope.Envelope` (`envelope/envelope.go:31-54`).
 - Стабильный `AgentID` присутствует в `RoleSelection` (`roles/roles.go:320-324`)
@@ -140,8 +140,9 @@ UNKNOWN: как Telepathy 0.8.0 сам аутентифицирует проце
   `InboxReceipt.ActorID` (`store/canonical.go:42`), но эти поля не связывают
   сессию с агентом и не участвуют в решении, кто имеет право записи.
 
-Следствие: требование TASK-MODEL:216-218 «TaskID, RunID, Attempt, session
-generation и Run.Fence совпадают с текущим Task ownership и текущим
+Следствие: требование TASK-MODEL, раздел «Task-wide Fence и ownership»,
+«TaskID, RunID, Attempt, session generation и Run.Fence совпадают с текущим
+Task ownership и текущим
 `Task.Fence`» сегодня выполнимо по TaskID, RunID, Attempt и Run.Fence
 (эти значения есть в Run и в persisted transition) и невыполнимо по session
 generation. Это и есть главный пробел, который закрывает проект; решение принято:
@@ -164,7 +165,7 @@ Stage и принадлежность Run (см. §1.1 и итог под таб
 | TaskID команды существует и принадлежит Task | Task существует в snapshot и проходит `Validate` (`store/canonical.go:606`, `:149-156`) | валидный формат `TaskID` в команде (`store/canonical.go:587` — проверка формата есть; принадлежность Run проверяется в цели, §3 шаг 4) | TM-02; RT-04 |
 | Команда адресована текущему активному Run | активный writer ровно один и его `Run.Fence == Task.Fence` (`store/canonical.go:190-192`) | `RunID` входа равен этому Run — **не реализовано в общем пути**: `ApplyInboxCommand` `RunID` не принимает (§3.1). Частично реализовано в специализированном пути: `RecordReviewResult`/`RecordAuditResult` принимают `runID` и сверяют принадлежность Run этой Task (`store/canonical_result.go:71-75`, `:78`), но не сверяют эпоху, попытку и сессию | RT-04; RT-06 |
 | Attempt команды равен текущему проходу | `Attempt` неизменен у Task-scoped Run (`store/canonical.go:801-803`); Executor получает `max+1`, Reviewer/Auditor сохраняют текущий (`:983-1012`) | `Attempt` входа равен `Run.Attempt` — **не реализовано**: `ApplyInboxCommand` не принимает `Attempt` | TM-17; TM-20; TM-21; TM-22 |
-| эпоха записи актуальна | при передаче `Task.Fence` повышается ровно на 1, `Run.Fence == Task.Fence` (`store/canonical.go:890-898`) | `Fence` входа равен `Task.Fence` и `Run.Fence` — **не реализовано**: входного `Fence` у канонического command path нет (RT-06:141) | RT-06; TASK-MODEL:213-219 |
+| эпоха записи актуальна | при передаче `Task.Fence` повышается ровно на 1, `Run.Fence == Task.Fence` (`store/canonical.go:890-898`) | `Fence` входа равен `Task.Fence` и `Run.Fence` — **не реализовано**: входного `Fence` у канонического command path нет | RT-06 (ADR-0004); TASK-MODEL, «Task-wide Fence и ownership» |
 | писатель — текущий владелец | `RoleSelection.Session == Run.OwnerSession` (`store/canonical.go:962`) | `OwnerSession` входа равен `Run.OwnerSession` — **не реализовано**: `ApplyInboxCommand` не принимает сессию; в legacy это делает `coordinator.go:270` | RT-04 |
 | агент известен и его роль верна | `validateTaskRunRole` сверяет `Profile.Role` с `RequiredRole` и сессию с владельцем (`store/canonical.go:955-968`); Stage соответствует роли (`store/canonical_result.go:97`, `:110`); непустой `AgentID` обязателен там, где его требует независимость (RA-2) | actor берётся из persisted Run, а не из входа (`store/canonical_result.go:71-75`) — реализовано для Review/Audit, **не реализовано** для Executor-команд, которых ещё нет. Непустой `AgentID` для любого Task-scoped Run, принимающего агентскую команду, — норма по R116 (§5.4); правка TASK-MODEL под неё — в §6 | Нормы: CM-07, TM-16 (роль и запрет самопроверки), TM-23 и RA-2 (непустой `AgentID` для Reviewer/Auditor и для Executor-истории). Требование для всех Task-scoped Run этими нормами не установлено — оно введено решением R116 |
 | ревизия не устарела | — | CAS по `Task.Revision` до изменения состояния (`store/canonical.go:605-611`) — **реализовано**, одна из реализованных проверок общего `ApplyInboxCommand` | TM-06 |
@@ -191,8 +192,8 @@ Stage и принадлежность Run (см. §1.1 и итог под таб
 
 Итог: канонический путь делится между собой — общий вход проверяет ревизию и
 формат, специализированный проверяет роль и принадлежность Run, а сверка эпохи,
-попытки и сессии отсутствует в обоих. Это расхождение с TASK-MODEL:216-218 и
-RT-06:141 и есть предмет проекта.
+попытки и сессии отсутствует в обоих. Это расхождение с разделом «Task-wide Fence
+и ownership» TASK-MODEL и с RT-06 в ADR-0004 и есть предмет проекта.
 
 ### 2.1. Как fencing отсекает старого writer
 
@@ -218,7 +219,8 @@ RT-06:141 и есть предмет проекта.
 
 Ограничение, которое не закрывает fencing: он доказывает актуальность эпохи,
 но не доказывает, что старый процесс остановлен. Stop proof — отдельное
-требование TASK-MODEL:220-233 и RT-06, реализуемое через supervisor.
+требование TASK-MODEL о stop proof и RT-06 в ADR-0004, реализуемое через
+supervisor.
 
 ### 2.2. Повторная доставка
 
@@ -240,9 +242,10 @@ RT-06:141 и есть предмет проекта.
 
 Доставка через Telepathy и успешный `RESULT_ACK` не означают принятия работы.
 `RESULT_ACK` подтверждает исходящее подтверждение агенту, а не остановку
-процесса (TASK-MODEL:228-230). Канонический result commit — это факт принятия
+процесса (TASK-MODEL, раздел «Task-wide Fence и ownership»). Канонический
+result commit — это факт принятия
 результата Coord; принятие результата не создаёт следующего writer Run без stop
-proof (TASK-MODEL:220-233). Legacy-путь дедуплицирует доставку по `Seen` и
+proof (TASK-MODEL, там же). Legacy-путь дедуплицирует доставку по `Seen` и
 повторно отправляет `RESULT_ACK` (`coordinator.go:286-292`, `:360-378`), что
 подтверждает: доставка и принятие — разные факты, и обе стороны это уже
 различают в коде.
@@ -521,23 +524,26 @@ command (stop proof, завершение старого Run, новое наз�
 `AgentSession`) — запланированное продолжение P0-3; до отдельного проекта и решения
 он не реализуется.
 
-Норма требует его дважды: TASK-MODEL:216-218 и RT-04 (ADR-0004:100-103), плюс
-CM-10:231-235. В модели его нет (§1.4). Что можно сделать:
+Норма требует его дважды: TASK-MODEL (раздел «Task-wide Fence и ownership») и
+RT-04 в ADR-0004, плюс CM-10 в ADR-0001. В модели его нет (§1.4). Что можно
+сделать:
 
 - **A (принято, R114).** Канонический агрегат сессии агента: `AgentSession` с
   `AgentID`, адресом сессии, монотонным поколением и отпечатком публичного
   ключа; регистрация и смена поколения — отдельные события в собственном потоке,
   по образцу `OwnerCredential` из `COMMAND-BOUNDARY.md` §3.2 (R110). Схема v1
-  расширяется по образцу R85, как для R108. Список канонических сущностей
-  ADR-0001:33-43 правится явно со ссылкой на решение (правка — §6.2). Поколение
-  записывается в `Run` при назначении и сверяется на каждой входящей команде.
+  расширяется по образцу R85, как для R108. Список целевых канонических
+  сущностей ADR-0001 правится явно со ссылкой на решение (правка — §6.2).
+  Поколение записывается в `Run` при назначении и сверяется на каждой входящей
+  команде.
 - **B.** Не вводить агрегат, а использовать `roles.Selection.Revision`
   (`roles/roles.go:322`) как замену поколения. Не рекомендуется: это ревизия
   реестра профилей, она меняется при изменении профиля и не меняется при
   переподключении, то есть не выражает freshness сессии.
 - **C.** Считать поколение эквивалентом эпохи записи: отказаться от отдельной
   проверки, оставив `Run.Fence` + `OwnerSession`. Не рекомендуется: это молча
-  ослабляет TASK-MODEL:216-218 и RT-04, а расхождение Accepted ADR с нормой
+  ослабляет раздел «Task-wide Fence и ownership» TASK-MODEL и RT-04 в ADR-0004,
+  а расхождение Accepted ADR с нормой
   разбирает OWNER, а не проект.
 
 Остаточный риск, не снимаемый ни одним из вариантов: процесс под тем же OS user
@@ -575,9 +581,11 @@ CM-10:231-235. В модели его нет (§1.4). Что можно сдел
 
 Решено: R115, вариант A.
 
-Цель P0-3 в ROADMAP:40 требует, чтобы «входящее сообщение старого Run с прежним
-Task Fence отвергалось», и требует проверки входного `Task.Fence` до dedup и
-ownership-побочных эффектов. TASK-MODEL:216-218 требует того же: входящая
+Цель P0-3 в ROADMAP (строка «P0-3 | Production write path через daemon»)
+требует, чтобы «входящее сообщение старого Run с прежним Task Fence
+отвергалось», и требует проверки входного `Task.Fence` до dedup и
+ownership-побочных эффектов. TASK-MODEL, раздел «Task-wide Fence и ownership»,
+требует того же: входящая
 агентская запись принимается только при совпадении с текущим ownership и текущим
 `Task.Fence`. Сегодня `ApplyInboxCommand` проверяет replay первым и возвращает
 прежний receipt команде с устаревшей эпохой (`store/canonical.go:599-604`).
@@ -612,8 +620,9 @@ Reviewer/Auditor; отсутствие Executor-назначений само п
 `RecordReviewResult`/`RecordAuditResult` требуют `RoleSelection` с непустым
 `AgentID` (`store/canonical_result.go:71-75`). Нормы, требующей непустого `AgentID`
 для Executor, в Accepted ADR, TASK-MODEL и решениях OWNER нет: TM-23 и CM-03
-обязывают независимость Reviewer/Auditor, а не Executor; ADR-0001:355-359 требует
-присвоения author/role Coord из аутентифицированной сессии для Discussion facts.
+обязывают независимость Reviewer/Auditor, а не Executor; правило ADR-0001 о
+Discussion facts требует присвоения author/role Coord из аутентифицированной
+сессии.
 
 Значит, это новое правило, а не заимствованное. Варианты:
 
@@ -720,11 +729,14 @@ Run внутри текущего callback — ни шаг 8, ни «эпоха 
 ### 6.1. Приёмка
 
 Документ принят: ревью Codex (ACCEPTED_BY_CODEX), приёмка OWNER (R114–R118).
-Критерий закрытия зависимости P0-3: в ROADMAP:40 вместо «принятые Owner и Agent
-command boundary projects» стоят ссылки на принятые версии обоих проектов, а в
-ROADMAP:39 остаётся требование «До принятия agent write path не подключается»
-до подключения agent write path. ROADMAP меняет его владелец; здесь только
-фиксируется критерий.
+Критерий закрытия зависимости P0-3: в ROADMAP (строка «P0-3 | Production write
+path через daemon») вместо «принятые Owner и Agent command boundary projects»
+стоят ссылки на принятые версии обоих проектов, а в строке «До P0-3 | Agent
+command boundary» остаётся требование «До принятия agent write path не
+подключается» до подключения agent write path. ROADMAP меняет его владелец; здесь
+фиксируется только сам критерий. Проект принят (Accepted, OWNER 2026-10-08,
+R114–R118), и критерий закрыт этой же правкой: обе ссылки в ROADMAP проставлены
+([#3](https://github.com/naghuale/coord/issues/3)).
 
 Поля и имена, которые решения фиксируют концептуально, а реализация называет
 конкретно (например, точное имя метода store из §3.2, имя поля поколения в Run и

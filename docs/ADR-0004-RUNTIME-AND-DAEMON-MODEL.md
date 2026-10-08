@@ -174,16 +174,12 @@ Supervisor не решает Task workflow, не присваивает Review/A
 набор RT-03, а не только transport и supervisor recovery. Метрики транспорта не
 заменяют readiness Coord и не означают принятие агентской работы.
 
-Текущий библиотечный `daemon` host реализует только operational readiness
-существующего Run coordinator: успешный startup `Tick`, инициализированный
-transport receive и отсутствие `Run.RecoveryNeeded`. Lock и валидация Run
-snapshot обеспечиваются до передачи Coordinator в host (`store.New` и
-`coord.New`). Task-wide fence, конфликтующие writer Runs, канонические Task
-схемы и полный RT-03 recovery ещё не существуют; этот `/readyz` не является
-критерием их готовности и не закрывает пункт P0 Production coordinator daemon
-в ROADMAP. Текущий endpoint возвращает причины `transport_receive_not_initialized`
-и `supervisor_recovery_pending`; дополнительные причины появятся вместе с
-реализацией соответствующих проверок.
+Текущий `/readyz` покрывает только operational readiness существующего Run
+coordinator и не является критерием готовности Task-wide fence, конфликтующих
+writer Runs, канонических Task схем и полного RT-03 recovery. Состав текущих
+проверок и причин not-ready, а также состояние P0 Production coordinator daemon
+приведены в [TARGET-ARCHITECTURE.md](TARGET-ARCHITECTURE.md); здесь они не
+дублируются.
 
 ## Последствия
 

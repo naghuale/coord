@@ -29,7 +29,9 @@ Attempt с Number, Executor, Session, StartedAt, журналами и исхо�
 В отчёте CF-013A используется другой локальный контекст. Нельзя объявлять
 их схемы одинаковыми или вводить выдуманный API.
 
-Проверенный Crewflow revision: `5bc491f368ea125218106ae344485784c92b7d76`.
+Проверенный Crewflow revision: `5bc491f368ea125218106ae344485784c92b7d76` — это
+ревизия внешнего репозитория Crewflow, а не coord: в истории coord такого объекта
+нет, поэтому проверить её локально нельзя.
 
 Проверенные точки для текущего checkout: internal/run/state.go
 (LoadState, UpdateState/UpdateStateThrough, NextAttempt, Ended, InSession),

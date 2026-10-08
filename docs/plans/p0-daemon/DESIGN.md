@@ -53,7 +53,7 @@ listeners. Coordinator уже владеет Store и RoleRegistry. Store отк
 Persistence, берёт доступный у неё process lock, затем загружает состояние
 (`store/store.go:31-57`). `coord.New` требует готовые Transport и Store и
 проверяет загруженные Runs (`coordinator.go:88-109`). `daemon.New` валидирует
-loopback listeners и связывает handlers (`daemon/daemon.go:50-77`). Поэтому
+loopback listeners и связывает handlers (`daemon/daemon.go:53-79`). Поэтому
 daemon package сам не строит runtime из конфигурации.
 
 Целевая composition boundary P0-1:
@@ -266,7 +266,7 @@ process-kill acceptance.
 | `cmd/coord-telepathy` standalone host | `telepathyhost.Run` сам открывает `state/runs.json`, создаёт Coordinator и делает `Assign` (`internal/telepathyhost/host.go:21-97`). | Одно-run integration/reference path сегодня. До P0-3 он и coordd взаимно исключаются тем же `runs.json.lock`; P0-3 превращает host в adapter/command client daemon, без второго Store/Coordinator. |
 | `cmd/coord-telepathy` worker и `executor.Executor` | Worker пишет executor checkpoint `executor.json` (`internal/telepathyhost/worker.go:117-122`); `executor.Executor` сохраняет checkpoint через внедрённый `checkpoint.File` (`executor/checkpoint.go:180-201`). Это отдельное executor state, не каноническое Coord state. | Сохраняет границу executor vs coordinator; production binding к Task/Run — после P0-2/P0-3. Checkpoint writer ownership должен быть проверен вместе с worktree writer lock; он не заменяет daemon ownership. |
 | `cmd/coord-watchdog` | Использует authenticated control API и внешние fence/spawn/stop commands (`cmd/coord-watchdog/main.go:16-33`). | Supervisor остаётся внешним владельцем процессов; P0-5 конкретизирует stop proof. Никаких прямых storage writes. |
-| `integration/telepathy` | Integration harness отдельно открывает `runs.json` в `main.go:346-366` и `checks.go:86-100`, создаёт Coordinator и вызывает `Assign`; worker fixture сохраняет собственное scripted state через `save`. Это test/integration writer, не production daemon. | Использовать только уникальный временный state directory. Не запускать параллельно с daemon на общем namespace; не считать lock refusal этого harness проверкой production daemon. |
+| `integration/telepathy` | Integration harness отдельно открывает `runs.json` в `integration/telepathy/main.go:346-366` и `integration/telepathy/checks.go:86-100`, создаёт Coordinator и вызывает `Assign`; worker fixture сохраняет собственное scripted state через `save`. Это test/integration writer, не production daemon. | Использовать только уникальный временный state directory. Не запускать параллельно с daemon на общем namespace; не считать lock refusal этого harness проверкой production daemon. |
 | `examples/agent` | Локальный reference harness сам открывает Store/Coordinator, пишет `executor.json` и запускает тестовый процесс агента (`examples/agent/main.go:119-130`). | Не production daemon и не второй production writer; все его файлы должны быть изолированы от production state namespace. |
 | `cmd/coord-demo`, test fakes | Демонстрационные/тестовые in-process пути. | Не использовать как production deployment. |
 
