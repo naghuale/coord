@@ -1,5 +1,10 @@
 # История изменений
 
+## 2026-10-08 — Каноническая история AgentSession ([#5](https://github.com/naghuale/coord/issues/5))
+
+- (`TestValidateHistoryRebuildsRegisteredRotatedAndRevokedSession`, `TestValidateHistoryAllowsOneAgentAcrossMultipleAddresses`, `TestValidateHistoryRejectsProjectionWithDifferentPublicKey`, `TestValidateHistoryRejectsEventsWithoutCurrentProjection`, `TestValidateHistoryRejectsRevocationWithWrongGeneration`, `TestValidateHistoryRejectsRotationWithoutChangingPublicKey`, `TestValidateHistoryRejectsEventTimeBeforePriorAddressEvent`, `TestCanonicalValidationChecksAgentSessionHistory`, `TestCanonicalFileReadsAndRewritesCreationOnlyV1WithoutFenceField`) добавлены типы текущей `AgentSession` projection и её append-only event history; проверяются согласованность projection с событиями, поколение и монотонность времени; schema v1 принимает старые snapshots без новых полей и записывает их при следующем сохранении.
+- (документация) Ограничения части 1: schema остаётся v1, старые файлы читаются; команд регистрации и ротации нет; generation в `Run` нет; аутентификации команд через `AgentSession` нет; readiness при отсутствии привязки пока не блокируется; CM-13 и TM-27 остаются «не реализовано». Повторное использование отозванного адреса — открытый вопрос до части 4 (#8).
+
 ## 2026-10-08 — Устранение дрейфа документации: ссылки, дубли, размещение статуса ([#3](https://github.com/naghuale/coord/issues/3))
 
 - (документация) Устаревшие line-ссылки заменены на ID правил и названия

@@ -1,11 +1,13 @@
 package store
 
 import (
+	"coord/agentsession"
 	"coord/envelope"
 	"coord/fsm"
 	"coord/roles"
 	"coord/task"
 	"coord/taskid"
+	"crypto/ed25519"
 	"errors"
 	"math"
 	"reflect"
@@ -20,6 +22,42 @@ type canonicalMemory struct {
 	lockErr   error
 	loadCalls int
 	saveCalls int
+}
+
+func TestCanonicalValidationChecksAgentSessionHistory(t *testing.T) {
+	address := "opencode:worker-1"
+	createdAt := time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
+	key := ed25519.PublicKey(strings.Repeat("k", ed25519.PublicKeySize))
+	event := agentsession.Event{
+		ID: agentsession.EventID(address, 1), Address: address, AgentID: "agent-1",
+		Sequence: 1, Type: agentsession.Registered, Generation: 1, PublicKey: key,
+		CreatedAt: createdAt,
+	}
+	state := EmptyCanonicalState()
+	state.AgentSessions[address] = agentsession.Session{
+		Address: address, AgentID: "agent-1", Generation: 1, PublicKey: key,
+		RegisteredAt: createdAt, UpdatedAt: createdAt,
+	}
+	state.AgentSessionEvents = []agentsession.Event{event}
+	if err := ValidateCanonicalState(state); err != nil {
+		t.Fatalf("valid AgentSession snapshot rejected: %v", err)
+	}
+
+	previous := EmptyCanonicalState()
+	if err := ValidateCanonicalTransition(previous, state); err != nil {
+		t.Fatalf("valid AgentSession registration transition rejected: %v", err)
+	}
+	mutated, err := copyCanonicalState(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mutated.AgentSessionEvents[0].AgentID = "forged-agent"
+	if err := ValidateCanonicalState(mutated); err == nil || !strings.Contains(err.Error(), "differs from event history") {
+		t.Fatalf("invalid AgentSession snapshot error=%v, want history mismatch", err)
+	}
+	if err := ValidateCanonicalTransition(previous, mutated); err == nil || !strings.Contains(err.Error(), "differs from event history") {
+		t.Fatalf("invalid AgentSession transition error=%v, want history mismatch", err)
+	}
 }
 
 func (p *canonicalMemory) Lock() (func() error, error) {

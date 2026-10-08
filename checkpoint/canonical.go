@@ -50,6 +50,7 @@ func (f CanonicalFile) Load() (store.CanonicalState, error) {
 	if err := decoder.Decode(&state); err != nil {
 		return store.CanonicalState{}, fmt.Errorf("decode canonical snapshot: %w", err)
 	}
+	state = store.NormalizeCanonicalState(state)
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		if err == nil {
 			return store.CanonicalState{}, fmt.Errorf("multiple JSON values in canonical snapshot")

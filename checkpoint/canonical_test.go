@@ -285,12 +285,21 @@ func TestCanonicalFileReadsAndRewritesCreationOnlyV1WithoutFenceField(t *testing
 	}
 	events := document["events"].([]any)
 	delete(events[0].(map[string]any), "task_fence")
+	delete(document, "agent_sessions")
+	delete(document, "agent_session_events")
 	raw, err = json.Marshal(document)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(path, raw, 0600); err != nil {
 		t.Fatal(err)
+	}
+	legacy, err := file.Load()
+	if err != nil {
+		t.Fatalf("direct load of old schema v1: %v", err)
+	}
+	if legacy.AgentSessions == nil || legacy.AgentSessionEvents == nil {
+		t.Fatal("direct load did not normalize missing AgentSession collections")
 	}
 
 	s, err := store.NewCanonical(file)
@@ -343,6 +352,12 @@ func TestCanonicalFileReadsAndRewritesCreationOnlyV1WithoutFenceField(t *testing
 		if _, ok := event.(map[string]any)["task_fence"]; !ok {
 			t.Fatalf("event %d missing task_fence after rewrite", i)
 		}
+	}
+	if _, ok := rewritten["agent_sessions"]; !ok {
+		t.Fatal("agent_sessions missing after rewrite")
+	}
+	if _, ok := rewritten["agent_session_events"]; !ok {
+		t.Fatal("agent_session_events missing after rewrite")
 	}
 }
 
