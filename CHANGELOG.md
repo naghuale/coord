@@ -1,5 +1,24 @@
 # История изменений
 
+## 2026-10-09 — Нормативная запись решения OWNER о повторной регистрации отозванного адреса ([#16](https://github.com/naghuale/coord/issues/16))
+
+- (документация) OWNER подтвердил номер **R126**: отозванный адрес `AgentSession` не
+  регистрируется повторно никогда, вернувшийся агент регистрируется на новом адресе
+  с прежним `AgentID`. Основание — исключить ABA: повторная регистрация с поколения 1
+  совпала бы с огороженным Run (тот же адрес и поколение) и сняла бы ограждение R125.
+- (документация) R126 записан в ADR-0001 (CM-13), TASK-MODEL (TM-27) и проект границы
+  команд агентов: шапка решений, §5.1 и ссылка на нормативную запись NORM-AS-4.
+- (документация) В TARGET-ARCHITECTURE утверждение об открытом вопросе #8 заменено на
+  правило R126 со ссылками на `RegisterAgentSession`, `ReplaceAgentSessionAddress`
+  (`ErrAgentSessionAddressExists`) и `agentsession.ValidateHistory`.
+- (документация) Поведение уже обеспечено кодом и проверено:
+  `TestCanonicalAgentSessionAddressChangeRevokesAndRegistersInOneCommit` и
+  `TestCanonicalAgentSessionAddressChangeRejectsInactiveOrExistingAddressWithoutWrite`
+  (`store/canonical_agentsession_test.go`), `TestValidateHistoryRejectsEventsAfterRevocation`
+  (`agentsession/session_test.go`).
+- (документация) Статусы ADR и строки «Проверка:» не менялись: CM-13 и TM-27 остаются
+  «не реализовано», новых правил сверх текста решения OWNER не введено.
+
 ## 2026-10-09 — Номера строк в ссылках на store заменены именами ([#12](https://github.com/naghuale/coord/issues/12))
 
 - (документация) В `AGENT-COMMAND-BOUNDARY.md` устаревшие номера строк в ссылках на
