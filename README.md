@@ -164,11 +164,15 @@ RESULT_READY до обработки RESULT_ACK через executor.Receipt: tra
 Capabilities: ...}`. Model необязателен; все требуемые capabilities обязательны.
 
 COORDINATOR управляет workflow; EXECUTOR выполняет работу; REVIEWER даёт feedback;
-AUDITOR выполняет независимую проверку. REVIEWER может принадлежать той же стороне,
-что EXECUTOR. AUDITOR не может иметь тот же agent_id, что любой EXECUTOR этой задачи,
-включая прежних владельцев после recovery. Запрет действует и в обратном порядке:
-бывший AUDITOR не становится EXECUTOR той же задачи. Это проверка identities;
-для организационной независимости нужен дополнительный policy layer.
+AUDITOR выполняет независимую проверку. В канонической модели (RA-2,
+`store/canonical_independence.go`) ни REVIEWER, ни AUDITOR не может иметь тот же
+устойчивый agent_id, что текущий или прежний EXECUTOR этой задачи, включая
+прежних владельцев после recovery. Без независимого кандидата назначение
+отклоняется (`NO_INDEPENDENT_REVIEWER`, `NO_INDEPENDENT_AUDITOR`). Обратное
+направление — когда бывший REVIEWER или AUDITOR становится EXECUTOR той же
+задачи — каноническая модель не запрещает; это вопрос отдельного решения OWNER.
+Это проверка identities; для организационной независимости нужен дополнительный
+policy layer.
 
 Пример wire update (остальные обязательные поля header опущены):
 

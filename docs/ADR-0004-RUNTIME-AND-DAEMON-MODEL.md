@@ -7,13 +7,25 @@
 
 ## Контекст
 
-ADR-0001 определяет Coord как единственный источник канонического состояния,
-но production daemon и единый runtime write path ещё предстоит реализовать.
+ADR-0001 определяет Coord как единственный источник канонического состояния.
+Production daemon и единый runtime write path реализованы не полностью.
 Storage должен выбираться с учётом требований daemon к ownership, fencing,
 durable transitions, recovery и готовности API.
 
-Этот ADR задаёт целевое поведение, а не описание текущей реализации: daemon,
-Task-wide Fence и единый API/CLI/agent runtime path ещё не реализованы.
+Этот ADR задаёт целевое поведение, а не описание текущей реализации. Состояние
+реализации на 2026-10-08:
+
+- каркас daemon реализован: `cmd/coordd`, ownership namespace, readiness и
+  recovery (RT-01, RT-03). P0-1 остаётся в работе, его полная приёмка не закрыта
+  (ROADMAP, R82);
+- Task-wide Fence реализован частично: storage transition и startup validation
+  проверяют цепочку Fence (RT-06);
+- write path реализован частично: canonical store фиксирует Inbox receipt вместе
+  с Task и Domain Event в одном commit (RT-04). Единый API/CLI/agent command
+  path через daemon не реализован.
+
+Изменено решением OWNER R119 (2026-10-08): обновлены только сведения о
+реализации. Статус и нормы ADR не менялись.
 
 Нельзя допустить, чтобы CLI, Dashboard, Telepathy adapter или второй daemon
 получили независимые пути записи в одно состояние.
@@ -108,7 +120,7 @@ Domain Event и необходимые Outbox records согласно ADR-0001.
 в ту же транзакцию. Публикация нового состояния в памяти происходит только после
 durable commit.
 
-Проверка: не реализовано
+Проверка: частично — `TestApplyInboxCommandCommitsReceiptWithTaskEventAndDeduplicates`, `TestApplyInboxCommandRejectsStaleExpectedRevision`, `TestApplyInboxCommandRequiresSameCommitEventAndPreservesStateOnFailure`; не реализовано: command interface daemon, проверки подписи, субъекта, capability, Session generation и Task.Fence входящей команды, единый путь записи для всех writer (localchat host пишет runs.json напрямую)
 
 ### RT-05 — Read Path
 
