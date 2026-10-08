@@ -134,16 +134,18 @@ rename или sync вернули ошибку с неопределённым �
 
 ### ST-04 — Загрузка до readiness
 
-Это целевое требование новой canonical State, а не описание текущей реализации.
-Snapshot содержит schema version. До объявления readiness будущий Coord обязан
-проверить формат и версии, идентичности, ссылки, FSM-инварианты, Task.Fence и
-Run fence snapshots, отсутствие нескольких активных writer Runs на Task и
-согласованность Event/Outbox. Неизвестная версия или нарушенный инвариант
-блокируют readiness без side effects. Существующий `checkpoint.validateRuns`
-покрывает только проверки, перечисленные в Context; его нельзя считать выполнением
-этого требования.
+Canonical snapshot содержит schema version; `CanonicalFile.Load` отвергает
+неизвестную версию и вызывает structural validation до того, как состояние
+передаётся runtime. Валидатор проверяет идентичности и ссылки, FSM-инварианты,
+единственный `TASK_CREATED`, непрерывность EventSeq/TaskRevision и полной цепочки
+`TaskFence` по transfer marker, соответствие `Run.Fence` последнему marker,
+отсутствие нескольких active writers и согласованность Event/Outbox/Inbox.
+Это не доказывает аутентификацию субъекта или process stop proof: production
+command path и полный readiness lifecycle остаются целевыми требованиями.
+Существующий `checkpoint.validateRuns` относится только к legacy Run snapshot и
+не является canonical validator.
 
-Проверка: частично — `TestCanonicalFileRejectsUnknownSchemaWithoutModifyingFile`, `TestCanonicalStateValidatesTaskEventAndRunRelations`, `TestCanonicalStateRejectsMultipleActiveRunsPerTask`, `TestCanonicalStateRejectsTerminalRunFenceAboveTaskFence`, `TestCanonicalStateRejectsInvalidInboxOutboxAndSchema`, `TestCanonicalStateRejectsTaskRevisionGapInEventHistory`, `TestCanonicalStateRejectsEventSequenceGapAfterFirstEvent`, `TestCanonicalStateRequiresLastEventSequenceToMatchHistoryLength`, `TestCanonicalTransitionRejectsOwnerChangeWithoutTaskFenceBump`, `TestCanonicalTransitionRejectsFenceBumpWithoutOwnershipTransfer`, `TestCanonicalTransitionRejectsFenceJump`, `TestCanonicalTransitionRequiresOwnershipTransferEvent`, `TestCanonicalTransitionRequiresRunFenceToMatchTaskFence`, `TestCanonicalTransitionRejectsSecondActiveWriter`, `TestCanonicalTransitionRejectsRecoveryWithoutStalledRecoveryClaim`, `TestCanonicalTransitionRejectsFenceOverflow`; не реализовано: Event Fence snapshot и его проверка при старте, production command path. Остальные требования ST-04 остаются целевыми.
+Проверка: частично — загрузчик проверяет schema version, EventSeq/TaskRevision, единственный начальный `TASK_CREATED`, `TaskFence` по revision, непрерывность transfer chain, итоговый `Task.Fence`, связь `Run.Fence` с последним transfer marker Run и принадлежность Event.RunID своей Task (`TestCanonicalStartupRejectsWrongFenceInEarlyRevision`, `TestCanonicalStartupRejectsWrongFenceInLatestRevision`, `TestCanonicalStartupRejectsMissingFenceBumpOnTransfer`, `TestCanonicalStartupRejectsExtraFenceBumpWithoutTransfer`, `TestCanonicalStartupRejectsTwoTransferMarkersInOneRevision`, `TestCanonicalStartupRejectsSecondEventInCreationRevision`, `TestCanonicalStartupRejectsTransferMarkerWithoutRunID`, `TestCanonicalStartupRejectsFenceOverflow`, `TestCanonicalStartupRejectsFinalFenceDifferentFromTask`, `TestCanonicalStartupRejectsSecondTaskCreated`, `TestCanonicalStartupRejectsLateTaskCreated`, `TestCanonicalStartupRejectsEventRunIDOwnedByAnotherTask`, `TestCanonicalStartupRejectsRunFenceDifferentFromLatestTransfer`, `TestCanonicalStartupRejectsTaskScopedRunWithoutTransferMarker`, `TestCanonicalStartupAcceptsFenceSnapshotsAcrossTransferAndRecovery`, `TestCanonicalFileRejectsTransferredV1WithoutFenceAndPreservesSource`). Остальные проверки формата, FSM и ссылок покрыты перечисленными выше тестами; не реализовано: полная readiness integration и production command path.
 
 ### ST-05 — Миграции
 
@@ -172,7 +174,7 @@ boundary. Проверка актуального `Task.Fence` и запись �
 snapshot storage. При добавлении SQLite fencing/CAS переносится в транзакционное
 conditional update; он не вычисляется из `max(Run.Fence)`.
 
-Проверка: частично — storage transition сериализован store mutex и ownership lock; `TestCanonicalTransitionFirstAssignmentIncrementsTaskFence`, `TestCanonicalTransitionRecoveryPreservesAttemptAndIncrementsTaskFence`, `TestCanonicalTransitionRoleHandoffPreservesWorkflowAttempt`, `TestCanonicalTransitionReworkIncrementsAttemptAndFence`, `TestCanonicalTransitionRetryPreservesAttemptAndTaskFence`; не реализовано: production command path и supervisor stop proof до передачи.
+Проверка: частично — storage transition сериализован store mutex и ownership lock; change-time transfer/recovery проверяется `TestCanonicalTransitionFirstAssignmentIncrementsTaskFence`, `TestCanonicalTransitionRecoveryPreservesAttemptAndIncrementsTaskFence`, `TestCanonicalTransitionRoleHandoffPreservesWorkflowAttempt`, `TestCanonicalTransitionReworkIncrementsAttemptAndFence`, `TestCanonicalTransitionRetryPreservesAttemptAndTaskFence`; startup проверяет цепочку event fence и снимок каждого Run; не реализовано: production command path и supervisor stop proof до передачи.
 
 ### ST-07 — Уникальность TaskID
 

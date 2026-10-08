@@ -185,12 +185,12 @@ Run — одно назначение одной роли внутри одно�
   терминально переводит старый Executor Run в `SUPERSEDED` и создаёт новый
   Executor Run с `Attempt+1` только после подтверждения supervisor, что предыдущий
   writer остановлен и больше не владеет рабочей границей.
-  Проверка: частично — `TestCanonicalTransitionRejectsSecondActiveWriter`; не реализовано: подтверждение остановки supervisor до передачи и RunStatus `SUPERSEDED`.
+  Проверка: частично — startup проверяет, что каждый Task-scoped Run имеет transfer marker и его `Run.Fence` совпадает со снимком последнего marker (`TestCanonicalStartupAcceptsFenceSnapshotsAcrossTransferAndRecovery`); transition отклоняет второго active writer (`TestCanonicalTransitionRejectsSecondActiveWriter`); не реализовано: подтверждение остановки supervisor до передачи и RunStatus `SUPERSEDED`.
 - **TM-19 — Transport retry сохраняет RunID и Attempt.** Transport retry и повторная доставка сохраняют RunID и Attempt.
   Проверка: `TestAckRetryPreservesAttemptAndDeduplicates`, `TestRunInvariantsHoldThroughLifecycle`
 - **TM-20 — Recovery сохраняет RunID и Attempt.** Recovery сохраняет RunID и Attempt; после подтверждённой остановки writer
   повышает Task.Fence и присваивает новый Run.Fence snapshot.
-  Проверка: частично — `TestRunInvariantsHoldThroughLifecycle`, `TestRecoveryCASAndOldOwnerRejected`, `TestCanonicalTransitionRecoveryPreservesAttemptAndIncrementsTaskFence`; не реализовано: подтверждение остановки supervisor до передачи, проверка входного сообщения против `Task.Fence` и production command path
+  Проверка: частично — `TestRunInvariantsHoldThroughLifecycle`, `TestRecoveryCASAndOldOwnerRejected`, `TestCanonicalTransitionRecoveryPreservesAttemptAndIncrementsTaskFence`, `TestCanonicalStartupRejectsWrongFenceInEarlyRevision`, `TestCanonicalStartupRejectsWrongFenceInLatestRevision`, `TestCanonicalStartupRejectsMissingFenceBumpOnTransfer`, `TestCanonicalStartupRejectsExtraFenceBumpWithoutTransfer`, `TestCanonicalStartupRejectsTwoTransferMarkersInOneRevision`, `TestCanonicalStartupRejectsFenceOverflow`, `TestCanonicalStartupRejectsFinalFenceDifferentFromTask`; не реализовано: подтверждение остановки supervisor до передачи, проверка входного сообщения против `Task.Fence` и production command path.
 - **TM-21 — Attempt восстанавливается из committed истории.** Каждый Run имеет собственный неизменяемый Attempt; Attempt является номером
   прохода Task workflow и копируется в каждый Run этого прохода. Источник
   следующего номера — максимальный committed Attempt в истории Runs данного

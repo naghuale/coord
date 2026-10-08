@@ -1,5 +1,21 @@
 # История изменений
 
+## 2026-10-08 — P0-2, R75b: снимок Fence в истории событий и проверка при загрузке
+
+- DomainEvent schema v1 теперь сохраняет `task_fence`. Startup валидирует единственный
+  `TASK_CREATED` на revision 1 с Fence 0, непрерывное изменение Fence по transfer
+  marker, итоговый `Task.Fence`, соответствие каждого Task-scoped Run последнему
+  marker своего RunID и принадлежность `Event.RunID` той же Task (`TestCanonicalStartupRejectsWrongFenceInEarlyRevision`, `TestCanonicalStartupRejectsWrongFenceInLatestRevision`, `TestCanonicalStartupAcceptsFenceSnapshotsAcrossTransferAndRecovery`).
+- Creation-only snapshot schema v1 без `task_fence` читается, проходит обычную
+  запись и повторную загрузку с тем же номером схемы; новые JSON записи содержат
+  ключ `task_fence`. История с передачей владения без снимка Fence отклоняется
+  без изменения файла; legacy backfill не выполняется (`TestCanonicalFileReadsAndRewritesCreationOnlyV1WithoutFenceField`, `TestCanonicalFileRejectsTransferredV1WithoutFenceAndPreservesSource`).
+- Добавлены startup-регрессии для ошибочного Fence в истории, пропущенного и
+  лишнего bump, нескольких transfer marker на revision, overflow, повторного или
+  позднего `TASK_CREATED`, несоответствия итогового Fence и чужого RunID.
+  Проверки revision 1, обязательного RunID transfer marker и полного пути recovery
+  добавлены отдельно. Это покрыто тестами `TestCanonicalStartupRejectsMissingFenceBumpOnTransfer`, `TestCanonicalStartupRejectsExtraFenceBumpWithoutTransfer`, `TestCanonicalStartupRejectsTwoTransferMarkersInOneRevision`, `TestCanonicalStartupRejectsSecondEventInCreationRevision`, `TestCanonicalStartupRejectsTransferMarkerWithoutRunID`, `TestCanonicalStartupRejectsFenceOverflow`, `TestCanonicalStartupRejectsFinalFenceDifferentFromTask`, `TestCanonicalStartupRejectsSecondTaskCreated`, `TestCanonicalStartupRejectsLateTaskCreated`, `TestCanonicalStartupRejectsEventRunIDOwnedByAnotherTask`, `TestCanonicalStartupRejectsRunFenceDifferentFromLatestTransfer`, `TestCanonicalStartupRejectsTaskScopedRunWithoutTransferMarker` и `TestCanonicalStartupAcceptsFenceSnapshotsAcrossTransferAndRecovery`. Production command path и supervisor stop proof остаются за пределами R75b.
+
 ## 2026-10-08 — P0-2, R75a: инварианты передачи владения в хранилище
 
 - Переходы canonical Task требуют увеличивать `Task.Fence` ровно на единицу при

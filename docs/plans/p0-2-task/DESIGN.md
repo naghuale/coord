@@ -370,7 +370,7 @@ validator ещё не применяется: canonical document обязан с
 | Сохранённый префикс RoleHistory неизменяем по `agent_id`, роли и порядку; допускается только append | AGENTS.md: независимость AUDITOR по стабильному agent_id и истории исполнителей | `TestCanonicalTransitionRoleHistoryIsAppendOnly` |
 | В commit передачи ровно один `TASK_OWNERSHIP_TRANSFERRED`, он ссылается на переданный Run; marker без передачи запрещён | CM-01, ST-01, RT-06 | `TestCanonicalTransitionRequiresOwnershipTransferEvent`; `TestCanonicalTransitionRejectsTransferMarkerWithoutTransfer`; `TestCanonicalTransitionRejectsTransferMarkerForWrongRun`; `TestCanonicalTransitionRejectsExtraTransferMarker` |
 | Recovery сохраняет RunID/Attempt и очищает RecoveryNeeded/RecoveryClaim; incomplete recovery отклоняется | TM-20, RT-06 | `TestCanonicalTransitionRecoveryPreservesAttemptAndIncrementsTaskFence`; `TestCanonicalTransitionRejectsRecoveryWithUnclearedState` |
-| Каждая Task имеет Domain Event создания; у каждого Event есть TaskID существующей Task и, если задан RunID, этот Run принадлежит той же Task; Event revisions непрерывны и завершаются `Task.Revision`; Event ownership transfer фиксирует Fence; Outbox record ссылается на Event той же атомарной команды | CM-01; TM-06; ST-01, ST-04 | `TestCanonicalStateRejectsDanglingOrInconsistentEvent` (целевой); `TestCanonicalStateRejectsTaskRevisionGapInEventHistory`; `TestCanonicalStateRejectsTaskRevisionAheadOfEventHistory`; проверка Event Fence пока не реализована |
+| Каждая Task имеет ровно один `TASK_CREATED` на revision 1 с Fence 0; все события revision несут один snapshot `TaskFence`; transfer marker единственной записью повышает Fence на 1 и содержит RunID; финальный Fence совпадает с Task.Fence; каждый Task-scoped Run связан с последним transfer marker своего RunID и совпадающим `Run.Fence`; Event.RunID принадлежит той же Task; Outbox record ссылается на Event той же атомарной команды | CM-01; TM-06; ST-01, ST-04, RT-06 | `TestCanonicalStartupRejectsWrongFenceInEarlyRevision`, `TestCanonicalStartupRejectsWrongFenceInLatestRevision`, `TestCanonicalStartupRejectsMissingFenceBumpOnTransfer`, `TestCanonicalStartupRejectsExtraFenceBumpWithoutTransfer`, `TestCanonicalStartupRejectsTwoTransferMarkersInOneRevision`, `TestCanonicalStartupRejectsSecondEventInCreationRevision`, `TestCanonicalStartupRejectsTransferMarkerWithoutRunID`, `TestCanonicalStartupRejectsFenceOverflow`, `TestCanonicalStartupRejectsFinalFenceDifferentFromTask`, `TestCanonicalStartupRejectsSecondTaskCreated`, `TestCanonicalStartupRejectsLateTaskCreated`, `TestCanonicalStartupRejectsEventRunIDOwnedByAnotherTask`, `TestCanonicalStartupRejectsRunFenceDifferentFromLatestTransfer`, `TestCanonicalStartupRejectsTaskScopedRunWithoutTransferMarker`, `TestCanonicalStartupAcceptsFenceSnapshotsAcrossTransferAndRecovery` |
 | Outbox и Inbox receipts имеют допустимые ссылки/идентичность; transition, Event, Outbox и обязательный Inbox receipt согласованы; stale expected Revision отклоняется до handler | CM-01; ST-01, RT-04 | `TestCanonicalStateRejectsInvalidInboxOutboxAndSchema`; `TestCanonicalTaskOutboxRequiresEventFromSameCommit`; `TestApplyInboxCommandCommitsReceiptWithTaskEventAndDeduplicates`; `TestApplyInboxCommandRejectsStaleExpectedRevision` |
 
 Проверки change-time, которым нужно сравнить прежнее и новое состояние
@@ -510,15 +510,17 @@ P0-2 обязан оставить совместимость с текущим 
   `TestApplyInboxCommandCommitsReceiptWithTaskEventAndDeduplicates`,
   `TestApplyInboxCommandRejectsStaleExpectedRevision`,
   `TestApplyInboxCommandRequiresSameCommitEventAndPreservesStateOnFailure`).
-- Event пока не содержит структурированный снимок `Task.Fence`, поэтому startup
-  не может проверить соответствие последнего ownership transfer event текущему
-  Fence. Нельзя восстановить это значение из `Summary` или текущего Run без
-  догадки. По решению OWNER R85 поле `task_fence` добавляется в canonical
-  schema v1 до первой production-записи DomainEvent; переход версии и процедура
-  backup по ADR-0005 ST-05 для этого изменения не нужны. Нужен тест совместимости
-  чтения и записи v1 с новым полем. После первой production-записи DomainEvent
-  schema v1 замораживается; последующие изменения требуют новой версии и
-  процедуры по ADR-0005 ST-05.
+- R75b добавляет `task_fence` в DomainEvent schema v1 и startup-проверку полной
+  цепочки по revision. Старый creation-only v1 snapshot без поля допускается:
+  запись сохраняет schema v1 и сериализует поле. История с transfer marker без
+  сохранённого Fence отклоняется fail-closed и не переписывается; legacy
+  backfill не выполняется. Тесты совместимости: `TestCanonicalFileReadsAndRewritesCreationOnlyV1WithoutFenceField` и
+  `TestCanonicalFileRejectsTransferredV1WithoutFenceAndPreservesSource`. Основание:
+  решение OWNER R85 — поле вводится в schema v1 до первой production-записи
+  DomainEvent; production-путей записи transfer events нет (`taskservice` пишет
+  только `TASK_CREATED` и не используется `cmd/`, `ApplyInboxCommand` вызывается
+  только из тестов), поэтому persisted истории с transfer marker без
+  `task_fence` вне тестов не существует (R93).
 - R75a закрывает storage transition gap: смена active writer требует повышения
   Task.Fence, matching Run.Fence и transfer event; recovery требует claim, а
   replacement Run требует terminal predecessor из предыдущего snapshot. Это
@@ -533,13 +535,6 @@ P0-2 обязан оставить совместимость с текущим 
   RecoveryNeeded и RecoveryClaim.
   Production Task command path и проверка входного message Fence против
   `Task.Fence` остаются открытыми.
-- DomainEvent пока не содержит `Task.Fence` snapshot; startup не может проверить
-  цепочку Fence по истории transfer. Добавление `task_fence` в schema v1 до
-  первой production-записи DomainEvent и проверка истории transfer относятся к
-  R75b. По решению OWNER R85 это изменение не требует новой версии схемы или
-  backup по ADR-0005 ST-05; совместимость нового поля проверяется тестом. После
-  первой production-записи schema v1 замораживается, а дальнейшие изменения
-  требуют новой версии по ADR-0005 ST-05.
 - Осталось до завершения 22b: полная structural/reference validation за
   пределами текущих проверок и startup rejection для всех нарушений. По решению
   OWNER R69 Owner authorization boundary и production commands не входят в P0-2;

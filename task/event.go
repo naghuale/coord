@@ -21,6 +21,7 @@ type DomainEvent struct {
 	RunID        string    `json:"run_id,omitempty"`
 	EventSeq     uint64    `json:"event_seq"`
 	TaskRevision uint64    `json:"task_revision"`
+	TaskFence    uint64    `json:"task_fence"`
 	Type         EventType `json:"type"`
 	ActorID      string    `json:"actor_id,omitempty"`
 	Summary      string    `json:"summary,omitempty"`

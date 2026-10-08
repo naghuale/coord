@@ -328,11 +328,18 @@ func validateTaskEventHistories(state CanonicalState) error {
 		}
 		// Events are appended in canonical order; require continuous sequence
 		// numbers and a creation event before any subsequent mutation.
-		if events[0].EventSeq != 1 || events[0].Type != task.TaskCreated || events[0].TaskRevision != 1 {
+		if events[0].EventSeq != 1 || events[0].Type != task.TaskCreated || events[0].TaskRevision != 1 || events[0].TaskFence != 0 {
 			return fmt.Errorf("task %q lacks its canonical creation event", id)
 		}
 		lastRevision := uint64(1)
+		lastFence := uint64(0)
+		latestTransferFence := make(map[string]uint64)
 		for i, event := range events {
+			if event.Type == task.TaskCreated {
+				if i != 0 {
+					return fmt.Errorf("task %q has TASK_CREATED after its first event", id)
+				}
+			}
 			if event.EventSeq != uint64(i+1) {
 				return fmt.Errorf("task %q domain event sequence has a gap or duplicate", id)
 			}
@@ -348,14 +355,74 @@ func validateTaskEventHistories(state CanonicalState) error {
 				}
 			}
 		}
+		// TaskFence is a commit-level snapshot. All events written at one
+		// revision share it; exactly one transfer marker advances it once.
+		for start := 0; start < len(events); {
+			revision := events[start].TaskRevision
+			end := start
+			transfers := 0
+			for end < len(events) && events[end].TaskRevision == revision {
+				if events[end].Type == task.TaskOwnershipTransferred {
+					transfers++
+				}
+				end++
+			}
+			if revision == 1 {
+				if end-start != 1 || events[start].Type != task.TaskCreated {
+					return fmt.Errorf("task %q revision 1 must contain exactly one TASK_CREATED event", id)
+				}
+			} else if transfers > 1 {
+				return fmt.Errorf("task %q revision %d has multiple ownership transfer markers", id, revision)
+			} else if transfers == 1 {
+				var err error
+				lastFence, err = incrementTaskFence(lastFence)
+				if err != nil {
+					return err
+				}
+			}
+			for _, event := range events[start:end] {
+				if event.TaskFence != lastFence {
+					return fmt.Errorf("task %q event %q fence snapshot %d does not match revision fence %d", id, event.ID, event.TaskFence, lastFence)
+				}
+				if event.Type == task.TaskOwnershipTransferred {
+					if event.RunID == "" {
+						return fmt.Errorf("task %q ownership transfer event has no RunID", id)
+					}
+					latestTransferFence[event.RunID] = event.TaskFence
+				}
+			}
+			start = end
+		}
+		if lastFence != value.Fence {
+			return fmt.Errorf("task %q final event fence %d differs from Task fence %d", id, lastFence, value.Fence)
+		}
 		if lastRevision != value.Revision {
 			return fmt.Errorf("task %q latest event revision differs from task revision", id)
+		}
+		for runID, run := range state.Runs {
+			if run.TaskID != id {
+				continue
+			}
+			fence, ok := latestTransferFence[runID]
+			if !ok {
+				return fmt.Errorf("task-scoped Run %q has no ownership transfer event", runID)
+			}
+			if run.Fence != fence {
+				return fmt.Errorf("task-scoped Run %q fence %d differs from latest transfer fence %d", runID, run.Fence, fence)
+			}
 		}
 	}
 	if len(state.Tasks) == 0 && len(state.Events) != 0 {
 		return fmt.Errorf("domain events exist without tasks")
 	}
 	return nil
+}
+
+func incrementTaskFence(fence uint64) (uint64, error) {
+	if fence == math.MaxUint64 {
+		return 0, ErrFenceExhausted
+	}
+	return fence + 1, nil
 }
 
 func copyCanonicalState(state CanonicalState) (CanonicalState, error) {
