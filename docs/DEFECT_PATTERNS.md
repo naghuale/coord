@@ -293,3 +293,13 @@ Single Owner, RT-03 Recovery и readiness; TASK-MODEL «Stage transitions».
 
 **Связанные ADR.** ADR-0004 RT-04 Write Path, RT-06 Task-wide Fencing;
 ADR-0005 ST-03 Commit-or-reopen, ST-06 Fencing и concurrency.
+
+## Решение OWNER R104 — собирать случаи потери обоснования
+
+OWNER решил 2026-10-08 пока не вводить отдельный класс «код есть, обоснование
+потеряно». Случаи собираются; затем будет решено, являются ли они частным
+случаем DP-003 или DP-004.
+
+- R75b: из DESIGN исчезли ссылка на R85 и основание R93; восстановлено в R98.
+- DP-004 doc-срез: из ROADMAP исчезли R82 и статус P0-1 OPEN; восстановлены до
+  коммита `9445609`.
