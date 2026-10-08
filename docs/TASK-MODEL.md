@@ -58,9 +58,16 @@ Run
 └─ Inputs, Result, Artifacts, timestamps
 ```
 
-- **TM-05 — OwnerID и capability привязаны к человеку и generation.** `OwnerID` names a stable human principal, not an `agent_id`, session address or
-  transport identity. Owner commands authenticate that principal through a
-  session-scoped capability bound to the current generation and TaskID.
+- **TM-05 — Owner identity подтверждается credential (R110).** `OwnerID` names a
+  stable human principal, not an `agent_id`, session address or transport
+  identity. `OwnerCredential` is a canonical Coord aggregate with its own event
+  stream. Each Owner command is bound to an active credential and a signed,
+  single-command challenge; Coord derives the trusted principal from the verified
+  credential and never accepts it from the command body. The challenge binds the
+  command to its Task and expected revision. This signed challenge is the
+  Task-scoped capability for that one command and Task
+  (`docs/plans/p0-2-task/COMMAND-BOUNDARY.md`, §3.2; R110). Owner authentication
+  does not use an agent Run or runtime agent Session.
   Проверка: не реализовано
 
 - **TM-06 — Revision является CAS-версией Task.** `Revision` increments on every canonical Task mutation and is the compare-and-swap
@@ -210,6 +217,20 @@ Run — одно назначение одной роли внутри одно�
   отменить hard policy. Аналогичные ограничения AUDITOR задаются ADR-0001.
   Проверка: не реализовано
 
+- **TM-27 — AgentSession — каноническая привязка сессии агента (R114).** Оператор
+  регистрирует `AgentSession`, связывающий устойчивый `AgentID`, адрес сессии,
+  монотонное поколение и публичный ключ или его отпечаток. Поколение записывается
+  в Run при назначении; каждая входящая агентская команда проверяет сессию и
+  поколение против актуального `AgentSession`. Агентская команда не может
+  объявить или заменить эту привязку.
+  Проверка: не реализовано
+
+- **TM-28 — Агентский Run имеет устойчивый AgentID (R116).** Любой Task-scoped Run,
+  который принимает агентские команды, включая Executor Run, обязан иметь непустой
+  устойчивый `AgentID`. Coord получает его из проверенного `AgentSession` и
+  назначения Run; значение из тела команды не является источником identity.
+  Проверка: не реализовано
+
 ## Task-wide Fence и ownership
 
 `Task.Fence` — авторитетная монотонная эпоха записи в Task; `Run.Fence` — снимок,
@@ -237,6 +258,16 @@ writer должен быть остановлен внешним supervisor до
 Первое назначение использует первую положительную эпоху. Rework повышает Fence
 один раз при создании следующего Executor Run; не следует
 повышать его отдельно за supersede и за создание того же writer.
+
+- **TM-29 — Проверки агентской команды упорядочены (R121).** До replay Coord
+  аутентифицирует сессию, сверяет её с актуальными `AgentSession` и generation,
+  получает trusted `AgentID`, проверяет актуальность Run и `Task.Fence`, затем
+  проверяет соответствие роли и Stage команде. После этого выполняются replay и
+  дедупликация. Только для новой команды Coord проверяет допустимость перехода и
+  CAS по `Task.Revision`, затем фиксирует изменение durable. Порядок двух проверок
+  внутри этой группы R121 не задаёт. Потеря роли или отстранение агента до
+  повторной доставки не позволяет вернуть прежний успешный receipt.
+  Проверка: не реализовано
 
 - **TM-24 — Owner decision требует Task capability.** Owner decision не является агентским Run. Оно проходит через Task-scoped
   capability и CAS по текущей версии Task под daemon command boundary. Owner
