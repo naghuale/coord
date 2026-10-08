@@ -1,5 +1,26 @@
 # История изменений
 
+## 2026-10-09 — Номера строк в ссылках на store заменены именами ([#12](https://github.com/naghuale/coord/issues/12))
+
+- (документация) В `AGENT-COMMAND-BOUNDARY.md` устаревшие номера строк в ссылках на
+  `store/canonical.go` заменены именами функций и типов, сверенными с кодом:
+  `ApplyInboxCommand` (вместо диапазонов внутри неё), `ValidateCanonicalState`,
+  `ValidateCanonicalTransition`, `validateTaskOwnershipTransfers`,
+  `validateTransferredAttempt`, `validateTaskRunRole`, тип `CanonicalState`,
+  интерфейс `store.CanonicalPersistence`. Ссылки на вызовы
+  `validateCanonicalRoleIndependence` даны через имя вызывающей функции, а не через
+  номера строк.
+- (документация) Фрагменты внутри функции описаны словами: «проверка replay в начале
+  `ApplyInboxCommand`», «проверка CAS по `Task.Revision`», «начало/тело/хвост
+  `ApplyInboxCommand`», «recovery-ветка `validateTaskOwnershipTransfers`». Смысл
+  утверждений не менялся.
+- (документация) В `COMMAND-BOUNDARY.md` ссылка на требование `TaskID` в
+  `ApplyInboxCommand` и в `ADR-0005-STORAGE-MODEL.md` ссылка на интерфейс
+  `store.CanonicalPersistence` теперь указывают имена без номеров строк.
+- (документация) Ссылки на другие файлы (`agentsession/session.go`,
+  `store/canonical_result.go`, `fsm/fsm.go`, `task/event.go`, transport и прочие)
+  не менялись; нормы, статусы ADR и строки «Проверка:» не тронуты.
+
 ## 2026-10-09 — Нормативная запись решения OWNER по #13 ([#15](https://github.com/naghuale/coord/issues/15))
 
 - (документация) OWNER подтвердил номер **R125** для решения по вопросу #13

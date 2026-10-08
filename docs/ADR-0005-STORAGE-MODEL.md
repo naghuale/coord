@@ -62,7 +62,7 @@ Persistence boundary, принимающую и возвращающую пол�
 позднее добавить SQLite без изменения доменных переходов. Run-only
 `store.Persistence` принимает только `map[string]fsm.Run` и остаётся недостаточным
 контрактом для этого state boundary; требуемый контракт реализован отдельно как
-`store.CanonicalPersistence` (`store/canonical.go:87-94`) поверх Run-only слоя.
+`store.CanonicalPersistence` (интерфейс в `store/canonical.go`) поверх Run-only слоя.
 
 Это решение не означает, что текущий Run-only `checkpoint.File` уже является
 реализацией будущего хранилища. До Task API требуется новый state document и

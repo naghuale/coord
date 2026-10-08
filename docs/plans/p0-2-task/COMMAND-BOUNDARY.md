@@ -379,7 +379,7 @@ ROADMAP его владельцем (Codex) 2026-10-08; после приёмк�
 ### 6.2. Модель состояния аутентификации (§3.2)
 
 Факт: `DomainEvent` и `ApplyInboxCommand` требуют TaskID
-(`task/event.go:22`, `store/canonical.go:583`).
+(`task/event.go:22`, сигнатура `ApplyInboxCommand` в `store/canonical.go`).
 
 Следствие варианта 6.1 A: если подтверждается каждая команда, токен
 capability и generation сессии из §3.2–3.3 не нужны. Проверка сводится к

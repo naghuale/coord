@@ -65,7 +65,7 @@ TASK-MODEL (TM-27) записью NORM-AS-3.
 | Вход | Где | Что проверяет | Чего не проверяет |
 |---|---|---|---|
 | Legacy `Coordinator.Handle` | `coordinator.go:227` | адресата (`:234`), `e.Fence` против `Run.Fence` в обе стороны (`:260`, `:265`), `OwnerSession`/`Attempt`/`TargetSHA`/`Task` (`:270`), дедупликацию по `Seen[MessageID]` (`:286`), recovery claim (`:293`), корреляцию с `TaskMessages` (`:313`), FSM `Run.Apply` (`:325`) | `TaskID` (сравнивается legacy `Run.Task`), `Task.Fence`, session generation, стабильный `AgentID`, роль агента; канонический commit не используется — только `RunStore.Update` |
-| `CanonicalStore.ApplyInboxCommand` | `store/canonical.go:586` | идентичность команды (`:587`), replay по `InboxKey(actorID,messageID)` (`:598-604`), CAS по `Task.Revision` до вызова handler (`:605-611`), запрет handler менять Inbox (`:620`), совпадение receipt с командой (`:623`), ровно одна ревизия (`:626`), snapshot + transition validation (`:634`, `:637`), commit до публикации в память (`:644-648`) | входных `Task.Fence`, `Run.Fence`, `Attempt`, `RunID` извне, `OwnerSession`, session generation, `AgentID`, роли. Комментарий над функцией прямо относит эти проверки к daemon command layer (`:582-585`) |
+| `CanonicalStore.ApplyInboxCommand` (`store/canonical.go`) | идентичность команды и handler (проверка в начале `ApplyInboxCommand`), replay по `InboxKey(actorID, messageID)` (проверка replay перед CAS), CAS по `Task.Revision` до вызова handler, запрет handler менять Inbox, совпадение receipt с командой, ровно одна ревизия, snapshot- и transition-validation, commit до публикации в память | входных `Task.Fence`, `Run.Fence`, `Attempt`, `RunID` извне, `OwnerSession`, session generation, `AgentID`, роли. Комментарий над `ApplyInboxCommand` прямо относит эти проверки к daemon command layer |
 | `RecordReviewResult` / `RecordAuditResult` | `store/canonical_result.go:17`, `:26` | actor берётся из сохранённого Run, а не из входа (`:71-75`), повторная сверка actor внутри handler (`:78`), Task существует и `IN_PROGRESS` на review stage (`:81-87`), Run не terminal и `STARTED`/`RESULT_READY` (`:88`), совпадение Stage и роли (`:97`, `:110`), finding ID генерирует Coord (`:102`), ссылки только внутри Task (`:126`), typed result в одном commit с `RESULT_ACK` (`:137-156`) | входных `Task.Fence`, `Attempt`, `OwnerSession`, session generation — их нет в сигнатуре. Это зафиксировано в `docs/plans/p0-review-audit/RA-1.md:23-30` как требование daemon command boundary |
 
 Факт кода, нормы нет: `actorID` в `recordRoleResult` берётся из persisted
@@ -89,19 +89,19 @@ production command path).
 
 | Инвариант | Где | Что именно проверяет |
 |---|---|---|
-| `Run.Fence <= Task.Fence` | `store/canonical.go:183` | снимок Run не превышает эпоху Task |
-| активный Run имеет `Run.Fence == Task.Fence` | `store/canonical.go:190-192` | ровно один активный writer на Task, его снимок равен текущей эпохе |
-| `Attempt` неизменен у Task-scoped Run | `store/canonical.go:801-803` через `SameDomainState` (`fsm/fsm.go:78-91`) | повторная доставка и обычная мутация не двигают Attempt |
-| `Run.Fence` меняется только при recovery transfer | `store/canonical.go:845-848` | смена Fence требует смены `OwnerSession` у нетерминальных обоих |
-| terminal Run не меняет owner | `store/canonical.go:850-852` | после остановки старый writer не возвращается |
-| transfer повышает `Task.Fence` ровно на 1 и `Run.Fence == Task.Fence` | `store/canonical.go:890-898` | fencing отсекает старого writer |
-| recovery сохраняет RunID и Attempt | `store/canonical.go:899-906` | recovery не подменяет Run, а меняет эпоху |
-| Executor получает следующий Attempt, Reviewer/Auditor сохраняют текущий | `store/canonical.go:983-1012` | номер прохода берётся из committed истории |
-| `RoleSelection.Session == Run.OwnerSession` | `store/canonical.go:962` | сессия роли совпадает с владельцем Run |
+| `Run.Fence <= Task.Fence` | проверка `run.Fence > t.Fence` в `ValidateCanonicalState` (`store/canonical.go`) | снимок Run не превышает эпоху Task |
+| активный Run имеет `Run.Fence == Task.Fence` | проверка единственного активного Run и равенства `Run.Fence == Task.Fence` в `ValidateCanonicalState` (`store/canonical.go`) | ровно один активный writer на Task, его снимок равен текущей эпохе |
+| `Attempt` неизменен у Task-scoped Run | `ValidateCanonicalTransition` (`store/canonical.go`) отклоняет изменение `Attempt` через «run %q Attempt is immutable»; `SameDomainState` (`fsm/fsm.go:78-91`) | повторная доставка и обычная мутация не двигают Attempt |
+| `Run.Fence` меняется только при recovery transfer | `validateTaskOwnershipTransfers` (`store/canonical.go`) | смена Fence требует смены `OwnerSession` у нетерминальных обоих |
+| terminal Run не меняет owner | `validateTaskOwnershipTransfers` (`store/canonical.go`) | после остановки старый writer не возвращается |
+| transfer повышает `Task.Fence` ровно на 1 и `Run.Fence == Task.Fence` | `validateTaskOwnershipTransfers` (`store/canonical.go`) | fencing отсекает старого writer |
+| recovery сохраняет RunID и Attempt | recovery-ветка `validateTaskOwnershipTransfers` (`store/canonical.go`) | recovery не подменяет Run, а меняет эпоху |
+| Executor получает следующий Attempt, Reviewer/Auditor сохраняют текущий | `validateTransferredAttempt` (`store/canonical.go`) | номер прохода берётся из committed истории |
+| `RoleSelection.Session == Run.OwnerSession` | `validateTaskRunRole` (`store/canonical.go`) | сессия роли совпадает с владельцем Run |
 | результат привязан к Task-scoped role Run той же роли и терминален | `store/canonical_result.go:225-231` | результат без role Run невалиден |
 | у result Run есть Executor Run того же Attempt | `store/canonical_result.go:242-251` | Review/Audit не висят без прохода исполнения |
 | `ARTIFACT` refs отклоняются | `store/canonical_result.go:321-322` | metadata артефактов не определены |
-| независимость Reviewer/Auditor по `AgentID` | `docs/plans/p0-review-audit/RA-2.md`, реализовано коммитом `2d0cf60`; код — `store/canonical_independence.go:29`, вызовы из `store/canonical.go:206-208` и `:818-820` | агент не проверяет свою работу: `AgentID` Reviewer/Auditor не должен совпадать ни с одним Executor `AgentID` этой Task. Fail-closed срабатывает, когда у самого Reviewer/Auditor `AgentID` пуст, и когда Executor-назначение существует, но его `AgentID` неверифицируем и от него зависит проверка независимости. Отсутствие Executor-назначений как таковое не отклоняется: Reviewer допускается без них (`TestRoleIndependenceDoesNotRequireAnExecutorAssignment`) |
+| независимость Reviewer/Auditor по `AgentID` | `docs/plans/p0-review-audit/RA-2.md`, реализовано коммитом `2d0cf60`; код — `store/canonical_independence.go:29`, вызовы из `ValidateCanonicalState` и `ValidateCanonicalTransition` (`store/canonical.go`) | агент не проверяет свою работу: `AgentID` Reviewer/Auditor не должен совпадать ни с одним Executor `AgentID` этой Task. Fail-closed срабатывает, когда у самого Reviewer/Auditor `AgentID` пуст, и когда Executor-назначение существует, но его `AgentID` неверифицируем и от него зависит проверка независимости. Отсутствие Executor-назначений как таковое не отклоняется: Reviewer допускается без них (`TestRoleIndependenceDoesNotRequireAnExecutorAssignment`) |
 
 Это проверки формы durable state. Они не доказывают, что пришедшее сообщение
 пришло от текущего владельца: форма проверяется на snapshot и на переходе, а
@@ -132,7 +132,7 @@ UNKNOWN: как Telepathy 0.8.0 сам аутентифицирует проце
 
 ### 1.4. Чего нет в модели
 
-- Канонической сущности `Session` нет: `CanonicalState` (`store/canonical.go:67-74`)
+- Канонической сущности `Session` нет: тип `CanonicalState` (`store/canonical.go`)
   содержит `Tasks`, `Runs`, `Events`, `Inbox`, `Outbox`. ADR-0001 перечисляет
   `Session` среди целевых канонических сущностей (раздел «Целевые
   канонические сущности»), а CM-10 в ADR-0001 говорит, что поколение
@@ -143,7 +143,7 @@ UNKNOWN: как Telepathy 0.8.0 сам аутентифицирует проце
 - Стабильный `AgentID` присутствует в `RoleSelection` (`roles/roles.go:320-324`)
   — это единственное место, где он связан с сессией и ролью текущего назначения.
   Он же сохраняется как снимок в `DomainEvent.ActorID` (`task/event.go:28`) и
-  `InboxReceipt.ActorID` (`store/canonical.go:42`), но эти поля не связывают
+  `InboxReceipt.ActorID` (тип `InboxReceipt`, `store/canonical.go`), но эти поля не связывают
   сессию с агентом и не участвуют в решении, кто имеет право записи.
 
 Следствие: требование TASK-MODEL, раздел «Task-wide Fence и ownership»,
@@ -168,22 +168,21 @@ Stage и принадлежность Run (см. §1.1 и итог под таб
 
 | Что доказывает право записи | (a) Инвариант persisted state (проверяется сейчас) | (b) Проверка входящей команды (текущее состояние; целевая граница — §3) | Источник |
 |---|---|---|---|
-| TaskID команды существует и принадлежит Task | Task существует в snapshot и проходит `Validate` (`store/canonical.go:606`, `:149-156`) | валидный формат `TaskID` в команде (`store/canonical.go:587` — проверка формата есть; принадлежность Run проверяется в цели, §3 шаг 4) | TM-02; RT-04 |
-| Команда адресована текущему активному Run | активный writer ровно один и его `Run.Fence == Task.Fence` (`store/canonical.go:190-192`) | `RunID` входа равен этому Run — **не реализовано в общем пути**: `ApplyInboxCommand` `RunID` не принимает (§3.1). Частично реализовано в специализированном пути: `RecordReviewResult`/`RecordAuditResult` принимают `runID` и сверяют принадлежность Run этой Task (`store/canonical_result.go:71-75`, `:78`), но не сверяют эпоху, попытку и сессию | RT-04; RT-06 |
-| Attempt команды равен текущему проходу | `Attempt` неизменен у Task-scoped Run (`store/canonical.go:801-803`); Executor получает `max+1`, Reviewer/Auditor сохраняют текущий (`:983-1012`) | `Attempt` входа равен `Run.Attempt` — **не реализовано**: `ApplyInboxCommand` не принимает `Attempt` | TM-17; TM-20; TM-21; TM-22 |
-| эпоха записи актуальна | при передаче `Task.Fence` повышается ровно на 1, `Run.Fence == Task.Fence` (`store/canonical.go:890-898`) | `Fence` входа равен `Task.Fence` и `Run.Fence` — **не реализовано**: входного `Fence` у канонического command path нет | RT-06 (ADR-0004); TASK-MODEL, «Task-wide Fence и ownership» |
-| писатель — текущий владелец | `RoleSelection.Session == Run.OwnerSession` (`store/canonical.go:962`) | `OwnerSession` входа равен `Run.OwnerSession` — **не реализовано**: `ApplyInboxCommand` не принимает сессию; в legacy это делает `coordinator.go:270` | RT-04 |
-| агент известен и его роль верна | `validateTaskRunRole` сверяет `Profile.Role` с `RequiredRole` и сессию с владельцем (`store/canonical.go:955-968`); Stage соответствует роли (`store/canonical_result.go:97`, `:110`); непустой `AgentID` обязателен там, где его требует независимость (RA-2) | actor берётся из persisted Run, а не из входа (`store/canonical_result.go:71-75`) — реализовано для Review/Audit, **не реализовано** для Executor-команд, которых ещё нет. Непустой `AgentID` для любого Task-scoped Run, принимающего агентскую команду, — норма по R116 (§5.4); правка TASK-MODEL под неё — в §6 | Нормы: CM-07, TM-16 (роль и запрет самопроверки), TM-23 и RA-2 (непустой `AgentID` для Reviewer/Auditor и для Executor-истории). Требование для всех Task-scoped Run этими нормами не установлено — оно введено решением R116 |
-| ревизия не устарела | — | CAS по `Task.Revision` до изменения состояния (`store/canonical.go:605-611`) — **реализовано**, одна из реализованных проверок общего `ApplyInboxCommand` | TM-06 |
+| TaskID команды существует и принадлежит Task | Task существует в snapshot и проходит `Validate` (`ValidateCanonicalState`, `store/canonical.go`) | валидный формат `TaskID` в команде (проверка формата есть; принадлежность Run проверяется в цели, §3 шаг 4) | TM-02; RT-04 |
+| Команда адресована текущему активному Run | активный writer ровно один и его `Run.Fence == Task.Fence` (`ValidateCanonicalState`, `store/canonical.go`) | `RunID` входа равен этому Run — **не реализовано в общем пути**: `ApplyInboxCommand` `RunID` не принимает (§3.1). Частично реализовано в специализированном пути: `RecordReviewResult`/`RecordAuditResult` принимают `runID` и сверяют принадлежность Run этой Task (`store/canonical_result.go:71-75`, `:78`), но не сверяют эпоху, попытку и сессию | RT-04; RT-06 |
+| Attempt команды равен текущему проходу | `Attempt` неизменен у Task-scoped Run, Executor получает `max+1`, Reviewer/Auditor сохраняют текущий (`ValidateCanonicalTransition` и `validateTransferredAttempt`, `store/canonical.go`) | `Attempt` входа равен `Run.Attempt` — **не реализовано**: `ApplyInboxCommand` не принимает `Attempt` | TM-17; TM-20; TM-21; TM-22 |
+| эпоха записи актуальна | при передаче `Task.Fence` повышается ровно на 1, `Run.Fence == Task.Fence` (`validateTaskOwnershipTransfers`, `store/canonical.go`) | `Fence` входа равен `Task.Fence` и `Run.Fence` — **не реализовано**: входного `Fence` у канонического command path нет | RT-06 (ADR-0004); TASK-MODEL, «Task-wide Fence и ownership» |
+| писатель — текущий владелец | `RoleSelection.Session == Run.OwnerSession` (`validateTaskRunRole`, `store/canonical.go`) | `OwnerSession` входа равен `Run.OwnerSession` — **не реализовано**: `ApplyInboxCommand` не принимает сессию; в legacy это делает `coordinator.go:270` | RT-04 |
+| агент известен и его роль верна | `validateTaskRunRole` (`store/canonical.go`) сверяет `Profile.Role` с `RequiredRole` и сессию с владельцем; Stage соответствует роли (`store/canonical_result.go:97`, `:110`); непустой `AgentID` обязателен там, где его требует независимость (RA-2) | actor берётся из persisted Run, а не из входа (`store/canonical_result.go:71-75`) — реализовано для Review/Audit, **не реализовано** для Executor-команд, которых ещё нет. Непустой `AgentID` для любого Task-scoped Run, принимающего агентскую команду, — норма по R116 (§5.4); правка TASK-MODEL под неё — в §6 | Нормы: CM-07, TM-16 (роль и запрет самопроверки), TM-23 и RA-2 (непустой `AgentID` для Reviewer/Auditor и для Executor-истории). Требование для всех Task-scoped Run этими нормами не установлено — оно введено решением R116 |
+| ревизия не устарела | — | CAS по `Task.Revision` до изменения состояния (проверка CAS в `ApplyInboxCommand`) — **реализовано**, одна из реализованных проверок общего `ApplyInboxCommand` | TM-06 |
 | переход допустим | FSM для legacy (`fsm/fsm.go:139-217`) | Stage/Status проверки result path (`store/canonical_result.go:85-90`) — реализовано для Review/Audit; для Executor-команд канонического пути нет | TM-07; TM-12; TM-16 |
 | поколение сессии актуально | **нет представления в модели** | **не реализовано**: сверка вводится вместе с агрегатом `AgentSession` (R114, §5.1) | CM-10; RT-04 |
 
 Итог таблицы различает два канонических входа, и различие существенно.
 
-- **Общий `ApplyInboxCommand`** (`store/canonical.go:586`) принимает только
+- **Общий `ApplyInboxCommand`** (`store/canonical.go`) принимает только
   `actorID`, `messageID`, `TaskID` и `expectedRevision`. Из проверок входящей
-  команды он реализует две: формат `TaskID` (`:587`) и CAS ревизии
-  (`:605-611`). Ни `RunID`, ни `Fence`, ни `Attempt`, ни сессию он не принимает, а
+  команды он реализует две: формат `TaskID` и CAS ревизии. Ни `RunID`, ни `Fence`, ни `Attempt`, ни сессию он не принимает, а
   значит не сверяет вход с Run, эпохой, попыткой и владельцем.
 - **Специализированный путь Review/Audit** (`RecordReviewResult`,
   `RecordAuditResult`, `store/canonical_result.go:17`, `:26`) принимает `runID` и
@@ -208,10 +207,10 @@ Stage и принадлежность Run (см. §1.1 и итог под таб
 
 1. Передача владения повышает `Task.Fence` ровно на 1 и записывает marker
    `TASK_OWNERSHIP_TRANSFERRED` в тот же commit
-   (`store/canonical.go:890-895`, `requireOwnershipTransferEvent` `:938-953`).
+   (`validateTaskOwnershipTransfers` и `requireOwnershipTransferEvent`, `store/canonical.go`).
 2. Новый writer получает `Run.Fence == Task.Fence`
-   (`store/canonical.go:896-898`); startup-проверка требует того же для
-   активного Run (`:190-192`).
+   (`validateTaskOwnershipTransfers`); startup-проверка требует того же для
+   активного Run (`ValidateCanonicalState`).
 3. Входящая команда старого writer несёт прежний `Run.Fence`. Сверка входа с
    текущим `Task.Fence` и `Run.Fence` отклоняет её до любых побочных эффектов.
    Legacy-путь делает это раньше owner- и dedup-проверок
@@ -219,8 +218,8 @@ Stage и принадлежность Run (см. §1.1 и итог под таб
    границу.
 4. `Run.Fence` у нетерминального Task-scoped Run не может измениться иначе,
    чем при recovery transfer со сменой `OwnerSession`
-   (`store/canonical.go:845-848`); terminal Run не меняет owner (`:850-852`).
-5. Recovery сохраняет RunID и Attempt (`store/canonical.go:899-906`), то есть
+   (`validateTaskOwnershipTransfers`); terminal Run не меняет owner.
+5. Recovery сохраняет RunID и Attempt (recovery-ветка `validateTaskOwnershipTransfers`), то есть
    fencing не подменяет Run, а выдаёт новую эпоху тому же Run.
 
 Ограничение, которое не закрывает fencing: он доказывает актуальность эпохи,
@@ -231,10 +230,11 @@ supervisor.
 ### 2.2. Повторная доставка
 
 - Повторная доставка не меняет Attempt: `Attempt` неизменен у Task-scoped Run
-  (`store/canonical.go:801-803`), а transport retry сохраняет RunID и Attempt
+  (`ValidateCanonicalTransition`), а transport retry сохраняет RunID и Attempt
   по TM-19. Ни одна проверка §3 не пишет `Attempt`.
 - Повтор той же команды с тем же `(actorID, messageID)` возвращает прежний
-  receipt и ничего не пишет: `store/canonical.go:599-604` — при существующем
+  receipt и ничего не пишет: проверка replay в начале `ApplyInboxCommand` —
+  при существующем
   receipt с тем же `TaskID` и тем же `expectedRevision` функция возвращает
   `(receipt, true, nil)`, не вызывая handler и не вызывая `Save`. При
   расхождении `TaskID` или `expectedRevision` — отказ. Это и есть требуемое
@@ -276,21 +276,22 @@ proof (TASK-MODEL, там же). Legacy-путь дедуплицирует до
 
 ### 3.1. Как устроен `ApplyInboxCommand` сейчас (факт кода)
 
-`ApplyInboxCommand` сериализует вызов (`store/canonical.go:590-591`) и делит работу
+`ApplyInboxCommand` сериализует вызов под `s.mu` и делит работу
 на три части, и они не совпадают с шагами 4–12 по расположению:
 
 | Часть | Где | Что делает |
 |---|---|---|
-| до callback | `store/canonical.go:587`, `:598-604`, `:605-611` | валидация аргументов, replay по `InboxKey(actorID, messageID)`, CAS по `Task.Revision` |
-| callback | `:612-619` | копия состояния и вызов `apply` |
-| после callback | `:620-632`, `:633`, `:634-648` | проверки receipt, вставка Inbox, snapshot и transition validation, `Save`, публикация в память |
+| до callback | начало `ApplyInboxCommand` | валидация аргументов, replay по `InboxKey(actorID, messageID)`, CAS по `Task.Revision` |
+| callback | тело `ApplyInboxCommand` | копия состояния и вызов `apply` |
+| после callback | хвост `ApplyInboxCommand` | проверки receipt, вставка Inbox, snapshot и transition validation, `Save`, публикация в память |
 
 Отсюда три следствия, важных для проекта:
 
 1. Replay (шаг 9) и CAS по ревизии (шаг 10) выполняются **до** callback, а
    атомарный commit (шаг 12) — **после**. Значит группа B не помещается в
    callback.
-2. `actorID` — входной аргумент (`:586`), а не результат проверки: он нужен для
+2. `actorID` — входной аргумент `ApplyInboxCommand`, а не результат проверки: он
+   нужен для
    построения `InboxKey` и replay, то есть до чтения состояния. Шаг 8 (актор из
    persisted `RoleSelection`) не может произойти внутри текущего callback.
 3. Шаг 5 (эпоха) должен идти раньше replay (R115, §5.3), а обёртка даёт replay
@@ -325,7 +326,7 @@ proof (TASK-MODEL, там же). Legacy-путь дедуплицирует до
 Инвариант этой формы: `InboxKey` строится только из actor, полученного из
 persisted Run в той же критической секции. Поэтому команда не может предъявить
 «свой» `actorID` ни аргументом, ни телом сообщения. Текущая сигнатура
-`ApplyInboxCommand` этого не обеспечивает — `actorID` приходит снаружи (`:586`),
+`ApplyInboxCommand` этого не обеспечивает — `actorID` приходит снаружи,
 и форма §3.2 не реализована нигде в дереве; это проект, а не описание кода.
 
 Рассмотренные варианты реализации (R118 выбрал (b); (a) сохранён как история
@@ -391,7 +392,7 @@ B». Именно это различает границу команд от а�
    подписан ключом сессии, и не заменяет шаги 4–12.
 4. **TaskID и Run (группа B).** Task существует; `RunID` команды существует, привязан к
    этому `TaskID` и не terminal; это единственный активный writer этой Task
-   (`store/canonical.go:190-192`). Отказ: `AGENT_COMMAND_UNKNOWN_TASK` и
+   (`ValidateCanonicalState`). Отказ: `AGENT_COMMAND_UNKNOWN_TASK` и
    `AGENT_COMMAND_NOT_CURRENT_WRITER`.
 5. **Эпоха записи (группа B).** `Run.Fence` из команды равен `Run.Fence` и `Task.Fence`
    snapshot. Отклоняются и меньший, и больший Fence: эпоха не секрет, и
@@ -399,7 +400,7 @@ B». Именно это различает границу команд от а�
    `AGENT_COMMAND_STALE_FENCE` и `AGENT_COMMAND_FUTURE_FENCE`. Наследует
    `coordinator.go:258-269`.
 6. **Attempt (группа B).** `Attempt` из команды равен `Run.Attempt` и равен текущему
-   проходу Executor (`store/canonical.go:983-1012`). Отказ:
+   проходу Executor (`validateTransferredAttempt`). Отказ:
    `AGENT_COMMAND_ATTEMPT_MISMATCH`.
 7. **Сессия и поколение (группа B).** `OwnerSession` из команды равен `Run.OwnerSession`
    и `RoleSelection.Session`. Сверка поколения сессии вводится вместе с агрегатом
@@ -408,7 +409,7 @@ B». Именно это различает границу команд от а�
    `AGENT_COMMAND_STALE_GENERATION`.
 8. **Актор и роль (группа B).** Актор берётся из persisted `RoleSelection.AgentID`,
    а не из тела команды (`store/canonical_result.go:71-75`, `:78`); роль
-   соответствует `RequiredRole` (`store/canonical.go:955-968`) и текущему Stage
+   соответствует `RequiredRole` (`validateTaskRunRole`) и текущему Stage
    (`store/canonical_result.go:97`, `:110`); независимость Reviewer/Auditor по
    `AgentID` — смежная проверка RA-2, здесь не дублируется. Отказ:
    `AGENT_COMMAND_WRONG_ROLE`, `AGENT_COMMAND_STAGE_ROLE_MISMATCH`.
@@ -416,7 +417,7 @@ B». Именно это различает границу команд от а�
    Порядок относительно replay: actor разрешается внутри нового метода до
    построения `InboxKey` (R118, §5.6, форма (b); §3.2, шаг 2). Текущий API этого
    не позволяет: `actorID` приходит аргументом до блокировки
-   (`store/canonical.go:586`, §3.1), и callback не может получить actor впервые.
+   (`ApplyInboxCommand`, §3.1), и callback не может получить actor впервые.
 
    Непустой `AgentID` обязателен для любого Task-scoped Run, принимающего
    агентскую команду (R116, §5.4). В Accepted ADR и TASK-MODEL это правило для
@@ -424,13 +425,13 @@ B». Именно это различает границу команд от а�
    `AgentID`: `AGENT_COMMAND_MISSING_AGENT_ID`.
 9. **Повторная доставка (группа B).** Если `(actorID, messageID)` уже есть в Inbox, а
    `TaskID` и `expectedRevision` совпадают — вернуть прежний receipt, ничего не
-   писать (`store/canonical.go:599-604`). Расхождение `TaskID` или
+   писать (проверка replay в начале `ApplyInboxCommand`). Расхождение `TaskID` или
    `expectedRevision` — отказ `AGENT_COMMAND_REPLAY_MISMATCH`. Шаг 9 следует за
    шагами 4–8: по R115 (§5.3) проверки идентичности и эпохи идут до replay, а CAS
    ревизии (шаг 10) идёт после него. Текущая обёртка требование об идентичности и
    эпохе до replay не выполняет; порядок replay → CAS в ней уже правильный.
 10. **Ревизия Task (группа B).** Для новой команды `expectedRevision` равен
-    текущему `Task.Revision` (`store/canonical.go:605-611`). Шаг выполняется
+    текущему `Task.Revision` (проверка CAS в `ApplyInboxCommand`). Шаг выполняется
     только если receipt не найден на шаге 9. Отказ: `REVISION_CONFLICT`
     (существующий `RevisionConflictError`).
 11. **Допустимость перехода (группа B).** Stage/Status, terminal-состояние Run,
@@ -439,7 +440,7 @@ B». Именно это различает границу команд от а�
     `AGENT_COMMAND_TRANSITION_FORBIDDEN`.
 12. **Один commit (группа B).** Изменение Run и Task, DomainEvent, Inbox receipt и
     Outbox фиксируются одним commit до публикации в память
-    (`store/canonical.go:633-648`). Отказ на любом шаге выше не вызывает
+    (хвост `ApplyInboxCommand`). Отказ на любом шаге выше не вызывает
     `Save`. Шаг выполняется после callback, а не внутри него (§3.1); в целевой
    форме §3.2 это последний шаг.
 
@@ -449,7 +450,8 @@ B». Именно это различает границу команд от а�
 (шаг 10), наоборот, идёт после replay: повтор той же команды с исходным
 `expectedRevision` обязан вернуть прежний receipt, и только новая команда
 сверяется с текущей `Task.Revision`. Целевой порядок задан в §3.2 и решён R115.
-Сегодня `ApplyInboxCommand` выполняет replay до любой сверки с Run (`:599-604`),
+Сегодня `ApplyInboxCommand` выполняет replay до любой сверки с Run (проверка
+replay в начале `ApplyInboxCommand`),
 то есть порядок replay → CAS у него уже верный, а проверок идентичности и эпохи
 перед replay нет. Реализация затрагивает `store/canonical.go` (владелец — Codex)
 и выполняется как отдельный кусок P0-3.
@@ -502,7 +504,8 @@ B». Именно это различает границу команд от а�
 | recovery | `TestAssignTickRecoveryFailClosedWithMultipleWriters` (цель ROADMAP) | второй активный writer допускается |
 
 Тесты используют fake clock, fake transport и существующие in-memory
-персистентности `CanonicalPersistence` (`store/canonical.go:90-94`). Ни один
+персистентности `CanonicalPersistence` (интерфейс `store.CanonicalPersistence`,
+`store/canonical.go`). Ни один
 тест не принимает control token, legacy `SessionAuth` или факт доставки как
 замену проверке эпохи и принадлежности Run.
 
@@ -602,7 +605,8 @@ ownership-побочных эффектов. TASK-MODEL, раздел «Task-wid
 требует того же: входящая
 агентская запись принимается только при совпадении с текущим ownership и текущим
 `Task.Fence`. Сегодня `ApplyInboxCommand` проверяет replay первым и возвращает
-прежний receipt команде с устаревшей эпохой (`store/canonical.go:599-604`).
+прежний receipt команде с устаревшей эпохой (проверка replay в начале
+`ApplyInboxCommand`).
 
 - **A (принято, R115).** Проверки идентичности и эпохи идут до replay; при
   успешной проверке повтор возвращает прежний receipt без записи. Поведение
@@ -611,8 +615,9 @@ ownership-побочных эффектов. TASK-MODEL, раздел «Task-wid
   сломал бы идемпотентность, потому что после первого commit `Task.Revision` уже
   увеличена и повтор с исходным `expectedRevision` был бы отклонён как устаревший
   вместо возврата прежнего receipt. Реализуемо только в форме §3.2, то есть новым
-  методом под той же блокировкой `s.mu`: текущая обёртка (replay на `:598-604`,
-  CAS на `:605-611`) проверок идентичности и эпохи перед replay не содержит.
+  методом под той же блокировкой `s.mu`: текущая обёртка (проверка replay в начале
+  `ApplyInboxCommand`, затем CAS по `Task.Revision`) проверок идентичности и эпохи
+  перед replay не содержит.
   Изменение затрагивает `store/canonical.go` (владелец — Codex) и выполняется по
   согласованию с владельцем файла.
 - **B.** Оставить replay первым и явно записать исключение в TASK-MODEL. Не
@@ -699,8 +704,9 @@ legacy-путь закрывается для всех Run с непустым `
 Решено: R118, вариант (b).
 
 Факт кода: `ApplyInboxCommand` принимает `actorID` аргументом
-(`store/canonical.go:586`) и использует его для `InboxKey` и replay до чтения
-состояния (`:598-604`). Поэтому actor не может быть впервые получен из persisted
+(`ApplyInboxCommand`) и использует его для `InboxKey` и replay до чтения
+состояния (проверка replay в начале `ApplyInboxCommand`). Поэтому actor не может
+быть впервые получен из persisted
 Run внутри текущего callback — ни шаг 8, ни «эпоха раньше replay» (§5.3) через
 эту сигнатуру не выражаются. Целевая форма §3.2 требует нового метода store.
 
