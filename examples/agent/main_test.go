@@ -4,14 +4,18 @@ package main
 
 import (
 	"context"
+	"coord"
 	"coord/checkpoint"
 	"coord/fsm"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -36,6 +40,10 @@ func TestHelperAgent(t *testing.T) {
 	case "failure":
 		fmt.Fprintln(os.Stderr, "test failure")
 		os.Exit(3)
+	case "slow":
+		time.Sleep(2 * time.Second)
+		fmt.Print("slow done")
+		os.Exit(0)
 	case "hang":
 		time.Sleep(time.Hour)
 		os.Exit(0)
@@ -44,6 +52,13 @@ func TestHelperAgent(t *testing.T) {
 		child := exec.Command(os.Args[0], "-test.run=^TestHelperAgent$", "--", "coord-helper", "writer", marker)
 		if err := child.Start(); err != nil {
 			os.Exit(4)
+		}
+		// Wait for the first write so the deadline always meets a live writer.
+		for {
+			if _, err := os.Stat(marker); err == nil {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
 		}
 		fmt.Println("started")
 		time.Sleep(time.Hour)
@@ -96,9 +111,41 @@ func TestLocalAgentSuccessAndFailure(t *testing.T) {
 		})
 	}
 }
+func TestLocalAgentPeriodicHeartbeatKeepsLongCommandLeased(t *testing.T) {
+	// The command outlives several leases (3 x Heartbeat). A missed lease is
+	// only visible as a coordinator stall, so the test reads its metrics.
+	var observed *coord.Coordinator
+	cfg := testOptions(t, "slow")
+	cfg.Heartbeat = 500 * time.Millisecond
+	cfg.Timeout = 10 * time.Second
+	r, err := runWithObserver(context.Background(), cfg, func(c *coord.Coordinator) { observed = c })
+	if err != nil || r.Status != fsm.Done || r.Result == nil || r.Result.Summary != "slow done" {
+		t.Fatalf("long command: %+v %v", r, err)
+	}
+	if observed == nil {
+		t.Fatal("coordinator was not observed")
+	}
+	metrics := httptest.NewRecorder()
+	observed.Metrics.ServeHTTP(metrics, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if !strings.Contains(metrics.Body.String(), "\ncoord_stall_total 0\n") {
+		t.Fatalf("lease expired while the command ran:\n%s", metrics.Body.String())
+	}
+	// STARTED and RESULT_READY are sent outside the loop; a 2s command with a
+	// 500ms heartbeat must add at least two periodic heartbeats.
+	var received int
+	for _, line := range strings.Split(metrics.Body.String(), "\n") {
+		if value, ok := strings.CutPrefix(line, "coord_heartbeat_received_total "); ok {
+			received, _ = strconv.Atoi(value)
+		}
+	}
+	if received < 4 {
+		t.Fatalf("no periodic heartbeats while the command ran: received %d", received)
+	}
+}
 func TestLocalAgentDeadlineStopsDescendantWriter(t *testing.T) {
 	cfg := testOptions(t, "tree")
-	cfg.Timeout = 500 * time.Millisecond
+	// Two race-instrumented process starts must fit before the deadline.
+	cfg.Timeout = 3 * time.Second
 	marker := filepath.Join(cfg.Worktree, "ticks")
 	cfg.Command = append(cfg.Command, marker)
 	r, err := run(context.Background(), cfg)

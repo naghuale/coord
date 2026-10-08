@@ -86,7 +86,12 @@ func (b *cappedBuffer) text() string {
 	return text
 }
 
-func run(ctx context.Context, cfg options) (result fsm.Run, err error) {
+func run(ctx context.Context, cfg options) (fsm.Run, error) {
+	return runWithObserver(ctx, cfg, nil)
+}
+
+// runWithObserver lets tests read the in-process coordinator metrics.
+func runWithObserver(ctx context.Context, cfg options, observe func(*coord.Coordinator)) (result fsm.Run, err error) {
 	if cfg.Worktree == "" || cfg.StateDir == "" || cfg.Prompt == "" || len(cfg.Command) == 0 || cfg.Timeout <= 0 || cfg.Heartbeat <= 0 || cfg.Heartbeat > time.Duration(math.MaxInt64/3) {
 		return fsm.Run{}, fmt.Errorf("worktree, state, prompt, command and positive bounded timeouts are required")
 	}
@@ -139,6 +144,9 @@ func run(ctx context.Context, cfg options) (result fsm.Run, err error) {
 	coordinator, err := coord.New(host, canonical, coord.DefaultConfig())
 	if err != nil {
 		return fsm.Run{}, err
+	}
+	if observe != nil {
+		observe(coordinator)
 	}
 	taskContext, cancel := context.WithTimeout(ctx, cfg.Timeout)
 	defer cancel()
