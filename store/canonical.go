@@ -125,13 +125,24 @@ type CanonicalStore struct {
 	state   CanonicalState
 	p       CanonicalPersistence
 	release func() error
+	now     func() time.Time
 	closed  bool
 	failed  error
 }
 
 func NewCanonical(p CanonicalPersistence) (*CanonicalStore, error) {
+	return NewCanonicalWithClock(p, time.Now)
+}
+
+// NewCanonicalWithClock constructs a canonical store with an injected clock.
+// Production callers should normally use NewCanonical; deterministic callers
+// can provide a clock for timestamped canonical mutations.
+func NewCanonicalWithClock(p CanonicalPersistence, now func() time.Time) (*CanonicalStore, error) {
 	if p == nil {
 		return nil, fmt.Errorf("canonical persistence required")
+	}
+	if now == nil {
+		return nil, fmt.Errorf("canonical clock required")
 	}
 	release, err := p.Lock()
 	if err != nil {
@@ -154,7 +165,7 @@ func NewCanonical(p CanonicalPersistence) (*CanonicalStore, error) {
 		}
 		return nil, err
 	}
-	return &CanonicalStore{state: state, p: p, release: release}, nil
+	return &CanonicalStore{state: state, p: p, release: release, now: now}, nil
 }
 
 func ValidateCanonicalState(state CanonicalState) error {
