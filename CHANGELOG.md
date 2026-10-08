@@ -1,5 +1,31 @@
 # История изменений
 
+## 2026-10-09 — Проверка CM-03 и TM-23 дополнена каноническими тестами ([#9](https://github.com/naghuale/coord/issues/9))
+
+- (документация) Строка «Проверка:» у CM-03 в ADR-0001 перестала называть только
+  legacy-тест. Добавлены канонические тесты RA-2 с указанием, что проверяет каждый:
+  `TestReviewerRejectsExecutorAgentIDAcrossHistory` и
+  `TestAuditorRejectsExecutorAgentIDAcrossTaskRuns` — отказ по
+  `NO_INDEPENDENT_REVIEWER` и `NO_INDEPENDENT_AUDITOR`, когда `agent_id` совпадает с
+  любым текущим или прежним Executor этой Task; `TestIndependentAuditorMayUseSameModel` —
+  имя модели не признак зависимости. Проверено по коду
+  (`store/canonical_independence_test.go`, валидатор `store/canonical_independence.go`).
+- (документация) Перечислены все проверки из `store/canonical_independence_test.go`,
+  покрывающие формулировку CM-03: fail-closed на `UpdateCanonical`, отказ на startup и
+  на переходе, пустой `AgentID` и отсутствие selection, история в границах Task, агент,
+  позже ставший Executor, соседний EventSeq, поведение role history. В CM-03 добавлено
+  «не реализовано»: проверка до назначения в agent command boundary не существует, а
+  канонический валидатор сравнивает только `agent_id`, поэтому отдельного сценария
+  «тот же `agent_id`, другой адрес сессии» в нём нет по построению — в отличие от
+  legacy-пути, который этот случай покрывает.
+- (документация) Зеркальная запись в TASK-MODEL, TM-23 о независимости Reviewer,
+  синхронизирована: перечислены только проверки Reviewer-контура, а в «не реализовано»
+  добавлены части нормы, которые проверки не покрывают — проверка до назначения, включая
+  recovery и новые session адреса, и поведение «Task остаётся blocked на Stage REVIEW с
+  причиной `NO_INDEPENDENT_REVIEWER`»: канонические проверки фиксируют отказ валидации,
+  но не состояние и Stage Task. Legacy-тест про Auditor в TM-23 не указан, так как он
+  проверяет контур AUDITOR, а не Reviewer. Статус ADR и формулировки норм CM-03 и TM-23 не менялись.
+
 ## 2026-10-09 — Решение OWNER R127: границы commit и публикации ([#17](https://github.com/naghuale/coord/issues/17))
 
 - (документация) Координатор сам создаёт локальные коммиты после независимой приёмки и
