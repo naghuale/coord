@@ -321,6 +321,13 @@ P0-2 сохраняет `Run.Seen` для дедупликации legacy-про
   Attempt, generation и входной fence с текущим `Task.Fence` и выполняет проверку
   вместе с переходом в одной command transaction. Устаревшая эпоха не может
   быть принята потому, что совпала с локальным `Run.Fence` другого Run.
+- Canonical storage transition проверяет форму transfer: новый active Run или
+  смена owner существующего Run требует `Task.Fence+1`, совпадающий `Run.Fence`
+  и same-commit `TASK_OWNERSHIP_TRANSFERRED`. Recovery требует предыдущий
+  `STALLED + RecoveryNeeded + RecoveryClaim`, сохраняет RunID/Attempt и очищает
+  claim. Новый Run допускается, только если прежний writer был terminal в
+  предыдущем snapshot; terminalization и replacement в одном commit отклоняются.
+  Это не подтверждает остановку процесса и не выдаёт transfer authorization.
 - Первое назначение использует первую положительную эпоху; recovery сохраняет
   RunID/Attempt и после supervisor stop proof повышает Task.Fence, записывая
   новый snapshot в тот же Run; rework создаёт новый Run/Attempt и повышает
@@ -356,8 +363,13 @@ validator ещё не применяется: canonical document обязан с
 | Каждый Task Event имеет непрерывный `EventSeq`, начиная с 1; `Task.LastEventSeq` равен sequence последнего события | TM-26 (R56) | `TestCanonicalStateRejectsEventSeqGap` (целевой); `TestCanonicalStateRejectsEventSequenceGapAfterFirstEvent`; `TestCanonicalStateRequiresLastEventSequenceToMatchHistoryLength` |
 | Task fields, Revision, StagePlan, Status и CurrentStage удовлетворяют структурным правилам; `OwnerID` здесь проверяется только как непустая ссылка, не как доказанная human identity или capability | TM-06…TM-12 | `TestCanonicalStateRejectsInvalidTaskAggregate` (целевой); Owner authorization проверяется отдельной command-boundary моделью до P0-3 |
 | Run Status допустим; Attempt и RunID корректны; SUPERSEDED — только после принятого перехода | TM-16…TM-22 | `TestCanonicalStateRejectsInvalidRunAggregate` (целевой) |
-| Run fence snapshot не выше Task.Fence; текущий writer соответствует Task ownership; Fence не уменьшается при команде | RT-06, ST-06, TM-18, TM-20 | `TestTaskFenceIsAuthoritativeAndMonotonic` (целевой); `TestCanonicalStateRejectsTerminalRunFenceAboveTaskFence` |
-| На Task не больше одного active writer; нарушение блокирует startup и мутации | RT-03 шаг 5, RT-06, ST-04, TM-18, TM-20 | `TestCanonicalStateRejectsMultipleActiveWritersPerTask` (целевой); `TestCanonicalStateRejectsMultipleActiveRunsPerTask` |
+| Run fence snapshot не выше Task.Fence; ownership transition требует Task.Fence+1, matching Run.Fence и same-commit transfer event; `Run.Fence` существующего Task-scoped Run неизменен, кроме recovery transfer того же Run; Task.Fence не меняется без transfer | RT-06, ST-06, TM-18, TM-20 | `TestCanonicalTransitionFirstAssignmentIncrementsTaskFence`; `TestCanonicalTransitionRecoveryPreservesAttemptAndIncrementsTaskFence`; отрицательные `TestCanonicalTransitionRejectsOwnerChangeWithoutTaskFenceBump`, `TestCanonicalTransitionRejectsFenceBumpWithoutOwnershipTransfer`, `TestCanonicalTransitionRejectsRunFenceChangeWithoutRecovery`, `TestCanonicalTransitionRejectsFenceJump`, `TestCanonicalTransitionRequiresOwnershipTransferEvent`, `TestCanonicalTransitionRequiresRunFenceToMatchTaskFence`, `TestCanonicalTransitionRejectsFenceOverflow`, `TestCanonicalTransitionRejectsTerminalRunFenceChangeWithoutRecovery`, `TestCanonicalTransitionRejectsActiveRunFenceChangeWithoutRecovery`; `TestCanonicalStateRejectsTerminalRunFenceAboveTaskFence` |
+| На Task не больше одного active writer; новый Run требует, чтобы прежний writer уже был terminal в previous snapshot | RT-03 шаг 5, RT-06, ST-04, TM-18, TM-20 | `TestCanonicalTransitionRejectsSecondActiveWriter`; `TestCanonicalStateRejectsMultipleActiveRunsPerTask` |
+| Смена OwnerSession возможна только при nonterminal recovery transfer; terminal Run не меняет owner и не реактивируется | RT-06, TM-20, TM-22 | `TestCanonicalTransitionRejectsOwnerChangeWhenRunBecomesTerminal`; `TestCanonicalTransitionRejectsTerminalRunReactivation` |
+| Роль Task-scoped Run неизменна; RoleSelection.Profile.Role согласован с RequiredRole.Role и выбранная Session совпадает с Run.OwnerSession; смена RoleSelection сопровождается той же записью в конце RoleHistory | TM-22, RT-06, AGENTS.md | `TestCanonicalTransitionRejectsTaskRunRoleMutation`; `TestCanonicalStateRejectsMismatchedSelectedRole`; `TestCanonicalStateRejectsSelectedRoleSessionMismatch`; `TestCanonicalTransitionRequiresRoleSelectionHistory` |
+| Сохранённый префикс RoleHistory неизменяем по `agent_id`, роли и порядку; допускается только append | AGENTS.md: независимость AUDITOR по стабильному agent_id и истории исполнителей | `TestCanonicalTransitionRoleHistoryIsAppendOnly` |
+| В commit передачи ровно один `TASK_OWNERSHIP_TRANSFERRED`, он ссылается на переданный Run; marker без передачи запрещён | CM-01, ST-01, RT-06 | `TestCanonicalTransitionRequiresOwnershipTransferEvent`; `TestCanonicalTransitionRejectsTransferMarkerWithoutTransfer`; `TestCanonicalTransitionRejectsTransferMarkerForWrongRun`; `TestCanonicalTransitionRejectsExtraTransferMarker` |
+| Recovery сохраняет RunID/Attempt и очищает RecoveryNeeded/RecoveryClaim; incomplete recovery отклоняется | TM-20, RT-06 | `TestCanonicalTransitionRecoveryPreservesAttemptAndIncrementsTaskFence`; `TestCanonicalTransitionRejectsRecoveryWithUnclearedState` |
 | Каждая Task имеет Domain Event создания; у каждого Event есть TaskID существующей Task и, если задан RunID, этот Run принадлежит той же Task; Event revisions непрерывны и завершаются `Task.Revision`; Event ownership transfer фиксирует Fence; Outbox record ссылается на Event той же атомарной команды | CM-01; TM-06; ST-01, ST-04 | `TestCanonicalStateRejectsDanglingOrInconsistentEvent` (целевой); `TestCanonicalStateRejectsTaskRevisionGapInEventHistory`; `TestCanonicalStateRejectsTaskRevisionAheadOfEventHistory`; проверка Event Fence пока не реализована |
 | Outbox и Inbox receipts имеют допустимые ссылки/идентичность; transition, Event, Outbox и обязательный Inbox receipt согласованы; stale expected Revision отклоняется до handler | CM-01; ST-01, RT-04 | `TestCanonicalStateRejectsInvalidInboxOutboxAndSchema`; `TestCanonicalTaskOutboxRequiresEventFromSameCommit`; `TestApplyInboxCommandCommitsReceiptWithTaskEventAndDeduplicates`; `TestApplyInboxCommandRejectsStaleExpectedRevision` |
 
@@ -501,12 +513,33 @@ P0-2 обязан оставить совместимость с текущим 
 - Event пока не содержит структурированный снимок `Task.Fence`, поэтому startup
   не может проверить соответствие последнего ownership transfer event текущему
   Fence. Нельзя восстановить это значение из `Summary` или текущего Run без
-  догадки. Расширение Event schema и переход на неё требуют отдельного решения;
-  применяется процедура backup по ADR-0005 ST-05.
-- Storage transition пока принимает смену OwnerSession без повышения
-  `Task.Fence` (подтверждено probe 2026-10-08). В production этот путь пока
-  недостижим: Task-scoped Runs не создаются; инвариант закрывается отдельным
-  срезом Task-wide Fence до завершения P0-2.
+  догадки. По решению OWNER R85 поле `task_fence` добавляется в canonical
+  schema v1 до первой production-записи DomainEvent; переход версии и процедура
+  backup по ADR-0005 ST-05 для этого изменения не нужны. Нужен тест совместимости
+  чтения и записи v1 с новым полем. После первой production-записи DomainEvent
+  schema v1 замораживается; последующие изменения требуют новой версии и
+  процедуры по ADR-0005 ST-05.
+- R75a закрывает storage transition gap: смена active writer требует повышения
+  Task.Fence, matching Run.Fence и transfer event; recovery требует claim, а
+  replacement Run требует terminal predecessor из предыдущего snapshot. Это
+  структурная проверка, не supervisor stop proof и не разрешение на transfer.
+  Task-scoped Run сохраняет назначенную роль, профиль выбранной роли обязан
+  совпадать с RequiredRole, Session — с OwnerSession; изменение RoleSelection
+  требует дописать ту же Selection в конец RoleHistory, а сохранённый префикс нельзя удалить или переписать
+  по `agent_id`, роли и порядку. Это защищает основание проверки независимости
+  AUDITOR из AGENTS.md, не задавая новую политику выбора ролей. Transfer commit
+  содержит ровно один `TASK_OWNERSHIP_TRANSFERRED` для нового writer; terminal
+  Run нельзя переактивировать или переписать его owner; recovery обязан очистить
+  RecoveryNeeded и RecoveryClaim.
+  Production Task command path и проверка входного message Fence против
+  `Task.Fence` остаются открытыми.
+- DomainEvent пока не содержит `Task.Fence` snapshot; startup не может проверить
+  цепочку Fence по истории transfer. Добавление `task_fence` в schema v1 до
+  первой production-записи DomainEvent и проверка истории transfer относятся к
+  R75b. По решению OWNER R85 это изменение не требует новой версии схемы или
+  backup по ADR-0005 ST-05; совместимость нового поля проверяется тестом. После
+  первой production-записи schema v1 замораживается, а дальнейшие изменения
+  требуют новой версии по ADR-0005 ST-05.
 - Осталось до завершения 22b: полная structural/reference validation за
   пределами текущих проверок и startup rejection для всех нарушений. По решению
   OWNER R69 Owner authorization boundary и production commands не входят в P0-2;

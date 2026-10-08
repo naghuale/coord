@@ -133,7 +133,7 @@ Assign/rework не допускает два активных writer Runs на T
 не передаёт владение, пока внешний supervisor не подтвердил остановку старого
 writer. Детальные состояния и переходы зафиксированы ADR-0001.
 
-Проверка: частично — `TestFenceValidationPrecedesOwnerAndDeduplication`, `TestRecoveryCASAndOldOwnerRejected`; не реализовано: Task.Fence (проверяется только Run.Fence), не более одного активного writer Run на Task при Assign/Tick/recovery, stop proof supervisor до передачи владения
+Проверка: частично — `TestFenceValidationPrecedesOwnerAndDeduplication`, `TestRecoveryCASAndOldOwnerRejected`, `TestCanonicalTransitionRejectsOwnerChangeWithoutTaskFenceBump`, `TestCanonicalTransitionRejectsFenceBumpWithoutOwnershipTransfer`, `TestCanonicalTransitionRejectsFenceJump`, `TestCanonicalTransitionRequiresOwnershipTransferEvent`, `TestCanonicalTransitionRequiresRunFenceToMatchTaskFence`, `TestCanonicalTransitionRejectsSecondActiveWriter`, `TestCanonicalTransitionRejectsRecoveryWithoutStalledRecoveryClaim`, `TestCanonicalTransitionRejectsFenceOverflow`; не реализовано: incoming write и recovery CAS против текущего `Task.Fence` в production command path, stop proof supervisor до передачи владения
 
 ## Process Ownership
 

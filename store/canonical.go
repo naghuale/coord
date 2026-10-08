@@ -3,10 +3,13 @@ package store
 import (
 	"coord/envelope"
 	"coord/fsm"
+	"coord/roles"
 	"coord/task"
 	"coord/taskid"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"math"
 	"reflect"
 	"strings"
 	"sync"
@@ -14,6 +17,9 @@ import (
 )
 
 const CanonicalSchemaVersion uint32 = 1
+
+// ErrFenceExhausted prevents Task.Fence from wrapping to an earlier writer epoch.
+var ErrFenceExhausted = errors.New("task fence exhausted")
 
 // OutboxMessage preserves the wire envelope identity and, for new Task-scoped
 // commands, the DomainEvent committed by the same command.
@@ -160,6 +166,11 @@ func ValidateCanonicalState(state CanonicalState) error {
 		}
 		if err := run.Validate(); err != nil {
 			return fmt.Errorf("invalid canonical run %q: %w", id, err)
+		}
+		if run.TaskID != "" {
+			if err := validateTaskRunRole(run); err != nil {
+				return fmt.Errorf("invalid canonical run %q role assignment: %w", id, err)
+			}
 		}
 		if len(run.Outbox) != 0 || !run.SendRetryAt.IsZero() || run.SendRetries != 0 {
 			return fmt.Errorf("canonical Run %q duplicates top-level Outbox state", id)
@@ -683,6 +694,9 @@ func ValidateCanonicalTransition(previous, next CanonicalState) error {
 			}
 		}
 	}
+	if err := validateTaskOwnershipTransfers(previous, next, newEvents); err != nil {
+		return err
+	}
 	for id, oldRun := range previous.Runs {
 		newRun, exists := next.Runs[id]
 		if !exists {
@@ -691,9 +705,26 @@ func ValidateCanonicalTransition(previous, next CanonicalState) error {
 		if oldRun.TaskID != newRun.TaskID {
 			return fmt.Errorf("run %q task ID is immutable", id)
 		}
+		if oldRun.TaskID != "" {
+			if oldRun.RequiredRole.Role != newRun.RequiredRole.Role {
+				return fmt.Errorf("task-scoped Run %q role is immutable", id)
+			}
+			if oldRun.RoleSelection != nil && (newRun.RoleSelection == nil || oldRun.RoleSelection.Profile.Role != newRun.RoleSelection.Profile.Role) {
+				return fmt.Errorf("task-scoped Run %q selected role is immutable", id)
+			}
+			if !roleHistoryHasPrefix(oldRun.RoleHistory, newRun.RoleHistory) {
+				return fmt.Errorf("task-scoped Run %q RoleHistory is append-only", id)
+			}
+			if !reflect.DeepEqual(oldRun.RoleSelection, newRun.RoleSelection) {
+				if newRun.RoleSelection == nil || len(newRun.RoleHistory) != len(oldRun.RoleHistory)+1 ||
+					!reflect.DeepEqual(newRun.RoleHistory[len(newRun.RoleHistory)-1], *newRun.RoleSelection) {
+					return fmt.Errorf("task-scoped Run %q RoleSelection change requires the same selection appended to RoleHistory", id)
+				}
+			}
+		}
 		if oldRun.TaskID != "" && !oldRun.SameDomainState(newRun) {
-			if newRun.Fence < oldRun.Fence {
-				return fmt.Errorf("run %q fence cannot decrease", id)
+			if oldRun.Attempt != newRun.Attempt {
+				return fmt.Errorf("run %q Attempt is immutable", id)
 			}
 			if err := requireTaskRunEvent(previous, next, newEvents, id, newRun.TaskID); err != nil {
 				return err
@@ -709,6 +740,200 @@ func ValidateCanonicalTransition(previous, next CanonicalState) error {
 		}
 	}
 	return nil
+}
+
+// validateTaskOwnershipTransfers checks the durable shape of Task writer
+// transfers. It does not authorize a transfer or prove that a process stopped;
+// those checks belong to the daemon command boundary and supervisor.
+func validateTaskOwnershipTransfers(previous, next CanonicalState, events map[taskid.ID][]task.DomainEvent) error {
+	activeCounts := make(map[taskid.ID]int)
+	for _, run := range next.Runs {
+		if run.TaskID != "" && !run.Terminal() {
+			activeCounts[run.TaskID]++
+			if activeCounts[run.TaskID] > 1 {
+				return fmt.Errorf("task %q has multiple active writer runs", run.TaskID)
+			}
+		}
+	}
+	previousActive := activeTaskWriters(previous)
+	nextActive := activeTaskWriters(next)
+	for runID, oldRun := range previous.Runs {
+		if oldRun.TaskID == "" {
+			continue
+		}
+		newRun, exists := next.Runs[runID]
+		if exists && oldRun.Fence != newRun.Fence {
+			recoveryTransfer := oldRun.OwnerSession != newRun.OwnerSession && !oldRun.Terminal() && !newRun.Terminal()
+			if !recoveryTransfer {
+				return fmt.Errorf("task-scoped Run %q fence can change only during recovery ownership transfer", runID)
+			}
+		}
+		if exists && oldRun.OwnerSession != newRun.OwnerSession && (oldRun.Terminal() || newRun.Terminal()) {
+			return fmt.Errorf("task %q terminal Run %q cannot change owner", oldRun.TaskID, runID)
+		}
+	}
+	for taskID, oldTask := range previous.Tasks {
+		newTask := next.Tasks[taskID]
+		oldWriter, hadOldWriter := previousActive[taskID]
+		newWriter, hasNewWriter := nextActive[taskID]
+		transfer := false
+		transferredRun := fsm.Run{}
+		recovery := false
+
+		if hasNewWriter {
+			prior, existed := previous.Runs[newWriter.RunID]
+			switch {
+			case !existed:
+				transfer = true
+				transferredRun = newWriter
+			case prior.OwnerSession != newWriter.OwnerSession:
+				if prior.Terminal() {
+					return fmt.Errorf("task %q terminal Run %q cannot become an active writer again", taskID, newWriter.RunID)
+				}
+				transfer = true
+				recovery = true
+				transferredRun = newWriter
+			case prior.Terminal():
+				return fmt.Errorf("task %q terminal Run %q cannot become an active writer again", taskID, newWriter.RunID)
+			case hadOldWriter && oldWriter.RunID != newWriter.RunID:
+				transfer = true
+				transferredRun = newWriter
+			}
+		}
+
+		if transfer {
+			if hadOldWriter && oldWriter.RunID != newWriter.RunID {
+				return fmt.Errorf("task %q ownership transfer requires previous writer %q to be terminal before this commit", taskID, oldWriter.RunID)
+			}
+			if oldTask.Fence == math.MaxUint64 {
+				return ErrFenceExhausted
+			}
+			if newTask.Fence != oldTask.Fence+1 {
+				if newTask.Fence < oldTask.Fence {
+					return fmt.Errorf("task %q fence cannot decrease", taskID)
+				}
+				return fmt.Errorf("task %q ownership transfer must increment Task.Fence by exactly one", taskID)
+			}
+			if transferredRun.Fence != newTask.Fence {
+				return fmt.Errorf("run %q fence does not match Task %q fence", transferredRun.RunID, taskID)
+			}
+			if recovery {
+				prior := previous.Runs[transferredRun.RunID]
+				if prior.Status != fsm.Stalled || !prior.RecoveryNeeded || prior.RecoveryClaim == "" ||
+					transferredRun.Attempt != prior.Attempt || transferredRun.RunID != prior.RunID ||
+					transferredRun.RecoveryNeeded || transferredRun.RecoveryClaim != "" {
+					return fmt.Errorf("task %q recovery transfer requires stalled Run with RecoveryNeeded and RecoveryClaim, preserved RunID/Attempt, and cleared claim", taskID)
+				}
+			}
+			if err := requireOwnershipTransferEvent(newTask, events[taskID], transferredRun.RunID); err != nil {
+				return err
+			}
+			if !recovery {
+				if err := validateTransferredAttempt(previous, taskID, transferredRun); err != nil {
+					return err
+				}
+			}
+		} else if newTask.Fence != oldTask.Fence {
+			return fmt.Errorf("task %q Task.Fence changed without ownership transfer", taskID)
+		}
+
+		for _, event := range events[taskID] {
+			if event.Type == task.TaskOwnershipTransferred && !transfer {
+				return fmt.Errorf("task %q has TASK_OWNERSHIP_TRANSFERRED event without ownership transfer", taskID)
+			}
+		}
+	}
+	return nil
+}
+
+func activeTaskWriters(state CanonicalState) map[taskid.ID]fsm.Run {
+	writers := make(map[taskid.ID]fsm.Run)
+	for _, run := range state.Runs {
+		if run.TaskID != "" && !run.Terminal() {
+			writers[run.TaskID] = run
+		}
+	}
+	return writers
+}
+
+func requireOwnershipTransferEvent(taskValue task.Task, events []task.DomainEvent, runID string) error {
+	count := 0
+	for _, event := range events {
+		if event.Type != task.TaskOwnershipTransferred {
+			continue
+		}
+		if event.RunID != runID {
+			return fmt.Errorf("task %q TASK_OWNERSHIP_TRANSFERRED event references run %q; want transferred run %q", taskValue.ID, event.RunID, runID)
+		}
+		count++
+	}
+	if count != 1 {
+		return fmt.Errorf("task %q ownership transfer requires exactly one same-commit TASK_OWNERSHIP_TRANSFERRED event for run %q", taskValue.ID, runID)
+	}
+	return nil
+}
+
+func validateTaskRunRole(run fsm.Run) error {
+	if run.RoleSelection == nil {
+		return nil
+	}
+	if run.RequiredRole.Role == "" || run.RoleSelection.Profile.Role != run.RequiredRole.Role {
+		return fmt.Errorf("selected profile role must match required role")
+	}
+	if run.RoleSelection.Session != run.OwnerSession {
+		return fmt.Errorf("selected role session must match Run owner session")
+	}
+	return nil
+}
+
+func roleHistoryHasPrefix(previous, next []roles.Selection) bool {
+	if len(next) < len(previous) {
+		return false
+	}
+	for i, prior := range previous {
+		if prior.AgentID != next[i].AgentID || prior.Profile.Role != next[i].Profile.Role {
+			return false
+		}
+	}
+	return true
+}
+
+func validateTransferredAttempt(previous CanonicalState, taskID taskid.ID, run fsm.Run) error {
+	role := runRole(run)
+	if role == "" {
+		return nil // Legacy or not-yet-role-bound Runs are checked by their command boundary.
+	}
+	if role == roles.Executor {
+		maxAttempt := uint64(0)
+		for _, prior := range previous.Runs {
+			if prior.TaskID == taskID && runRole(prior) == roles.Executor && prior.Attempt > maxAttempt {
+				maxAttempt = prior.Attempt
+			}
+		}
+		if maxAttempt == math.MaxUint64 || run.Attempt != maxAttempt+1 {
+			return fmt.Errorf("task %q new Executor Run must use the next Attempt", taskID)
+		}
+		return nil
+	}
+	if role == roles.Reviewer || role == roles.Auditor {
+		maxExecutorAttempt := uint64(0)
+		for _, prior := range previous.Runs {
+			if prior.TaskID == taskID && runRole(prior) == roles.Executor && prior.Attempt > maxExecutorAttempt {
+				maxExecutorAttempt = prior.Attempt
+			}
+		}
+		if maxExecutorAttempt == 0 || run.Attempt != maxExecutorAttempt {
+			return fmt.Errorf("task %q %s Run must preserve the current Executor Attempt", taskID, role)
+		}
+	}
+	return nil
+}
+
+func runRole(run fsm.Run) roles.Role {
+	if run.RoleSelection != nil {
+		return run.RoleSelection.Profile.Role
+	}
+	return run.RequiredRole.Role
 }
 
 func requireTaskRunEvent(previous, next CanonicalState, events map[taskid.ID][]task.DomainEvent, runID string, taskID taskid.ID) error {

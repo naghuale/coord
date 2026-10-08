@@ -3,9 +3,11 @@ package store
 import (
 	"coord/envelope"
 	"coord/fsm"
+	"coord/roles"
 	"coord/task"
 	"coord/taskid"
 	"errors"
+	"math"
 	"reflect"
 	"strings"
 	"testing"
@@ -651,6 +653,675 @@ func TestCanonicalTransitionRequiresTaskRevisionAndEventForRunDomainChange(t *te
 	if err := ValidateCanonicalTransition(previous, next); err != nil {
 		t.Fatalf("atomic Task/Run/Event transition rejected: %v", err)
 	}
+}
+
+func TestCanonicalTransitionRejectsOwnerChangeWithoutTaskFenceBump(t *testing.T) {
+	previous := claimedRecoveryState()
+	next := ownershipTransferCandidate(t, previous, "run-1", roles.Executor, 1, 1)
+	completeRecoveryRun(&next, "executor-new", 1)
+	if err := ValidateCanonicalTransition(previous, next); err == nil || !strings.Contains(err.Error(), "increment Task.Fence by exactly one") {
+		t.Fatalf("owner transfer error=%v; want required Task.Fence increment", err)
+	}
+}
+
+func TestCanonicalTransitionRejectsRunFenceChangeWithoutRecovery(t *testing.T) {
+	previous := taskStateWithRoleRun(roles.Executor, 1)
+	next := ownershipTransferCandidate(t, previous, "run-1", roles.Executor, 1, 2)
+	run := next.Runs["run-1"]
+	run.Fence = 2
+	next.Runs[run.RunID] = run
+	rewriteLastEventType(&next, "TASK_UPDATED")
+	if err := ValidateCanonicalTransition(previous, next); err == nil || !strings.Contains(err.Error(), "fence can change only during recovery ownership transfer") {
+		t.Fatalf("Fence-only change error=%v; want ownership transfer requirement", err)
+	}
+}
+
+func TestCanonicalTransitionRejectsFenceBumpWithoutOwnershipTransfer(t *testing.T) {
+	previous := taskStateWithRoleRun(roles.Executor, 1)
+	run := failedRun(previous.Runs["run-1"])
+	previous.Runs[run.RunID] = run
+
+	next, err := copyCanonicalState(previous)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := taskid.ID("task_01ARZ3NDEKTSV4RRFFQ69G5FAV")
+	taskValue := next.Tasks[id]
+	taskValue.Fence++
+	next.Tasks[id] = taskValue
+	appendTaskDomainEvent(&next, id, run.RunID, "TASK_UPDATED")
+
+	if err := ValidateCanonicalState(next); err != nil {
+		t.Fatalf("Task-only Fence bump candidate should pass snapshot validation: %v", err)
+	}
+	if err := ValidateCanonicalTransition(previous, next); err == nil || !strings.Contains(err.Error(), "Task.Fence changed without ownership transfer") {
+		t.Fatalf("Task-only Fence bump error=%v; want ownership transfer rejection", err)
+	}
+}
+
+func TestCanonicalTransitionRejectsFenceJump(t *testing.T) {
+	previous := claimedRecoveryState()
+	next := ownershipTransferCandidate(t, previous, "run-1", roles.Executor, 1, 3)
+	completeRecoveryRun(&next, "executor-new", 3)
+	if err := ValidateCanonicalTransition(previous, next); err == nil || !strings.Contains(err.Error(), "increment Task.Fence by exactly one") {
+		t.Fatalf("Fence jump error=%v; want exactly-one increment", err)
+	}
+}
+
+func TestCanonicalTransitionRequiresOwnershipTransferEvent(t *testing.T) {
+	previous := claimedRecoveryState()
+	next := ownershipTransferCandidate(t, previous, "run-1", roles.Executor, 1, 2)
+	completeRecoveryRun(&next, "executor-new", 2)
+	rewriteLastEventType(&next, "WORK_PROGRESS")
+	if err := ValidateCanonicalTransition(previous, next); err == nil || !strings.Contains(err.Error(), "same-commit TASK_OWNERSHIP_TRANSFERRED event") {
+		t.Fatalf("transfer without marker error=%v; want transfer event requirement", err)
+	}
+}
+
+func TestCanonicalTransitionRequiresRunFenceToMatchTaskFence(t *testing.T) {
+	previous := claimedRecoveryState()
+	next := ownershipTransferCandidate(t, previous, "run-1", roles.Executor, 1, 2)
+	completeRecoveryRun(&next, "executor-new", 1)
+	if err := ValidateCanonicalTransition(previous, next); err == nil || !strings.Contains(err.Error(), "fence does not match Task") {
+		t.Fatalf("Run fence mismatch error=%v; want Task fence comparison", err)
+	}
+}
+
+func TestCanonicalTransitionRejectsSecondActiveWriter(t *testing.T) {
+	previous := taskStateWithRoleRun(roles.Executor, 1)
+	next := ownershipTransferCandidate(t, previous, "run-2", roles.Executor, 2, 2)
+	run := next.Runs["run-2"]
+	run.OwnerSession = "executor-2"
+	next.Runs[run.RunID] = run
+	if err := ValidateCanonicalTransition(previous, next); err == nil || !strings.Contains(err.Error(), "multiple active writer runs") {
+		t.Fatalf("multiple writers error=%v; want single-writer rejection", err)
+	}
+
+	// Terminalizing the old Run in the same commit cannot stand in for stop
+	// proof; the previous committed state must already show it as terminal.
+	next.Runs["run-1"] = failedRun(previous.Runs["run-1"])
+	if err := ValidateCanonicalTransition(previous, next); err == nil || !strings.Contains(err.Error(), "previous writer \"run-1\" to be terminal before this commit") {
+		t.Fatalf("same-commit terminalization error=%v; want previous-snapshot terminal requirement", err)
+	}
+}
+
+func TestCanonicalTransitionRejectsRecoveryWithoutStalledRecoveryClaim(t *testing.T) {
+	previous := taskStateWithRoleRun(roles.Executor, 1)
+	run := previous.Runs["run-1"]
+	run.Status = fsm.Stalled
+	run.ResumeStatus = fsm.Started
+	run.RecoveryNeeded = true
+	previous.Runs[run.RunID] = run
+	next := ownershipTransferCandidate(t, previous, "run-1", roles.Executor, 1, 2)
+	run = next.Runs["run-1"]
+	setRunOwner(&run, "executor-new")
+	run.Fence = 2
+	run.Status = fsm.Pending
+	run.ResumeStatus = ""
+	run.RecoveryNeeded = false
+	next.Runs[run.RunID] = run
+	if err := ValidateCanonicalTransition(previous, next); err == nil || !strings.Contains(err.Error(), "recovery transfer requires stalled Run") {
+		t.Fatalf("unclaimed recovery error=%v; want recovery claim requirement", err)
+	}
+}
+
+func TestCanonicalTransitionRejectsRecoveryWithUnclearedState(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		recoveryNeeded bool
+		recoveryClaim  string
+	}{
+		{name: "recovery needed remains", recoveryNeeded: true},
+		{name: "claim remains", recoveryNeeded: true, recoveryClaim: "claim-1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			previous := claimedRecoveryState()
+			next := ownershipTransferCandidate(t, previous, "run-1", roles.Executor, 1, 2)
+			run := next.Runs["run-1"]
+			setRunOwner(&run, "executor-new")
+			run.Fence = 2
+			run.Status = fsm.Stalled
+			run.ResumeStatus = fsm.Started
+			run.RecoveryNeeded = tc.recoveryNeeded
+			run.RecoveryClaim = tc.recoveryClaim
+			next.Runs[run.RunID] = run
+			if err := ValidateCanonicalState(next); err != nil {
+				t.Fatalf("candidate state invalid: %v", err)
+			}
+			if err := ValidateCanonicalTransition(previous, next); err == nil || !strings.Contains(err.Error(), "recovery transfer requires stalled Run") {
+				t.Fatalf("incomplete recovery error=%v; want recovery cleanup rejection", err)
+			}
+		})
+	}
+}
+
+func TestCanonicalTransitionRejectsOwnerChangeWhenRunBecomesTerminal(t *testing.T) {
+	previous := taskStateWithRoleRun(roles.Executor, 1)
+	next, err := copyCanonicalState(previous)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := failedRun(next.Runs["run-1"])
+	setRunOwner(&run, "executor-new")
+	next.Runs[run.RunID] = run
+	appendTaskDomainEvent(&next, run.TaskID, run.RunID, "WORK_FAILED")
+	if err := ValidateCanonicalState(next); err != nil {
+		t.Fatalf("candidate state invalid: %v", err)
+	}
+	if err := ValidateCanonicalTransition(previous, next); err == nil || !strings.Contains(err.Error(), "terminal Run") {
+		t.Fatalf("terminal owner change error=%v; want rejection", err)
+	}
+}
+
+func TestCanonicalTransitionRejectsTerminalRunReactivation(t *testing.T) {
+	for _, changeOwner := range []bool{false, true} {
+		name := "same owner"
+		if changeOwner {
+			name = "changed owner"
+		}
+		t.Run(name, func(t *testing.T) {
+			previous := taskStateWithRoleRun(roles.Executor, 1)
+			run := failedRun(previous.Runs["run-1"])
+			previous.Runs[run.RunID] = run
+			next, err := copyCanonicalState(previous)
+			if err != nil {
+				t.Fatal(err)
+			}
+			run = next.Runs[run.RunID]
+			run.Status = fsm.Started
+			if changeOwner {
+				setRunOwner(&run, "executor-new")
+			}
+			next.Runs[run.RunID] = run
+			appendTaskDomainEvent(&next, run.TaskID, run.RunID, "WORK_STARTED")
+			if err := ValidateCanonicalState(next); err != nil {
+				t.Fatalf("candidate state invalid: %v", err)
+			}
+			if err := ValidateCanonicalTransition(previous, next); err == nil || !strings.Contains(err.Error(), "terminal Run") {
+				t.Fatalf("terminal Run reactivation error=%v; want rejection", err)
+			}
+		})
+	}
+}
+
+func TestCanonicalTransitionRejectsTerminalRunFenceChangeWithoutRecovery(t *testing.T) {
+	previous := taskStateWithRoleRun(roles.Executor, 1)
+	priorExecutor := failedRun(previous.Runs["run-1"])
+	previous.Runs[priorExecutor.RunID] = priorExecutor
+	previous = ownershipTransferCandidate(t, previous, "run-review", roles.Reviewer, 1, 2)
+	if err := ValidateCanonicalState(previous); err != nil {
+		t.Fatalf("previous state invalid: %v", err)
+	}
+
+	next, err := copyCanonicalState(previous)
+	if err != nil {
+		t.Fatal(err)
+	}
+	priorExecutor = next.Runs["run-1"]
+	priorExecutor.Fence = 2
+	next.Runs[priorExecutor.RunID] = priorExecutor
+	appendTaskDomainEvent(&next, priorExecutor.TaskID, priorExecutor.RunID, "FENCE_REWRITTEN")
+	if err := ValidateCanonicalState(next); err != nil {
+		t.Fatalf("candidate state invalid: %v", err)
+	}
+	if err := ValidateCanonicalTransition(previous, next); err == nil || !strings.Contains(err.Error(), "fence can change only during recovery ownership transfer") {
+		t.Fatalf("terminal Run fence change error=%v; want recovery-transfer-only rejection", err)
+	}
+}
+
+func TestCanonicalTransitionRejectsActiveRunFenceChangeWithoutRecovery(t *testing.T) {
+	previous := taskStateWithRoleRun(roles.Executor, 1)
+	next, err := copyCanonicalState(previous)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := taskid.ID("task_01ARZ3NDEKTSV4RRFFQ69G5FAV")
+	taskValue := next.Tasks[id]
+	taskValue.Fence = 2
+	next.Tasks[id] = taskValue
+	run := next.Runs["run-1"]
+	run.Fence = 2
+	next.Runs[run.RunID] = run
+	appendTaskDomainEvent(&next, run.TaskID, run.RunID, "FENCE_REWRITTEN")
+	if err := ValidateCanonicalState(next); err != nil {
+		t.Fatalf("candidate state invalid: %v", err)
+	}
+	if err := ValidateCanonicalTransition(previous, next); err == nil || !strings.Contains(err.Error(), "fence can change only during recovery ownership transfer") {
+		t.Fatalf("active Run fence change error=%v; want recovery-transfer-only rejection", err)
+	}
+}
+
+func TestCanonicalStateRejectsMismatchedSelectedRole(t *testing.T) {
+	state := taskStateWithRoleRun(roles.Executor, 1)
+	run := state.Runs["run-1"]
+	run.RoleSelection.Profile.Role = roles.Reviewer
+	state.Runs[run.RunID] = run
+	if err := ValidateCanonicalState(state); err == nil || !strings.Contains(err.Error(), "selected profile role must match required role") {
+		t.Fatalf("mismatched selection error=%v; want role consistency rejection", err)
+	}
+}
+
+func TestCanonicalStateRejectsSelectedRoleSessionMismatch(t *testing.T) {
+	state := taskStateWithRoleRun(roles.Executor, 1)
+	run := state.Runs["run-1"]
+	run.RoleSelection.Session = "other-session"
+	state.Runs[run.RunID] = run
+	if err := ValidateCanonicalState(state); err == nil || !strings.Contains(err.Error(), "selected role session must match Run owner session") {
+		t.Fatalf("mismatched selection session error=%v; want owner consistency rejection", err)
+	}
+}
+
+func TestCanonicalTransitionRejectsTaskRunRoleMutation(t *testing.T) {
+	previous := taskStateWithRoleRun(roles.Executor, 1)
+	next, err := copyCanonicalState(previous)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := next.Runs["run-1"]
+	run.RequiredRole.Role = roles.Reviewer
+	run.RoleSelection.Profile.Role = roles.Reviewer
+	next.Runs[run.RunID] = run
+	appendTaskDomainEvent(&next, run.TaskID, run.RunID, "ROLE_CHANGED")
+	if err := ValidateCanonicalState(next); err != nil {
+		t.Fatalf("candidate state invalid: %v", err)
+	}
+	if err := ValidateCanonicalTransition(previous, next); err == nil || !strings.Contains(err.Error(), "role is immutable") {
+		t.Fatalf("Run role mutation error=%v; want rejection", err)
+	}
+}
+
+func TestCanonicalTransitionRequiresRoleSelectionHistory(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		appendNext     bool
+		appendTwice    bool
+		appendMismatch bool
+		remove         bool
+		wantErr        string
+	}{
+		{name: "changed agent without history append", wantErr: "RoleSelection change requires the same selection appended to RoleHistory"},
+		{name: "changed agent with matching history append", appendNext: true},
+		{name: "changed agent with two history entries", appendNext: true, appendTwice: true, wantErr: "RoleSelection change requires the same selection appended to RoleHistory"},
+		{name: "changed agent with mismatching history entry", appendNext: true, appendMismatch: true, wantErr: "RoleSelection change requires the same selection appended to RoleHistory"},
+		{name: "remove selection", remove: true, wantErr: "selected role is immutable"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			previous := taskStateWithRoleRun(roles.Executor, 1)
+			run := previous.Runs["run-1"]
+			original := *run.RoleSelection
+			run.RoleHistory = []roles.Selection{original}
+			previous.Runs[run.RunID] = run
+
+			next, err := copyCanonicalState(previous)
+			if err != nil {
+				t.Fatal(err)
+			}
+			run = next.Runs[run.RunID]
+			switch {
+			case tc.remove:
+				run.RoleSelection = nil
+			default:
+				changed := original
+				changed.AgentID = "agent-replacement"
+				run.RoleSelection = &changed
+				if tc.appendNext {
+					appended := changed
+					if tc.appendMismatch {
+						appended.AgentID = "different-agent"
+					}
+					run.RoleHistory = append(run.RoleHistory, appended)
+					if tc.appendTwice {
+						run.RoleHistory = append(run.RoleHistory, changed)
+					}
+				}
+			}
+			next.Runs[run.RunID] = run
+			appendTaskDomainEvent(&next, run.TaskID, run.RunID, "ROLE_SELECTION_CHANGED")
+			if err := ValidateCanonicalState(next); err != nil {
+				t.Fatalf("candidate state invalid: %v", err)
+			}
+			transitionErr := ValidateCanonicalTransition(previous, next)
+			if tc.wantErr != "" {
+				if transitionErr == nil || !strings.Contains(transitionErr.Error(), tc.wantErr) {
+					t.Fatalf("RoleSelection transition error=%v; want %q", transitionErr, tc.wantErr)
+				}
+				return
+			}
+			if transitionErr != nil {
+				t.Fatalf("RoleSelection change with matching history append rejected: %v", transitionErr)
+			}
+		})
+	}
+}
+
+func TestCanonicalTransitionRejectsTransferMarkerWithoutTransfer(t *testing.T) {
+	previous := taskStateWithRoleRun(roles.Executor, 1)
+	next, err := copyCanonicalState(previous)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := next.Runs["run-1"]
+	run.Status = fsm.Blocked
+	run.Blocker = "waiting"
+	next.Runs[run.RunID] = run
+	appendTaskDomainEvent(&next, run.TaskID, run.RunID, task.TaskOwnershipTransferred)
+	if err := ValidateCanonicalState(next); err != nil {
+		t.Fatalf("candidate state invalid: %v", err)
+	}
+	if err := ValidateCanonicalTransition(previous, next); err == nil || !strings.Contains(err.Error(), "without ownership transfer") {
+		t.Fatalf("unpaired transfer marker error=%v; want rejection", err)
+	}
+}
+
+func TestCanonicalTransitionRejectsTransferMarkerForWrongRun(t *testing.T) {
+	previous := taskStateWithRoleRun(roles.Executor, 1)
+	prior := previous.Runs["run-1"]
+	prior.Status = fsm.Failed
+	previous.Runs[prior.RunID] = prior
+	next := ownershipTransferCandidate(t, previous, "run-review", roles.Reviewer, 1, 2)
+	next.Events[len(next.Events)-1].RunID = "run-1"
+	taskValue := next.Tasks[prior.TaskID]
+	taskValue.LastEventSeq++
+	taskValue.UpdatedAt = taskValue.UpdatedAt.Add(time.Second)
+	next.Tasks[taskValue.ID] = taskValue
+	next.Events = append(next.Events, task.DomainEvent{
+		ID: task.EventID(taskValue.ID, taskValue.LastEventSeq), TaskID: taskValue.ID,
+		RunID: "run-review", EventSeq: taskValue.LastEventSeq, TaskRevision: taskValue.Revision,
+		Type: "TASK_ASSIGNED", CreatedAt: taskValue.UpdatedAt,
+	})
+	if err := ValidateCanonicalState(next); err != nil {
+		t.Fatalf("candidate state invalid: %v", err)
+	}
+	if err := ValidateCanonicalTransition(previous, next); err == nil || !strings.Contains(err.Error(), "references run") {
+		t.Fatalf("wrong-run transfer marker error=%v; want rejection", err)
+	}
+}
+
+func TestCanonicalTransitionRejectsExtraTransferMarker(t *testing.T) {
+	previous := taskStateWithRoleRun(roles.Executor, 1)
+	prior := previous.Runs["run-1"]
+	prior.Status = fsm.Failed
+	previous.Runs[prior.RunID] = prior
+	next := ownershipTransferCandidate(t, previous, "run-review", roles.Reviewer, 1, 2)
+	taskValue := next.Tasks[prior.TaskID]
+	taskValue.LastEventSeq++
+	taskValue.UpdatedAt = taskValue.UpdatedAt.Add(time.Second)
+	next.Tasks[taskValue.ID] = taskValue
+	next.Events = append(next.Events, task.DomainEvent{
+		ID: task.EventID(taskValue.ID, taskValue.LastEventSeq), TaskID: taskValue.ID,
+		RunID: "run-review", EventSeq: taskValue.LastEventSeq, TaskRevision: taskValue.Revision,
+		Type: task.TaskOwnershipTransferred, CreatedAt: taskValue.UpdatedAt,
+	})
+	if err := ValidateCanonicalState(next); err != nil {
+		t.Fatalf("candidate state invalid: %v", err)
+	}
+	if err := ValidateCanonicalTransition(previous, next); err == nil || !strings.Contains(err.Error(), "exactly one") {
+		t.Fatalf("extra transfer marker error=%v; want exactly-one rejection", err)
+	}
+}
+
+func TestCanonicalTransitionRoleHistoryIsAppendOnly(t *testing.T) {
+	selection := func(agent string, role roles.Role) roles.Selection {
+		return roles.Selection{AgentID: agent, Session: agent, Profile: roles.Profile{Role: role}}
+	}
+	for _, tc := range []struct {
+		name   string
+		change func([]roles.Selection) []roles.Selection
+	}{
+		{name: "rewrite prefix entry", change: func(history []roles.Selection) []roles.Selection { history[0].AgentID = "rewritten"; return history }},
+		{name: "rewrite prefix role", change: func(history []roles.Selection) []roles.Selection {
+			history[0].Profile.Role = roles.Reviewer
+			return history
+		}},
+		{name: "remove entry", change: func(history []roles.Selection) []roles.Selection {
+			return []roles.Selection{history[0], history[2], selection("agent-d", roles.Executor)}
+		}},
+		{name: "shorten history", change: func(history []roles.Selection) []roles.Selection { return history[:2] }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			previous := taskStateWithRoleRun(roles.Executor, 1)
+			run := previous.Runs["run-1"]
+			run.RoleHistory = []roles.Selection{selection("agent-a", roles.Executor), selection("agent-b", roles.Executor), selection("agent-c", roles.Executor)}
+			previous.Runs[run.RunID] = run
+			next, err := copyCanonicalState(previous)
+			if err != nil {
+				t.Fatal(err)
+			}
+			run = next.Runs[run.RunID]
+			run.RoleHistory = tc.change(run.RoleHistory)
+			next.Runs[run.RunID] = run
+			appendTaskDomainEvent(&next, run.TaskID, run.RunID, "ROLE_HISTORY_UPDATED")
+			if err := ValidateCanonicalState(next); err != nil {
+				t.Fatalf("candidate state invalid: %v", err)
+			}
+			if err := ValidateCanonicalTransition(previous, next); err == nil || !strings.Contains(err.Error(), "RoleHistory is append-only") {
+				t.Fatalf("RoleHistory mutation error=%v; want append-only rejection", err)
+			}
+		})
+	}
+
+	t.Run("append at end", func(t *testing.T) {
+		previous := taskStateWithRoleRun(roles.Executor, 1)
+		run := previous.Runs["run-1"]
+		run.RoleHistory = []roles.Selection{selection("agent-a", roles.Executor)}
+		previous.Runs[run.RunID] = run
+		next, err := copyCanonicalState(previous)
+		if err != nil {
+			t.Fatal(err)
+		}
+		run = next.Runs[run.RunID]
+		run.RoleHistory = append(run.RoleHistory, selection("agent-b", roles.Executor))
+		next.Runs[run.RunID] = run
+		appendTaskDomainEvent(&next, run.TaskID, run.RunID, "ROLE_HISTORY_UPDATED")
+		if err := ValidateCanonicalState(next); err != nil {
+			t.Fatalf("candidate state invalid: %v", err)
+		}
+		if err := ValidateCanonicalTransition(previous, next); err != nil {
+			t.Fatalf("append-only RoleHistory update rejected: %v", err)
+		}
+	})
+}
+
+func TestCanonicalTransitionRejectsFenceOverflow(t *testing.T) {
+	previous := taskStateWithRoleRun(roles.Executor, 1)
+	id := taskid.ID("task_01ARZ3NDEKTSV4RRFFQ69G5FAV")
+	taskValue := previous.Tasks[id]
+	taskValue.Fence = math.MaxUint64
+	previous.Tasks[id] = taskValue
+	run := previous.Runs["run-1"]
+	run.Fence = math.MaxUint64
+	run.Status = fsm.Stalled
+	run.ResumeStatus = fsm.Started
+	run.RecoveryNeeded = true
+	run.RecoveryClaim = "claim"
+	previous.Runs[run.RunID] = run
+	next := ownershipTransferCandidate(t, previous, "run-1", roles.Executor, 1, math.MaxUint64)
+	run = next.Runs["run-1"]
+	setRunOwner(&run, "executor-new")
+	run.Status = fsm.Pending
+	run.ResumeStatus = ""
+	run.RecoveryNeeded = false
+	run.RecoveryClaim = ""
+	next.Runs[run.RunID] = run
+	if err := ValidateCanonicalTransition(previous, next); !errors.Is(err, ErrFenceExhausted) {
+		t.Fatalf("Fence overflow error=%v; want ErrFenceExhausted", err)
+	}
+}
+
+func TestCanonicalTransitionFirstAssignmentIncrementsTaskFence(t *testing.T) {
+	previous := taskState()
+	id := taskid.ID("task_01ARZ3NDEKTSV4RRFFQ69G5FAV")
+	taskValue := previous.Tasks[id]
+	taskValue.Fence = 0
+	previous.Tasks[id] = taskValue
+	next := ownershipTransferCandidate(t, previous, "run-1", roles.Executor, 1, 1)
+	if err := ValidateCanonicalState(next); err != nil {
+		t.Fatalf("first assignment candidate invalid: %v", err)
+	}
+	if err := ValidateCanonicalTransition(previous, next); err != nil {
+		t.Fatalf("first assignment rejected: %v", err)
+	}
+}
+
+func TestCanonicalTransitionRecoveryPreservesAttemptAndIncrementsTaskFence(t *testing.T) {
+	previous := claimedRecoveryState()
+	next := ownershipTransferCandidate(t, previous, "run-1", roles.Executor, 1, 2)
+	completeRecoveryRun(&next, "executor-new", 2)
+	if err := ValidateCanonicalTransition(previous, next); err != nil {
+		t.Fatalf("valid recovery transfer rejected: %v", err)
+	}
+}
+
+func TestCanonicalTransitionRoleHandoffPreservesWorkflowAttempt(t *testing.T) {
+	previous := taskStateWithRoleRun(roles.Executor, 1)
+	prior := previous.Runs["run-1"]
+	prior.Status = fsm.Failed
+	previous.Runs[prior.RunID] = prior
+	next := ownershipTransferCandidate(t, previous, "run-review", roles.Reviewer, 1, 2)
+	if err := ValidateCanonicalState(next); err != nil {
+		t.Fatalf("review handoff candidate invalid: %v", err)
+	}
+	if err := ValidateCanonicalTransition(previous, next); err != nil {
+		t.Fatalf("role handoff with same Attempt rejected: %v", err)
+	}
+	wrongAttempt := ownershipTransferCandidate(t, previous, "run-review-wrong-attempt", roles.Reviewer, 2, 2)
+	if err := ValidateCanonicalTransition(previous, wrongAttempt); err == nil || !strings.Contains(err.Error(), "must preserve the current Executor Attempt") {
+		t.Fatalf("review handoff with a new Attempt error=%v; want same-pass Attempt enforcement", err)
+	}
+}
+
+func TestCanonicalTransitionReworkIncrementsAttemptAndFence(t *testing.T) {
+	previous := taskStateWithRoleRun(roles.Executor, 1)
+	prior := previous.Runs["run-1"]
+	prior.Status = fsm.Failed
+	previous.Runs[prior.RunID] = prior
+	next := ownershipTransferCandidate(t, previous, "run-rework", roles.Executor, 2, 2)
+	if err := ValidateCanonicalState(next); err != nil {
+		t.Fatalf("rework candidate invalid: %v", err)
+	}
+	if err := ValidateCanonicalTransition(previous, next); err != nil {
+		t.Fatalf("rework with next Attempt rejected: %v", err)
+	}
+	wrongAttempt := ownershipTransferCandidate(t, previous, "run-rework-wrong-attempt", roles.Executor, 1, 2)
+	if err := ValidateCanonicalTransition(previous, wrongAttempt); err == nil || !strings.Contains(err.Error(), "must use the next Attempt") {
+		t.Fatalf("rework without increment error=%v; want next Attempt enforcement", err)
+	}
+}
+
+func TestCanonicalTransitionRetryPreservesAttemptAndTaskFence(t *testing.T) {
+	previous := taskStateWithRoleRun(roles.Executor, 1)
+	next, err := copyCanonicalState(previous)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := next.Runs["run-1"]
+	run.Retries++
+	run.RetryAt = run.RetryAt.Add(time.Second)
+	next.Runs[run.RunID] = run
+	if err := ValidateCanonicalTransition(previous, next); err != nil {
+		t.Fatalf("retry without Attempt or Task.Fence change rejected: %v", err)
+	}
+	changedAttempt := next.Runs["run-1"]
+	changedAttempt.Attempt++
+	next.Runs[changedAttempt.RunID] = changedAttempt
+	if err := ValidateCanonicalTransition(previous, next); err == nil || !strings.Contains(err.Error(), "Attempt is immutable") {
+		t.Fatalf("Attempt mutation error=%v; want immutable Run Attempt", err)
+	}
+}
+
+func failedRun(run fsm.Run) fsm.Run {
+	run.Status = fsm.Failed
+	run.ResumeStatus = ""
+	run.RecoveryNeeded = false
+	run.RecoveryClaim = ""
+	return run
+}
+
+func taskStateWithRoleRun(role roles.Role, attempt uint64) CanonicalState {
+	state := taskStateWithRun()
+	run := state.Runs["run-1"]
+	run.Attempt = attempt
+	run.RequiredRole = roles.Requirement{Role: role}
+	run.RoleSelection = &roles.Selection{AgentID: "agent-" + strings.ToLower(string(role)), Session: run.OwnerSession, Profile: roles.Profile{Role: role}}
+	state.Runs[run.RunID] = run
+	return state
+}
+
+func claimedRecoveryState() CanonicalState {
+	state := taskStateWithRoleRun(roles.Executor, 1)
+	run := state.Runs["run-1"]
+	run.Status = fsm.Stalled
+	run.ResumeStatus = fsm.Started
+	run.RecoveryNeeded = true
+	run.RecoveryClaim = "claim-1"
+	state.Runs[run.RunID] = run
+	return state
+}
+
+func completeRecoveryRun(state *CanonicalState, owner string, fence uint64) {
+	run := state.Runs["run-1"]
+	setRunOwner(&run, owner)
+	run.Fence = fence
+	run.Status = fsm.Pending
+	run.ResumeStatus = ""
+	run.RecoveryNeeded = false
+	run.RecoveryClaim = ""
+	state.Runs[run.RunID] = run
+}
+
+func setRunOwner(run *fsm.Run, owner string) {
+	run.OwnerSession = owner
+	if run.RoleSelection != nil {
+		run.RoleSelection.Session = owner
+		run.RoleHistory = append(run.RoleHistory, *run.RoleSelection)
+	}
+}
+
+func ownershipTransferCandidate(t *testing.T, previous CanonicalState, runID string, role roles.Role, attempt, fence uint64) CanonicalState {
+	t.Helper()
+	next, err := copyCanonicalState(previous)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := taskid.ID("task_01ARZ3NDEKTSV4RRFFQ69G5FAV")
+	taskValue := next.Tasks[id]
+	taskValue.Revision++
+	taskValue.LastEventSeq++
+	taskValue.Fence = fence
+	taskValue.UpdatedAt = taskValue.UpdatedAt.Add(time.Second)
+	next.Tasks[id] = taskValue
+	if _, exists := next.Runs[runID]; !exists {
+		owner := "agent-" + strings.ToLower(string(role))
+		next.Runs[runID] = fsm.Run{
+			Task: "legacy label", TaskID: id, RunID: runID, Attempt: attempt, Fence: fence,
+			OwnerSession: owner, Worktree: "worktree", Deadline: taskValue.UpdatedAt.Add(time.Hour), Status: fsm.Pending,
+			RequiredRole:  roles.Requirement{Role: role},
+			RoleSelection: &roles.Selection{AgentID: owner, Session: owner, Profile: roles.Profile{Role: role}},
+		}
+	}
+	next.Events = append(next.Events, task.DomainEvent{
+		ID: task.EventID(id, taskValue.LastEventSeq), TaskID: id, RunID: runID,
+		EventSeq: taskValue.LastEventSeq, TaskRevision: taskValue.Revision,
+		Type: task.TaskOwnershipTransferred, CreatedAt: taskValue.UpdatedAt,
+	})
+	return next
+}
+
+func rewriteLastEventType(state *CanonicalState, eventType task.EventType) {
+	state.Events[len(state.Events)-1].Type = eventType
+}
+
+func appendTaskDomainEvent(state *CanonicalState, taskID taskid.ID, runID string, eventType task.EventType) {
+	taskValue := state.Tasks[taskID]
+	taskValue.Revision++
+	taskValue.LastEventSeq++
+	taskValue.UpdatedAt = taskValue.UpdatedAt.Add(time.Second)
+	state.Tasks[taskID] = taskValue
+	state.Events = append(state.Events, task.DomainEvent{
+		ID: task.EventID(taskID, taskValue.LastEventSeq), TaskID: taskID, RunID: runID,
+		EventSeq: taskValue.LastEventSeq, TaskRevision: taskValue.Revision,
+		Type: eventType, CreatedAt: taskValue.UpdatedAt,
+	})
 }
 
 func taskState() CanonicalState {

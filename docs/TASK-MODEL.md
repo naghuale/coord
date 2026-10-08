@@ -150,7 +150,7 @@ ownership либо не переведён в терминальный `SUPERSED
   вычисляется из committed результата и отсутствующего обязательного proof, а не
   хранится как отдельная очередь. Run может быть `DONE`, пока Task заблокирован на
   границе передачи; интерфейс не должен изображать этот период как активную работу.
-  Проверка: не реализовано
+  Проверка: частично — `TestCanonicalTransitionRejectsSecondActiveWriter`; не реализовано: подтверждение остановки supervisor до передачи и Task BLOCKED projection.
 
 - **TM-14 — RunViewStatus только проекция.** `RunViewStatus` — только вычисляемое представление для человека. Оно не
   принимается командами и не сохраняется как второе состояние Run.
@@ -180,17 +180,17 @@ Run — одно назначение одной роли внутри одно�
 - **TM-17 — Attempt начинается с 1 и общий для Review/Audit прохода.** Начальный Executor Run начинает Attempt `1`.
   Reviewer и Auditor Runs, назначенные в том же проходе workflow, используют тот
   же Attempt.
-  Проверка: не реализовано
+  Проверка: частично — `TestCanonicalTransitionRoleHandoffPreservesWorkflowAttempt`, `TestCanonicalTransitionReworkIncrementsAttemptAndFence`; не реализовано: production assignment и проверка Attempt во всех workflow command paths.
 - **TM-18 — Rework требует подтверждённой остановки writer.** `CHANGES_REQUIRED` от Reviewer/Auditor начинает следующий Attempt: Coord
   терминально переводит старый Executor Run в `SUPERSEDED` и создаёт новый
   Executor Run с `Attempt+1` только после подтверждения supervisor, что предыдущий
   writer остановлен и больше не владеет рабочей границей.
-  Проверка: не реализовано
+  Проверка: частично — `TestCanonicalTransitionRejectsSecondActiveWriter`; не реализовано: подтверждение остановки supervisor до передачи и RunStatus `SUPERSEDED`.
 - **TM-19 — Transport retry сохраняет RunID и Attempt.** Transport retry и повторная доставка сохраняют RunID и Attempt.
   Проверка: `TestAckRetryPreservesAttemptAndDeduplicates`, `TestRunInvariantsHoldThroughLifecycle`
 - **TM-20 — Recovery сохраняет RunID и Attempt.** Recovery сохраняет RunID и Attempt; после подтверждённой остановки writer
   повышает Task.Fence и присваивает новый Run.Fence snapshot.
-  Проверка: частично — `TestRunInvariantsHoldThroughLifecycle`, `TestRecoveryCASAndOldOwnerRejected`; не реализовано: stop proof supervisor до передачи и Task.Fence
+  Проверка: частично — `TestRunInvariantsHoldThroughLifecycle`, `TestRecoveryCASAndOldOwnerRejected`, `TestCanonicalTransitionRecoveryPreservesAttemptAndIncrementsTaskFence`; не реализовано: подтверждение остановки supervisor до передачи, проверка входного сообщения против `Task.Fence` и production command path
 - **TM-21 — Attempt восстанавливается из committed истории.** Каждый Run имеет собственный неизменяемый Attempt; Attempt является номером
   прохода Task workflow и копируется в каждый Run этого прохода. Источник
   следующего номера — максимальный committed Attempt в истории Runs данного

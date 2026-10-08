@@ -1,5 +1,54 @@
 # История изменений
 
+## 2026-10-08 — P0-2, R75a: инварианты передачи владения в хранилище
+
+- Переходы canonical Task требуют увеличивать `Task.Fence` ровно на единицу при
+  каждой передаче владения, сверять его со снимком Fence активного Run и
+  фиксировать DomainEvent `TASK_OWNERSHIP_TRANSFERRED`. Recovery сохраняет
+  RunID/Attempt и требует stalled recovery claim; для нового Run прежний writer
+  должен быть terminal уже в предыдущем snapshot. Это проверяет структуру
+  storage-перехода; `Run.Fence` существующего Task-scoped Run меняется только при
+  recovery transfer того же Run. Подтверждение остановки supervisor и
+  авторизация production command path пока не реализованы
+  (`TestCanonicalTransitionRecoveryPreservesAttemptAndIncrementsTaskFence`,
+  `TestCanonicalTransitionRejectsSecondActiveWriter`,
+  `TestCanonicalTransitionRejectsTerminalRunFenceChangeWithoutRecovery`,
+  `TestCanonicalTransitionRejectsActiveRunFenceChangeWithoutRecovery`,
+  `TestCanonicalTransitionRejectsRunFenceChangeWithoutRecovery`).
+- Добавлены регрессионные проверки отсутствующего и лишнего изменения Fence,
+  transfer event, recovery claim, нескольких writers, правил Attempt и
+  переполнения Fence
+  (`TestCanonicalTransitionRejectsOwnerChangeWithoutTaskFenceBump`,
+  `TestCanonicalTransitionRejectsFenceBumpWithoutOwnershipTransfer`,
+  `TestCanonicalTransitionRejectsFenceJump`,
+  `TestCanonicalTransitionRequiresOwnershipTransferEvent`,
+  `TestCanonicalTransitionRequiresRunFenceToMatchTaskFence`,
+  `TestCanonicalTransitionRejectsRecoveryWithoutStalledRecoveryClaim`,
+  `TestCanonicalTransitionRejectsFenceOverflow`,
+  `TestCanonicalTransitionRoleHandoffPreservesWorkflowAttempt`,
+  `TestCanonicalTransitionReworkIncrementsAttemptAndFence`,
+  `TestCanonicalTransitionRetryPreservesAttemptAndTaskFence`).
+- Ужесточена граница переходов: идентичность роли Task-scoped Run нельзя
+  переписать, выбранный профиль должен соответствовать требуемой роли,
+  terminal Run не может сменить владельца или снова стать активным, а recovery
+  обязан очистить состояние claim. Новая `RoleSelection` должна без изменений
+  добавляться в конец `RoleHistory`; снятие выбора или смена его идентичности без
+  записи в историю отклоняются. Commit передачи содержит ровно один transfer
+  marker для нового writer. Существующие записи `RoleHistory` добавляются только
+  в конец; их `agent_id`, роль и порядок сохраняются как свидетельство для
+  проверки независимости AUDITOR. Политика выбора ролей не меняется
+  (`TestCanonicalStateRejectsMismatchedSelectedRole`,
+  `TestCanonicalStateRejectsSelectedRoleSessionMismatch`,
+  `TestCanonicalTransitionRejectsTaskRunRoleMutation`,
+  `TestCanonicalTransitionRejectsTerminalRunReactivation`,
+  `TestCanonicalTransitionRejectsOwnerChangeWhenRunBecomesTerminal`,
+  `TestCanonicalTransitionRejectsRecoveryWithUnclearedState`,
+  `TestCanonicalTransitionRejectsTransferMarkerWithoutTransfer`,
+  `TestCanonicalTransitionRejectsTransferMarkerForWrongRun`,
+  `TestCanonicalTransitionRejectsExtraTransferMarker`,
+  `TestCanonicalTransitionRoleHistoryIsAppendOnly`,
+  `TestCanonicalTransitionRequiresRoleSelectionHistory`).
+
 ## 2026-10-08 — P0-2: fail-closed для неисполняемого StagePlan
 
 - Сохранили полную грамматику StagePlan, но `taskservice.Create` теперь до

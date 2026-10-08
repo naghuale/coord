@@ -9,7 +9,10 @@ import (
 
 type EventType string
 
-const TaskCreated EventType = "TASK_CREATED"
+const (
+	TaskCreated              EventType = "TASK_CREATED"
+	TaskOwnershipTransferred EventType = "TASK_OWNERSHIP_TRANSFERRED"
+)
 
 // DomainEvent is an auditable fact in a Task's canonical history.
 type DomainEvent struct {

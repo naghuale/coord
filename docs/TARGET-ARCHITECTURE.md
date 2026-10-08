@@ -16,7 +16,7 @@
 | Library daemon host (listeners, readiness по Run) | частично | ADR-0004 RT-03 |
 | Standalone daemon `cmd/coordd` (Run-only), namespace lock, process-kill acceptance | частично: P0-1 в работе, приёмка не закрыта | ADR-0004 RT-01, RT-03; docs/plans/p0-daemon/DESIGN.md |
 | Единый command path для всех writer | нет: localchat host пишет runs.json напрямую | ADR-0004 RT-04 |
-| Task aggregate, `task_<ULID>`, Task.Fence | частично: Task aggregate, TaskID, canonical store и транзакция state/event/outbox/inbox есть; authoritative Task.Fence при передаче владения (R75) и production command path (P0-3) — нет | TASK-MODEL; ADR-0003; ADR-0004 RT-06 |
+| Task aggregate, `task_<ULID>`, Task.Fence | частично: storage transition проверяет fence bump, transfer event, recovery claim и одного writer (R75a); Event Fence snapshot/startup chain (R75b), supervisor stop proof и production command path остаются открытыми | TASK-MODEL; ADR-0003; ADR-0004 RT-06 |
 | Production CLI/agent write path → daemon → Task | нет (P0-3) | ADR-0004 RT-04; ADR-0001 шаг 11 |
 | ReviewResult, AuditResult | нет | ADR-0001 шаг 8 |
 | Discussion Graph | нет | ADR-0001 «Discussion Graph» |

@@ -34,6 +34,9 @@ outbox/inbox записями.
 активного writer на Task, ссылочной целостности и Event/Outbox ещё не существуют,
 поскольку соответствующая каноническая модель пока не реализована.
 
+Актуальный статус реализации зафиксирован в строках «Проверка:» этого ADR и
+в [TARGET-ARCHITECTURE.md](TARGET-ARCHITECTURE.md).
+
 ## Рассмотренные варианты
 
 ### Версионированный atomic snapshot
@@ -140,7 +143,7 @@ Run fence snapshots, отсутствие нескольких активных 
 покрывает только проверки, перечисленные в Context; его нельзя считать выполнением
 этого требования.
 
-Проверка: не реализовано
+Проверка: частично — `TestCanonicalFileRejectsUnknownSchemaWithoutModifyingFile`, `TestCanonicalStateValidatesTaskEventAndRunRelations`, `TestCanonicalStateRejectsMultipleActiveRunsPerTask`, `TestCanonicalStateRejectsTerminalRunFenceAboveTaskFence`, `TestCanonicalStateRejectsInvalidInboxOutboxAndSchema`, `TestCanonicalStateRejectsTaskRevisionGapInEventHistory`, `TestCanonicalStateRejectsEventSequenceGapAfterFirstEvent`, `TestCanonicalStateRequiresLastEventSequenceToMatchHistoryLength`, `TestCanonicalTransitionRejectsOwnerChangeWithoutTaskFenceBump`, `TestCanonicalTransitionRejectsFenceBumpWithoutOwnershipTransfer`, `TestCanonicalTransitionRejectsFenceJump`, `TestCanonicalTransitionRequiresOwnershipTransferEvent`, `TestCanonicalTransitionRequiresRunFenceToMatchTaskFence`, `TestCanonicalTransitionRejectsSecondActiveWriter`, `TestCanonicalTransitionRejectsRecoveryWithoutStalledRecoveryClaim`, `TestCanonicalTransitionRejectsFenceOverflow`; не реализовано: Event Fence snapshot и его проверка при старте, production command path. Остальные требования ST-04 остаются целевыми.
 
 ### ST-05 — Миграции
 
@@ -169,7 +172,7 @@ boundary. Проверка актуального `Task.Fence` и запись �
 snapshot storage. При добавлении SQLite fencing/CAS переносится в транзакционное
 conditional update; он не вычисляется из `max(Run.Fence)`.
 
-Проверка: не реализовано
+Проверка: частично — storage transition сериализован store mutex и ownership lock; `TestCanonicalTransitionFirstAssignmentIncrementsTaskFence`, `TestCanonicalTransitionRecoveryPreservesAttemptAndIncrementsTaskFence`, `TestCanonicalTransitionRoleHandoffPreservesWorkflowAttempt`, `TestCanonicalTransitionReworkIncrementsAttemptAndFence`, `TestCanonicalTransitionRetryPreservesAttemptAndTaskFence`; не реализовано: production command path и supervisor stop proof до передачи.
 
 ### ST-07 — Уникальность TaskID
 
