@@ -1,6 +1,7 @@
 # Review/Audit и Discussion Graph — design
 
 - **Статус:** Draft
+- **OWNER decision:** R108 (2026-10-08), зафиксировано в этом draft
 - **Этап:** после P0-2, ADR-0001 шаги 8–9, CM-03, CM-08, CM-11
 - **Нормативные источники:** Accepted ADR-0001, TASK-MODEL; durable boundary —
   ADR-0004 RT-04 и ADR-0005 ST-01/ST-04
@@ -63,9 +64,23 @@ Accepted ADR-0001 требует для обоих результатов стр
 - Auditor `PASS` — сохранить durable result и перейти в
   `BLOCKED/WAITING_FOR_SUPERVISOR_STOP`; после stop proof Task завершается либо
   переходит к `OWNER_DECISION` согласно policy;
-- Audit, требующий исправления, — сохранить durable result и перевести Task в
+- Auditor `CHANGES_REQUIRED` (имя закреплено R108; TASK-MODEL:297 говорит
+  «Audit требует исправления») — сохранить durable result и перевести Task в
   `BLOCKED/WAITING_FOR_SUPERVISOR_STOP`; rework новым Executor Run и Attempt
   начинается только после stop proof.
+
+Канонические verdict values по R108:
+
+- `ReviewResult.verdict`: `APPROVED` или `CHANGES_REQUIRED`;
+- `AuditResult.verdict`: `PASS` или `CHANGES_REQUIRED`.
+
+TASK-MODEL:297 описывает Audit outcome как «Audit требует исправления»; имя
+`CHANGES_REQUIRED` для этого исхода впервые закреплено решением OWNER R108.
+TASK-MODEL не меняется этим документом. `BLOCKED` не является verdict: когда
+Reviewer/Auditor не может вынести verdict, этап не принимает `BLOCKED` вместо
+verdict и фиксирует Discussion node типа `BLOCKER`. Конкретные код причины,
+Stage/Status и workflow-переход для этого случая нормами не заданы и остаются
+UNKNOWN, вне scope этого этапа.
 
 Этот этап реализует фиксацию verdict и переход в ожидание stop proof. Он не
 реализует получение/проверку stop proof, снятие блокировки или продолжение
@@ -85,16 +100,22 @@ ReviewResult / AuditResult
 └─ references to input/output artifacts
 ```
 
-Это перечень смысла полей, а не утверждённая Go/JSON-схема. Решения о точном
-наборе полей сведены в таблицу вопросов OWNER в §7. До их принятия не вводить
-дополнительные enum values, severity levels или lifecycle.
+`ReviewResult` и `AuditResult` хранятся typed payload соответствующего
+DomainEvent и восстанавливаются из Event history; отдельного хранилища нет
+(R108). Каждый Finding содержит `ID` (выдаёт Coord), `Severity` из
+`CRITICAL | MAJOR | MINOR`, `Summary`, `Evidence` references и `CreatedAt`.
+Дополнительные поля могут появиться позднее по отдельному решению.
+
+Severity Finding носит описательный характер и не влияет на переход Task; переход
+определяется только verdict. Невозможность выдать verdict выражается workflow
+blocker и Discussion `BLOCKER`, а не новым verdict.
 
 Результат должен быть связан с ролью и Attempt канонически назначенного Run:
 ReviewResult создаётся Reviewer Run в Stage `REVIEW`, AuditResult — Auditor
 Run в Stage `AUDIT`; Reviewer и Auditor Runs того же workflow pass используют
 Attempt Executor этого pass (TM-17). Входные evidence/artifact references
-проверяются по правилам, которые будут утверждены в §7; artifact content и
-ownership contract остаются вне этого этапа.
+проверяются на существование и принадлежность разрешённой области Task. Проверка
+содержимого Artifact остаётся вне этого этапа.
 
 Результат не восстанавливается разбором текста. Текстовые поля проходят
 входную политику CM-09: quarantine/redaction до durable записи, а history export
@@ -110,13 +131,10 @@ Review/Audit — канонические доменные результаты,
 реальная daemon-facing команда агента появится в P0-3. Transport delivery не
 означает принятие результата.
 
-Точный способ хранения результата относительно DomainEvent не задан Accepted
-ADR: возможен typed result payload в событии с восстановлением результата из
-журнала либо структурированная canonical запись, однозначно связанная с
-событием. Нельзя одновременно делать две независимо изменяемые копии результата.
-Рекомендация для OWNER: typed payload в DomainEvent и восстановление результата
-из event history; это соответствует CM-11 и устраняет отдельную mutable truth.
-Решение и startup validation зафиксировать в §7 до persisted schema implementation.
+Typed Review/Audit payload находится в соответствующем DomainEvent; Event history
+является единственным источником восстановления результата (решение OWNER R108).
+Отдельной canonical result collection или хранилища нет. Startup validation
+проверяет соответствие payload типу события, Task/Run/role и ревизии.
 
 ## 4. Конфликт Review/Audit и Owner escalation
 
@@ -163,6 +181,10 @@ node types по ADR-0001: `QUESTION`, `PROPOSAL`, `FACT`, `FINDING`, `DECISION`,
 `ACTION`, `RESULT`, `BLOCKER`. Edge types: `ANSWERS`, `SUPPORTS`, `CAUSED_BY`,
 `RESULT_OF`, `BLOCKS`, `REFERS_TO`.
 
+По R108 создание node и edge фиксируется отдельными типизированными DomainEvents;
+общего free-form message/event для графа нет. Node ID и Edge ID выдаёт Coord.
+Payload каждого события структурирован согласно типу узла/ребра.
+
 CM-11 устанавливает единственный источник истины: создание/изменение node и edge
 представлено типизированным DomainEvent с устойчивым node/edge ID и payload.
 Graph View может быть материализован для чтения, но восстанавливается из этих
@@ -175,7 +197,9 @@ actor/role из command payload не являются источником ис�
 игнорируются. P0-3 добавит проверку, что аутентифицированный отправитель совпадает
 с `AgentID` этого Run. Owner events не выводят actor из Run и требуют отдельной
 Owner authority в P0-3. Evidence ссылается на artifact или проверяемый источник;
-точные обязательные поля и правила evidence определяются в §7.
+обязательные payload-поля для каждого node/edge type остаются открытым вопросом
+в §7; R108 определяет Finding внутри ReviewResult/AuditResult, но не поля
+Discussion node/edge.
 
 Ни ACK, HEARTBEAT, delivery, transport retry, Outbox retry, ни произвольные
 реплики не становятся Discussion node автоматически. Отдельной FSM Discussion
@@ -214,36 +238,35 @@ fail-closed, а причина должна быть видна как blocker; 
 для Auditor отдельно не задан и рассматривается в §7. Политика
 не может быть ослаблена Owner decision (CM-07).
 
-## 7. Вопросы OWNER и рекомендации
+## 7. Решения OWNER и зафиксированные правила
 
-| Вопрос | Варианты | Рекомендация и основание | Блокирует старт кода? |
+| Решение | Зафиксированное правило | Статус |
 |---|---|---|---|
-| Persisted schema path | Добавить поля в schema v1 до production writer (как R85); либо versioned migration + backup (ADR-0005 ST-05) | R85-путь, если до P0-3 не появятся production записи: не нужна миграция несуществующей истории; иначе ST-05 | Да, persisted model/schema; независимые внутренние прототипы можно начать |
-| Где хранить ReviewResult/AuditResult | Typed DomainEvent payload; либо canonical запись с обязательной ссылкой на событие | Typed payload и восстановление из Event history: CM-11 требует один источник истины и event-backed facts | Да, до реализации durable result |
-| Минимальные verdict values | Текущие нормативные `APPROVED`, `CHANGES_REQUIRED`, `PASS` плюс отдельный исход Audit «нужны исправления»; расширить набор отдельно | Не добавлять значения без решения; назвать audit rework verdict явно, чтобы transition был однозначен и соответствовал TASK-MODEL | Да, до кодирования enum и переходов |
-| Finding/evidence/artifact поля | Минимальный finding с summary и evidence refs; расширяемая схема с severity/classification; разные правила ссылок для input/output | Начать с минимального summary и проверяемых refs; severity не добавлять без нормы. Проверять существование и Task scope ссылок, содержимое Artifact оставить отдельному design | Да, для persisted finding и reference schema; проверку содержимого Artifact можно отложить |
-| Можно ли менять уже записанный результат | In-place update; append correction/superseding event; запрет изменений | Append correction/superseding event: сохраняет историю решений и повторное восстановление; конкретный формат определить до amendment feature | Нет для первой неизменяемой записи; да для amendment |
-| Что считается конфликтом Review/Audit | Несовпадение verdict; противоречащие findings; явный arbitration request; комбинация правил | Явный arbitration request/явное обнаруженное противоречие, не всякое различие verdict; не принимать автоматическое решение между ролями (CM-08) | Да, для автоматической conflict detection; можно начать фиксацию explicit conflict |
-| Порядок conflict fact и Owner escalation | Один commit с меньшим EventSeq у conflict/fact; либо два commit с durable conflict/fact перед escalation | Обе формы удовлетворяют CM-08 при проверке ссылки и порядка. Для двух commit startup принимает conflict без escalation, а recovery идемпотентно завершает escalation по conflict ID. Выбор — OWNER, без предпочтения | Нет для модели; да для выбранного recovery/escalation поведения |
-| Discussion event и ID representation | Отдельные typed events для node/edge; один универсальный event; ID генерирует caller или Coord | Отдельные typed events и ID от Coord: проще валидировать типы/автора и воспроизводить граф без второй копии (CM-11) | Да, для event schema/projection |
-| Discussion corrections, edge removal и duplicate command | In-place mutation; compensating events; отказ от этих операций в MVP | Append-only compensating events, стабильные IDs и idempotency key; это сохраняет историю, но точную форму надо принять до реализации этих команд | Нет для create-only MVP; да для correction/removal semantics |
-| Dangling/cross-Task references | Отклонять fail-closed; допускать временно и фильтровать в projection | Отклонять fail-closed: CM-11 требует валидировать references, а граф должен полностью восстанавливаться из Task events | Нет для result core; да для graph commands/projection |
-| Код blocker при отсутствии Auditor | Вывести из общего blocker; отдельный код `NO_INDEPENDENT_AUDITOR`; не блокировать Task | Отдельная причина по аналогии с `NO_INDEPENDENT_REVIEWER`, сохраняя fail-closed и видимость причины (CM-03/07) | Нет для запрета назначения; да для стабильного API/UX-кода |
+| Canonical schema | Дополнять `CanonicalSchemaVersion = 1` по образцу R85 до production writer. Versioned migration/ST-05 для этого изменения не применяется. | Решено R108 |
+| Review/Audit result storage | Typed `ReviewResult`/`AuditResult` payload в DomainEvent; восстановление из Event history; отдельного хранилища нет. | Решено R108 |
+| Verdict values | Review: `APPROVED`, `CHANGES_REQUIRED`. Audit: `PASS`, `CHANGES_REQUIRED`. `BLOCKED` — не verdict; невозможность вынести verdict фиксируется как Discussion `BLOCKER`. | Решено R108 |
+| Finding schema | Coord-generated ID, Severity `CRITICAL`/`MAJOR`/`MINOR`, Summary, Evidence refs, CreatedAt. Severity не влияет на переходы; дополнительные поля — позже. | Решено R108 |
+| Artifact references | Проверять существование и Task scope refs; проверку содержимого оставить отдельному design. | Решено R108: рекомендация принята |
+| Result amendments | Append correction/superseding event; уже записанный результат не переписывать in-place. | Решено R108: рекомендация принята |
+| Conflict criteria | Явный arbitration request или явное противоречие; различие verdict само по себе не эскалировать автоматически и не выбирать победителя. | Решено R108: рекомендация принята |
+| Порядок conflict fact и Owner escalation | Один commit с меньшим EventSeq у conflict/fact; либо два commit с durable conflict/fact перед escalation. Для двух commit startup принимает conflict без escalation, recovery идемпотентно завершает её по conflict ID. Обе формы удовлетворяют CM-08; выбор оставлен OWNER без рекомендации. | Открыто |
+| Discussion events and IDs | Отдельные typed events для node/edge; ID выдаёт Coord; только типизированные payload, без свободных сообщений. | Решено R108 |
+| Payload fields per Discussion node/edge type | Общий минимум `ID`, `type`, actor/role из canonical `Run.RoleSelection`, `summary`, `evidence refs`, `CreatedAt`; плюс поля, специфичные для каждого node/edge type; либо единая фиксированная схема | Рекомендовать общий минимум и type-specific поля: сохраняет авторство и временной контекст, не сводя разные типы к free-form тексту | Открыто; не блокирует result core, блокирует Discussion event schema |
+| Discussion corrections, edge removal и duplicate command | Append-only compensating events, стабильные IDs и idempotency key; неизменяемые записи не переписывать. | Решено R108: рекомендация принята |
+| Dangling/cross-Task references | Отвергать fail-closed; не скрывать dangling links в projection. | Решено R108: рекомендация принята |
+| Blocker when no independent Auditor | Отдельный `NO_INDEPENDENT_AUDITOR`, fail-closed до назначения; без ослабления CM-03/CM-07. | Решено R108: рекомендация принята |
 
-Решения с отметкой «да» должны быть закрыты до реализации соответствующего
-persisted contract. Они не препятствуют внутренней подготовительной работе,
-которая не фиксирует ещё не выбранную схему.
+Открыты два вопроса: порядок conflict fact и Owner escalation, а также
+обязательные payload-поля Discussion node/edge. Остальные строки зафиксированы
+R108 и могут использоваться при реализации.
 
 ## 8. Schema и durable storage
 
-Текущая CanonicalState имеет `CanonicalSchemaVersion = 1`, `task.DomainEvent`
-пока не имеет typed result/node/edge payload. Добавление полей или коллекций
-меняет persisted contract; вопросы и рекомендуемый выбор собраны в §7.
-
-При любом schema path startup validation должна fail-closed отклонять
-невозможные сочетания result/event/role/Task revision до readiness, без частичной
-записи. Если выбран versioned migration, старые snapshot должны быть корректно
-мигрированы с backup по ST-05 либо отклонены без изменения файла.
+Текущая CanonicalState имеет `CanonicalSchemaVersion = 1`; R108 выбирает
+дополнение этой версии до production writer по образцу R85. Для этого изменения
+не вводится versioned migration по ST-05. Startup validation fail-closed
+отклоняет невозможные сочетания result/event/role/Task revision до readiness,
+без частичной записи.
 
 ## 9. Целевые проверки и мутации
 
@@ -255,6 +278,8 @@ persisted contract. Они не препятствуют внутренней п
 |---|---|---|
 | `TestReviewResultIsStructuredAndTaskScoped` | ReviewResult связан с canonical Task/Reviewer Run, Attempt и проверяемыми artifact refs; verdict/findings/summary не парсятся из свободного текста | принять текстовый статус без структурированного результата или принять ссылку на чужую Task |
 | `TestAuditResultIsStructuredAndTaskScoped` | AuditResult связан с canonical Task/Auditor Run и полным набором требуемых полей | принять отсутствующий verdict или результат от не-Auditor Run |
+| `TestReviewAndAuditVerdictSetsAreClosed` | Review/Audit принимают только verdict values R108; `BLOCKED` не verdict | принять `BLOCKED` или иной неутверждённый enum как verdict либо применить Severity вместо verdict |
+| `TestFindingSchemaAndSeverityDoNotDriveTransitions` | Finding содержит Coord ID, допустимую Severity, Summary, Evidence refs и CreatedAt; переход определяется verdict | принять caller ID/неизвестную Severity либо изменить переход по Severity |
 | `TestReviewResultCommitsWithTransitionEvent` | Result, Task transition, DomainEvent и нужные receipts/outbox фиксируются одной транзакцией | записать результат или событие отдельным вторым commit |
 | `TestAuditResultCommitsWithTransitionEvent` | То же для AuditResult и перехода по StagePlan | пропустить DomainEvent либо опубликовать память до durable commit |
 | `TestReviewVerdictWaitsForSupervisorStopProof` | Verdict durable, Task ждёт в `BLOCKED/WAITING_FOR_SUPERVISOR_STOP`, продолжения и нового writer нет до proof | создать следующий Run или увеличить Fence сразу после verdict |
@@ -262,6 +287,7 @@ persisted contract. Они не препятствуют внутренней п
 | `TestReviewAuditConflictIsRecordedBeforeOwnerEscalation` | До `OWNER_DECISION` существует конфликт DomainEvent и связанный Discussion fact; Owner decision указывает conflict ID | сначала перевести Task в OWNER_DECISION, пропустить fact/event или отвязать Owner decision |
 | `TestConflictRecoveryEscalatesOnceAfterRestart` | При двух-commit варианте startup принимает durable conflict без escalation; recovery после restart применяет её один раз по conflict ID | отклонить допустимое промежуточное состояние, не возобновить escalation или создать дубликат Owner decision/event |
 | `TestDiscussionActorComesFromRunRoleSelection` | Внутренний agent-authored event получает ActorID/role из canonical Run.RoleSelection | принять подменённый ActorID или role из payload команды |
+| `TestDiscussionEventsAreTypedAndCoordIDsAreStable` | Разрешённые node/edge types представлены отдельными typed events с Coord-generated IDs и восстанавливаются из Event history | принять неизвестный type, free-form message или caller-controlled node/edge ID |
 | `TestDiscussionProjectionRebuildsFromEvents` | Повторное восстановление даёт те же node/edge IDs, данные и связи только из canonical Events | хранить изменяемую независимую копию Graph либо терять node/edge при rebuild |
 | `TestDiscussionRejectsDanglingOrCrossTaskEdges` | Node/edge schema валидна, ссылки принадлежат ожидаемой Task и существуют | принять dangling ID или ссылку на другую Task |
 | `TestDiscussionDoesNotPromoteTransportEvents` | ACK/heartbeat/delivery/retry и обычные реплики не создают пользовательский node/event | автоматически отображать transport envelope как FACT/RESULT |
@@ -284,9 +310,8 @@ history export и diagnostic log; его нельзя засчитать тес�
   продолжение workflow после proof, Task-wide входной Fence enforcement и writer
   process lifecycle не реализуются этим design-срезом; соблюдать TM-13…TM-23 и
   P0-3/P0-4/P0-5.
-- EventType registry, окончательная verdict taxonomy, finding/evidence schema,
-  result amendment policy и conflict-detection rule требуют решений из разделов
-  выше.
+- Точные строковые имена EventType и детали wire/schema versioning этих typed
+  событий определяются при реализации и не меняют зафиксированную R108 семантику.
 - Project Dependency Graph, External References, API/Startup Card, Dashboard,
   Timeline и UX — отдельные этапы. Discussion Graph не заменяет Project Map.
 - Импорт Rooms, перенос сообщений и автоматическое превращение участников или
@@ -296,11 +321,14 @@ history export и diagnostic log; его нельзя засчитать тес�
 
 ## 11. Критерий готовности design
 
-Код этапа может начаться после решений OWNER, помеченных в §7 как блокирующие
-persisted contract: schema path, result representation, минимальные verdict и
-finding поля, а также representation Discussion events/IDs. Остальные решения
-могут быть закрыты до соответствующих функций. Этап реализует только внутреннюю
+Решения OWNER R108 зафиксировали schema path, result representation, verdict и
+finding schema, а также typed Discussion events/IDs. В §7 остаются два открытых
+вопроса: порядок conflict/escalation и обязательные payload fields для Discussion
+node/edge types. Этап реализует только внутреннюю
 canonical Task command boundary: State + DomainEvent + Outbox/Inbox атомарны,
 отказы не публикуют память, startup validation восстанавливает состояние, а
 Discussion Graph детерминированно строится из Event history. Verdict сохраняется
 с ожиданием stop proof; переход дальше остаётся закрытым до P0-5.
+
+Имя Audit verdict `CHANGES_REQUIRED` добавлено по решению R108; формулировка
+TASK-MODEL:297 «Audit требует исправления» остаётся без изменений.
