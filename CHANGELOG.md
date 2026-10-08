@@ -1,5 +1,46 @@
 # История изменений
 
+## 2026-10-09 — Статус AgentSession после привязки Run к привязке и поколению ([#14](https://github.com/naghuale/coord/issues/14))
+
+- (документация) Строка AgentSession в TARGET-ARCHITECTURE обновлена по коду части 3
+  (`78a6049`), по-прежнему одна физическая строка таблицы. Добавлено: `fsm.Run`
+  `AgentSessionGeneration` входит в `SameDomainState` (`fsm/fsm.go`); проверки
+  привязки Task-scoped Run на хранении — `validateCanonicalAgentSessionBindings` и
+  `validateRunAgentSessionBinding`, на назначении и recovery transfer —
+  `validateCanonicalAgentSessionAssignments` (`store/canonical_agentsession_binding.go`),
+  вызываются из `ValidateCanonicalState` и `ValidateCanonicalTransition`
+  (`store/canonical.go`). Ссылки на store-файлы даны именами без номеров строк.
+- (документация) Зафиксировано поведение: при назначении требуется текущая активная
+  привязка, текущее поколение и совпадение `AgentID`; recovery transfer идёт только
+  на текущую активную привязку; `AgentID` не меняется в том же `OwnerSession`; при
+  startup отвергаются generation выше привязки, отсутствующая привязка и чужой
+  `AgentID`, а stale или отозванная привязка допускается (OWNER
+  [#13](https://github.com/naghuale/coord/issues/13), вариант A). По R123 активный,
+  то есть нетерминальный, включая `STALLED`, Task-scoped Run без generation
+  оставляет `coordd` в diagnostic-only режиме с `/readyz` 503 и без переписи файла;
+  Run без `TaskID` не затрагиваются.
+- (документация) В списке проверок добавлены все 11 тестов части 3:
+  `TestCanonicalStartupRequiresGenerationAndBindingForActiveTaskRun`,
+  `TestCanonicalStartupAllowsStaleGenerationAndRevokedExistingBinding`,
+  `TestCanonicalStartupRejectsForgedRunGenerationAndAgentID`,
+  `TestLegacyRunDoesNotRequireAgentSessionGeneration`,
+  `TestCanonicalAssignmentTakesCurrentActiveAgentSessionBinding`,
+  `TestCanonicalRunGenerationCannotChangeWithoutRecoveryTransfer`,
+  `TestCanonicalRecoveryTransferChangesAgentWithOwnerAndHistory`,
+  `TestCanonicalRecoveryTransferRequiresCurrentActiveAgentSession`,
+  `TestCanonicalRecoveryTransferCannotChangeAgentWithoutRoleHistoryAppend`,
+  `TestFSMRunDomainStateIncludesAgentSessionGeneration`,
+  `TestCoorddReadinessFailsClosedForActiveTaskRunWithoutAgentSessionBinding`.
+- (документация) Из «не реализовано» убраны запись поколения в `Run` и readiness
+  fail-closed по R123 — они реализованы частью 3. Остались: подключение регистрации и
+  ротации к операторскому command path и OwnerCredential, отдельная операция отзыва
+  без новой привязки, `AuthenticatedFrame` и порядок проверок R121 (CM-15, TM-29),
+  отказ команд stale или отозванной привязки до replay (часть 4). Обязательный
+  непустой `AgentID` (R116, CM-14, TM-28) теперь проверяется на хранении для
+  Task-scoped Run с привязкой, но не на входящих командах.
+- (документация) Нормы не менялись: CM-13 и TM-27 остаются «Проверка: не
+  реализовано», статусы ADR и зрелость не завышены.
+
 ## 2026-10-08 — Статус AgentSession в карте реализации ([#11](https://github.com/naghuale/coord/issues/11))
 
 - (документация) TARGET-ARCHITECTURE разошёлся с кодом: после части 1
