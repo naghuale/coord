@@ -155,17 +155,21 @@ AuditResult ──┘                         │
                               (references conflict)
 ```
 
-Конфликт и его Discussion fact должны стать durable до Owner escalation; каждое
-изменение Task/Event сохраняет атомарность ST-01. При варианте с двумя commit,
-первый фиксирует conflict Event и связанный FACT, второй — `OWNER_DECISION` со
-ссылкой на conflict ID. Состояние между ними валидно: startup принимает
-зафиксированный конфликт без escalation, а recovery находит его по ID и
-идемпотентно применяет escalation; повтор не создаёт второе решение или
-дубликат события. Это сохраняет буквальное «до» CM-08 и позволяет восстановиться
-после сбоя. Один commit также может удовлетворить CM-08, если conflict/fact
-события имеют меньший EventSeq, чем `OWNER_DECISION`, а ссылка проверяется в
-той же транзакции. Обе формы сохраняют требуемый порядок; выбор между ними
-остаётся OWNER без рекомендации.
+Конфликт, связанный факт Discussion и эскалация к OWNER фиксируются атомарно в
+одной транзакции (решение OWNER R137, вариант A). Порядок внутри commit: Conflict
+Event → связанный Discussion Fact → OWNER Escalation Event → Task переходит в
+предусмотренное состояние ожидания решения → при необходимости формируется Outbox →
+один durable commit. Conflict Event и Discussion Fact получают меньшие порядковые
+номера, чем OWNER Escalation Event; все записи относятся к одной Task и одной новой
+ревизии перехода; эскалация ссылается на ConflictID, а Discussion Fact — на тот же
+ConflictID и на исходные Review/Audit results. Новое состояние публикуется в памяти
+только после успешного durable commit, а при ошибке commit не видны ни конфликт, ни
+Discussion Fact, ни эскалация. Повтор команды после успешного commit возвращает
+прежний receipt и не создаёт вторую эскалацию. Вариант с двумя commit отклонён: он
+создаёт промежуточное состояние и требует отдельной идемпотентной recovery-машины без
+доказанной необходимости, поэтому отдельный recovery для состояния «конфликт записан,
+эскалации ещё нет» не требуется — такого промежуточного канонического состояния не
+возникает. Норма зафиксирована в ADR-0001 CM-08b.
 
 Ни ADR-0001, ни TASK-MODEL не определяют алгоритм обнаружения конфликта: разные
 verdicts, противоречащие findings или отдельный explicit arbitration request.
@@ -249,16 +253,16 @@ fail-closed, а причина должна быть видна как blocker; 
 | Artifact references | Проверять существование и Task scope refs; проверку содержимого оставить отдельному design. | Решено R108: рекомендация принята |
 | Result amendments | Append correction/superseding event; уже записанный результат не переписывать in-place. | Решено R108: рекомендация принята |
 | Conflict criteria | Явный arbitration request или явное противоречие; различие verdict само по себе не эскалировать автоматически и не выбирать победителя. | Решено R108: рекомендация принята |
-| Порядок conflict fact и Owner escalation | Один commit с меньшим EventSeq у conflict/fact; либо два commit с durable conflict/fact перед escalation. Для двух commit startup принимает conflict без escalation, recovery идемпотентно завершает её по conflict ID. Обе формы удовлетворяют CM-08; выбор оставлен OWNER без рекомендации. | Открыто |
+| Порядок conflict fact и Owner escalation | Один durable commit: Conflict Event → связанный Discussion Fact → OWNER Escalation Event → состояние ожидания решения → при необходимости Outbox. Conflict Event и Discussion Fact имеют меньший EventSeq, чем эскалация; все записи одной Task и одной новой ревизии; эскалация и Discussion Fact ссылаются на ConflictID, Discussion Fact — также на исходные Review/Audit results; новое состояние публикуется только после успешного commit, при ошибке commit не видна ни одна запись; повтор команды возвращает прежний receipt и не создаёт вторую эскалацию. Вариант с двумя commit отклонён: промежуточное состояние и отдельная recovery-машина не нужны. | Решено R137: принят вариант A |
 | Discussion events and IDs | Отдельные typed events для node/edge; ID выдаёт Coord; только типизированные payload, без свободных сообщений. | Решено R108 |
 | Payload fields per Discussion node/edge type | Общий минимум `ID`, `type`, actor/role из canonical `Run.RoleSelection`, `summary`, `evidence refs`, `CreatedAt`; плюс поля, специфичные для каждого node/edge type; либо единая фиксированная схема | Рекомендовать общий минимум и type-specific поля: сохраняет авторство и временной контекст, не сводя разные типы к free-form тексту | Открыто; не блокирует result core, блокирует Discussion event schema |
 | Discussion corrections, edge removal и duplicate command | Append-only compensating events, стабильные IDs и idempotency key; неизменяемые записи не переписывать. | Решено R108: рекомендация принята |
 | Dangling/cross-Task references | Отвергать fail-closed; не скрывать dangling links в projection. | Решено R108: рекомендация принята |
 | Blocker when no independent Auditor | Отдельный `NO_INDEPENDENT_AUDITOR`, fail-closed до назначения; без ослабления CM-03/CM-07. | Решено R108: рекомендация принята |
 
-Открыты два вопроса: порядок conflict fact и Owner escalation, а также
-обязательные payload-поля Discussion node/edge. Остальные строки зафиксированы
-R108 и могут использоваться при реализации.
+Открыт один вопрос: обязательные payload-поля Discussion node/edge. Порядок
+conflict fact и Owner escalation решён R137. Остальные строки зафиксированы R108 и
+могут использоваться при реализации.
 
 ## 8. Schema и durable storage
 
@@ -285,7 +289,7 @@ R108 и могут использоваться при реализации.
 | `TestReviewVerdictWaitsForSupervisorStopProof` | Verdict durable, Task ждёт в `BLOCKED/WAITING_FOR_SUPERVISOR_STOP`, продолжения и нового writer нет до proof | создать следующий Run или увеличить Fence сразу после verdict |
 | `TestAuditVerdictWaitsForSupervisorStopProof` | То же для Audit verdict, включая PASS | завершить Task или начать rework до stop proof |
 | `TestReviewAuditConflictIsRecordedBeforeOwnerEscalation` | До `OWNER_DECISION` существует конфликт DomainEvent и связанный Discussion fact; Owner decision указывает conflict ID | сначала перевести Task в OWNER_DECISION, пропустить fact/event или отвязать Owner decision |
-| `TestConflictRecoveryEscalatesOnceAfterRestart` | При двух-commit варианте startup принимает durable conflict без escalation; recovery после restart применяет её один раз по conflict ID | отклонить допустимое промежуточное состояние, не возобновить escalation или создать дубликат Owner decision/event |
+| `TestConflictEscalationCommitsAtomically` | Conflict Event, Discussion Fact и эскалация записываются одним durable commit одной ревизии; при ошибке commit нет ни одной из записей ни в памяти, ни на диске; повтор команды после успеха возвращает прежний receipt без второй эскалации | записать conflict/fact отдельным commit, опубликовать память до durable commit или создать вторую эскалацию при повторе |
 | `TestDiscussionActorComesFromRunRoleSelection` | Внутренний agent-authored event получает ActorID/role из canonical Run.RoleSelection | принять подменённый ActorID или role из payload команды |
 | `TestDiscussionEventsAreTypedAndCoordIDsAreStable` | Разрешённые node/edge types представлены отдельными typed events с Coord-generated IDs и восстанавливаются из Event history | принять неизвестный type, free-form message или caller-controlled node/edge ID |
 | `TestDiscussionProjectionRebuildsFromEvents` | Повторное восстановление даёт те же node/edge IDs, данные и связи только из canonical Events | хранить изменяемую независимую копию Graph либо терять node/edge при rebuild |
@@ -322,9 +326,9 @@ history export и diagnostic log; его нельзя засчитать тес�
 ## 11. Критерий готовности design
 
 Решения OWNER R108 зафиксировали schema path, result representation, verdict и
-finding schema, а также typed Discussion events/IDs. В §7 остаются два открытых
-вопроса: порядок conflict/escalation и обязательные payload fields для Discussion
-node/edge types. Этап реализует только внутреннюю
+finding schema, а также typed Discussion events/IDs; R137 зафиксировал порядок
+conflict/escalation одним durable commit (вариант A). В §7 остаётся один открытый
+вопрос: обязательные payload fields для Discussion node/edge types. Этап реализует только внутреннюю
 canonical Task command boundary: State + DomainEvent + Outbox/Inbox атомарны,
 отказы не публикуют память, startup validation восстанавливает состояние, а
 Discussion Graph детерминированно строится из Event history. Verdict сохраняется
