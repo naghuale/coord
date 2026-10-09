@@ -667,6 +667,44 @@ func TestAgentCommandRejectsRoleIdentityCollisionBeforeReplay(t *testing.T) {
 	}
 }
 
+func TestAgentCommandRoleIdentityCollisionRejectsPriorReceiptBeforeReplay(t *testing.T) {
+	state := canonicalRoleTransfer(t, canonicalIndependenceBase(task.Review), roles.Reviewer, "review-run", "agent-reviewer", "review-model")
+	p := &canonicalMemory{state: state}
+	clock := &canonicalTestClock{now: time.Unix(5000, 0).UTC()}
+	s := newCanonicalWithTestClock(t, p, clock)
+	frame := authenticatedFrameForRun(state, "review-run", "independence-after-commit", "coordd")
+	id := taskid.ID(frame.envelope.Task)
+
+	if _, replayed, err := s.ApplyAgentCommand(frame, id, state.Tasks[id].Revision, applyTestAgentCommand(clock, frame.envelope.MessageID)); err != nil || replayed {
+		t.Fatalf("initial independent command replay=%v error=%v", replayed, err)
+	}
+
+	s.mu.Lock()
+	run := s.state.Runs["executor-current"]
+	run.RoleSelection.AgentID = "agent-reviewer"
+	run.RoleHistory[len(run.RoleHistory)-1].AgentID = "agent-reviewer"
+	s.state.Runs[run.RunID] = run
+	beforeState, err := copyCanonicalState(s.state)
+	s.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeDurable, err := copyCanonicalState(p.state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saves := p.saveCalls
+	handlerCalled := false
+	_, replayed, err := s.ApplyAgentCommand(frame, id, state.Tasks[id].Revision, func(state *CanonicalState, run fsm.Run) (InboxReceipt, error) {
+		handlerCalled = true
+		return applyTestAgentCommand(clock, frame.envelope.MessageID)(state, run)
+	})
+	if !errors.Is(err, ErrNoIndependentReviewer) || replayed || handlerCalled || p.saveCalls != saves ||
+		!reflect.DeepEqual(beforeState, s.state) || !reflect.DeepEqual(beforeDurable, p.state) {
+		t.Fatalf("conflicting role replay=%v handler=%v error=%v saves=%d want=%d", replayed, handlerCalled, err, p.saveCalls, saves)
+	}
+}
+
 func TestAgentCommandRejectsRoleStageMismatch(t *testing.T) {
 	state := taskStateWithRun()
 	clock := &canonicalTestClock{now: time.Unix(5000, 0).UTC()}

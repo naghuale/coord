@@ -1,5 +1,9 @@
 # История изменений
 
+## 2026-10-09 — Регрессионный тест: независимость роли проверяется до replay ([#26](https://github.com/naghuale/coord/issues/26))
+
+- (тесты) Добавлен `TestAgentCommandRoleIdentityCollisionRejectsPriorReceiptBeforeReplay`: после того как receipt команды сохранён, повтор той же команды при конфликте идентичности ролей отклоняется `NO_INDEPENDENT_REVIEWER` до replay — без вызова handler и без записи состояния. Мутант с проверкой независимости после replay lookup этим тестом убивается.
+
 ## 2026-10-09 — Фактическое состояние agent command boundary после части 4 (#5) ([#22](https://github.com/naghuale/coord/issues/22))
 
 - (документация) ADR-0001 (CM-13, CM-14, CM-15) и TASK-MODEL (TM-27, TM-28, TM-29):
