@@ -632,6 +632,10 @@ func (s *CanonicalStore) ApplyInboxCommand(actorID, messageID string, taskID tas
 	if s.failed != nil {
 		return InboxReceipt{}, false, fmt.Errorf("store requires reopen after durability failure: %w", s.failed)
 	}
+	return s.applyInboxCommandLocked(actorID, messageID, taskID, expectedRevision, apply)
+}
+
+func (s *CanonicalStore) applyInboxCommandLocked(actorID, messageID string, taskID taskid.ID, expectedRevision uint64, apply func(*CanonicalState) (InboxReceipt, error)) (InboxReceipt, bool, error) {
 	key := InboxKey(actorID, messageID)
 	if receipt, exists := s.state.Inbox[key]; exists {
 		if receipt.TaskID != taskID || receipt.ExpectedRevision != expectedRevision {

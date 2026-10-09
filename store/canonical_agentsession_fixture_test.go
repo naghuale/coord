@@ -4,7 +4,6 @@ import (
 	"coord/agentsession"
 	"coord/fsm"
 	"coord/roles"
-	"crypto/ed25519"
 	"fmt"
 	"time"
 )
@@ -22,10 +21,7 @@ func ensureCanonicalTestAgentSession(state *CanonicalState, address, agentID str
 		}
 		return
 	}
-	key := ed25519.PublicKey(make([]byte, ed25519.PublicKeySize))
-	for i := range key {
-		key[i] = byte(i + 1)
-	}
+	key := sessionTestKey(1)
 	state.AgentSessions[address] = agentsession.Session{
 		Address: address, AgentID: agentID, Generation: 1, PublicKey: key,
 		RegisteredAt: at, UpdatedAt: at,

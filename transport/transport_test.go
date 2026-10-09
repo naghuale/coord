@@ -1,14 +1,36 @@
 package transport
 
 import (
+	"bytes"
 	"context"
 	"coord/envelope"
 	"crypto/ed25519"
 	"encoding/json"
+	"errors"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+type testKeyResolver struct {
+	key VerificationKey
+	err error
+}
+
+type recordingKeyResolver struct {
+	key       VerificationKey
+	err       error
+	addresses []string
+}
+
+func (r *recordingKeyResolver) ResolveVerificationKey(_ context.Context, address string) (VerificationKey, error) {
+	r.addresses = append(r.addresses, address)
+	return r.key, r.err
+}
+
+func (r testKeyResolver) ResolveVerificationKey(context.Context, string) (VerificationKey, error) {
+	return r.key, r.err
+}
 
 type bytesClient struct {
 	incoming chan []byte
@@ -121,5 +143,264 @@ func TestSignedClientRejectsMismatchedRouteAndMissingClient(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("unconfigured client leaked")
+	}
+}
+
+func TestSignedClientIncomingAuthenticatedCarriesResolvedSessionEvidence(t *testing.T) {
+	private := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
+	public := private.Public().(ed25519.PublicKey)
+	c := &bytesClient{incoming: make(chan []byte, 1)}
+	e := ping("sender", "receiver")
+	raw, err := envelope.Sign(e, private)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.incoming <- raw
+	close(c.incoming)
+	s := &SignedClient{Client: c, Resolver: testKeyResolver{key: VerificationKey{PublicKey: public, Generation: 7}}}
+	frames := s.IncomingAuthenticated(context.Background())
+	var got AuthenticatedFrame
+	for frame := range frames {
+		got = frame
+	}
+	if got.Envelope().MessageID != e.MessageID || got.SenderAddress() != "sender" || got.SessionGeneration() != 7 || string(got.VerifiedPublicKey()) != string(public) {
+		t.Fatalf("authenticated frame did not preserve resolver evidence: %+v", got)
+	}
+	if got.ReceivedBy() != "" {
+		t.Fatalf("transport client unexpectedly assigned local recipient: %q", got.ReceivedBy())
+	}
+	gotEnvelope := got.Envelope()
+	gotEnvelope.PingPayload.Nonce = "tampered"
+	if got.Envelope().PingPayload.Nonce != "nonce" {
+		t.Fatal("Envelope exposed mutable authenticated frame data")
+	}
+	key := got.VerifiedPublicKey()
+	key[0] ^= 0xff
+	if string(got.VerifiedPublicKey()) != string(public) {
+		t.Fatal("VerifiedPublicKey exposed mutable internal key bytes")
+	}
+	rawCopy := got.RawSignedFrame()
+	rawCopy[0] ^= 0xff
+	if string(got.RawSignedFrame()) != string(raw) {
+		t.Fatal("RawSignedFrame exposed mutable internal bytes")
+	}
+}
+
+func TestSignedClientAuthenticatedFrameCopiesReceivedSignedBytes(t *testing.T) {
+	private := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
+	public := private.Public().(ed25519.PublicKey)
+	c := &bytesClient{incoming: make(chan []byte, 1)}
+	raw, err := envelope.Sign(ping("sender", "receiver"), private)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := append([]byte(nil), raw...)
+	c.incoming <- raw
+	close(c.incoming)
+	s := &SignedClient{Client: c, Resolver: testKeyResolver{key: VerificationKey{PublicKey: public, Generation: 1}}}
+	var got AuthenticatedFrame
+	for frame := range s.IncomingAuthenticated(context.Background()) {
+		got = frame
+	}
+	for i := range raw {
+		raw[i] ^= 0xff
+	}
+	if actual := got.RawSignedFrame(); !bytes.Equal(actual, want) {
+		t.Fatal("AuthenticatedFrame retained aliased bytes from the transport client")
+	}
+}
+
+func TestAgentCommandLegacyPeersDoNotAuthorizeAgentCommand(t *testing.T) {
+	private := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
+	public := private.Public().(ed25519.PublicKey)
+	c := &bytesClient{incoming: make(chan []byte, 1)}
+	raw, err := envelope.Sign(ping("sender", "receiver"), private)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.incoming <- raw
+	close(c.incoming)
+	var rejected atomic.Int32
+	s := &SignedClient{Client: c, Peers: map[string]ed25519.PublicKey{"sender": public}, Rejected: func() { rejected.Add(1) }}
+	for range s.IncomingAuthenticated(context.Background()) {
+		t.Fatal("legacy Peers config authorized an authenticated AgentSession frame")
+	}
+	if rejected.Load() != 1 {
+		t.Fatalf("rejected callback count=%d, want 1", rejected.Load())
+	}
+}
+
+func TestAgentCommandIgnoresActorIDFromBody(t *testing.T) {
+	private := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
+	public := private.Public().(ed25519.PublicKey)
+	message, err := json.Marshal(map[string]any{
+		"schema_version": 1, "message_id": "message-1", "timestamp": time.Unix(10, 0).UTC(),
+		"from_session": "sender", "to_session": "receiver", "type": "PING",
+		"ping_payload": map[string]string{"nonce": "nonce"}, "actor_id": "forged-agent",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(envelope.Signed{Message: message, Signature: ed25519.Sign(private, message)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &bytesClient{incoming: make(chan []byte, 1)}
+	c.incoming <- raw
+	close(c.incoming)
+	var rejected atomic.Int32
+	s := &SignedClient{Client: c, Resolver: testKeyResolver{key: VerificationKey{PublicKey: public, Generation: 1}}, Rejected: func() { rejected.Add(1) }}
+	for range s.IncomingAuthenticated(context.Background()) {
+		t.Fatal("body-supplied actor_id was accepted")
+	}
+	if rejected.Load() != 1 {
+		t.Fatalf("rejected=%d, want 1", rejected.Load())
+	}
+}
+
+func TestAgentCommandRejectsUntrustedSignature(t *testing.T) {
+	private := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
+	public := private.Public().(ed25519.PublicKey)
+	c := &bytesClient{incoming: make(chan []byte, 1)}
+	raw, _ := envelope.Sign(ping("sender", "receiver"), private)
+	var signed envelope.Signed
+	if err := json.Unmarshal(raw, &signed); err != nil {
+		t.Fatal(err)
+	}
+	signed.Signature[0] ^= 1
+	bad, _ := json.Marshal(signed)
+	c.incoming <- bad
+	close(c.incoming)
+	var rejected atomic.Int32
+	s := &SignedClient{Client: c, Resolver: testKeyResolver{key: VerificationKey{PublicKey: public, Generation: 1}}, Rejected: func() { rejected.Add(1) }}
+	for range s.IncomingAuthenticated(context.Background()) {
+		t.Fatal("invalid signature was accepted")
+	}
+	if rejected.Load() != 1 {
+		t.Fatalf("rejected=%d, want 1", rejected.Load())
+	}
+}
+
+func TestSignedClientIncomingAuthenticatedRejectsResolverFailureAndInvalidSignature(t *testing.T) {
+	private := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
+	public := private.Public().(ed25519.PublicKey)
+	t.Run("resolver error", func(t *testing.T) {
+		c := &bytesClient{incoming: make(chan []byte, 1)}
+		raw, _ := envelope.Sign(ping("sender", "receiver"), private)
+		c.incoming <- raw
+		close(c.incoming)
+		var rejected atomic.Int32
+		s := &SignedClient{Client: c, Resolver: testKeyResolver{err: errors.New("revoked")}, Rejected: func() { rejected.Add(1) }}
+		for range s.IncomingAuthenticated(context.Background()) {
+			t.Fatal("frame with resolver error was delivered")
+		}
+		if rejected.Load() != 1 {
+			t.Fatalf("rejected=%d, want 1", rejected.Load())
+		}
+	})
+	t.Run("bad signature", func(t *testing.T) {
+		c := &bytesClient{incoming: make(chan []byte, 1)}
+		raw, _ := envelope.Sign(ping("sender", "receiver"), private)
+		var signed envelope.Signed
+		if err := json.Unmarshal(raw, &signed); err != nil {
+			t.Fatal(err)
+		}
+		signed.Signature[0] ^= 1
+		bad, _ := json.Marshal(signed)
+		c.incoming <- bad
+		close(c.incoming)
+		var rejected atomic.Int32
+		s := &SignedClient{Client: c, Resolver: testKeyResolver{key: VerificationKey{PublicKey: public, Generation: 1}}, Rejected: func() { rejected.Add(1) }}
+		for range s.IncomingAuthenticated(context.Background()) {
+			t.Fatal("invalid signature was delivered")
+		}
+		if rejected.Load() != 1 {
+			t.Fatalf("rejected=%d, want 1", rejected.Load())
+		}
+	})
+}
+
+func TestSignedClientResolverErrorDoesNotFallbackToPeers(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		key  VerificationKey
+		err  error
+	}{
+		{name: "missing registration", err: errors.New("unknown AgentSession")},
+		{name: "revoked registration", err: errors.New("AgentSession revoked")},
+		{name: "different registered key", key: VerificationKey{PublicKey: ed25519.NewKeyFromSeed(bytes.Repeat([]byte{0x44}, ed25519.SeedSize)).Public().(ed25519.PublicKey), Generation: 1}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			private := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{0x33}, ed25519.SeedSize))
+			public := private.Public().(ed25519.PublicKey)
+			c := &bytesClient{incoming: make(chan []byte, 1)}
+			raw, err := envelope.Sign(ping("sender", "receiver"), private)
+			if err != nil {
+				t.Fatal(err)
+			}
+			c.incoming <- raw
+			close(c.incoming)
+			resolver := &recordingKeyResolver{key: tc.key, err: tc.err}
+			var rejected atomic.Int32
+			s := &SignedClient{
+				Client: c, Peers: map[string]ed25519.PublicKey{"sender": public}, Resolver: resolver,
+				Rejected: func() { rejected.Add(1) },
+			}
+			var boundaryCalls atomic.Int32
+			a := &AuthenticatedAdapter{Client: s, Session: "receiver"}
+			for range a.ReceiveAuthenticated(context.Background()) {
+				boundaryCalls.Add(1)
+			}
+			if len(resolver.addresses) != 1 || resolver.addresses[0] != "sender" {
+				t.Fatalf("resolver addresses=%v, want [sender]", resolver.addresses)
+			}
+			if boundaryCalls.Load() != 0 || rejected.Load() != 1 {
+				t.Fatalf("legacy Peers fallback delivered frame: boundaryCalls=%d rejected=%d", boundaryCalls.Load(), rejected.Load())
+			}
+		})
+	}
+}
+
+func TestSignedClientRejectsZeroResolvedGeneration(t *testing.T) {
+	private := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{0x35}, ed25519.SeedSize))
+	public := private.Public().(ed25519.PublicKey)
+	c := &bytesClient{incoming: make(chan []byte, 1)}
+	raw, err := envelope.Sign(ping("sender", "receiver"), private)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.incoming <- raw
+	close(c.incoming)
+	resolver := &recordingKeyResolver{key: VerificationKey{PublicKey: public}}
+	var rejected atomic.Int32
+	s := &SignedClient{
+		Client: c, Resolver: resolver,
+		Rejected: func() { rejected.Add(1) },
+	}
+	var boundaryCalls atomic.Int32
+	a := &AuthenticatedAdapter{Client: s, Session: "receiver"}
+	for range a.ReceiveAuthenticated(context.Background()) {
+		boundaryCalls.Add(1)
+	}
+	if len(resolver.addresses) != 1 || boundaryCalls.Load() != 0 || rejected.Load() != 1 {
+		t.Fatalf("generation-zero delivery resolver=%v boundaryCalls=%d rejected=%d", resolver.addresses, boundaryCalls.Load(), rejected.Load())
+	}
+}
+
+func TestAuthenticatedAdapterRejectsWrongRecipient(t *testing.T) {
+	private := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
+	public := private.Public().(ed25519.PublicKey)
+	c := &bytesClient{incoming: make(chan []byte, 1)}
+	raw, _ := envelope.Sign(ping("sender", "someone-else"), private)
+	c.incoming <- raw
+	close(c.incoming)
+	var rejected atomic.Int32
+	signed := &SignedClient{Client: c, Resolver: testKeyResolver{key: VerificationKey{PublicKey: public, Generation: 1}}}
+	a := &AuthenticatedAdapter{Client: signed, Session: "receiver", Rejected: func() { rejected.Add(1) }}
+	for range a.ReceiveAuthenticated(context.Background()) {
+		t.Fatal("frame for another recipient was delivered")
+	}
+	if rejected.Load() != 1 {
+		t.Fatalf("rejected=%d, want 1", rejected.Load())
 	}
 }

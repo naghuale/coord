@@ -2,6 +2,47 @@
 
 # История изменений
 
+## 2026-10-09 — Каноническая граница агентских команд AgentSession ([#5](https://github.com/naghuale/coord/issues/5))
+
+- `transport.AuthenticatedFrame` сохраняет проверенный подписанный кадр, sender,
+  ключ и generation; ключ разрешается через внедрённый интерфейс AgentSession,
+  legacy `Peers` не является fallback. `CanonicalStore.ApplyAgentCommand` повторно
+  проверяет подпись и текущую привязку под сериализованной границей, затем
+  выполняет role/Stage и Fence checks до replay, а Revision CAS — после replay
+  только для новой команды; commit объединяет переход, Event, Inbox receipt и
+  Outbox acknowledgment (`TestAgentCommandCommitsEventReceiptOutboxAtomically`,
+  `TestAgentCommandReplayReturnsPriorReceiptWithoutWriting`).
+- Сценарии и проверки: `TestAgentCommandRejectsFabricatedAuthenticatedFrame`,
+  `TestAgentCommandRejectsEnvelopeDifferentFromSignedBytes`,
+  `TestAgentCommandCopiesSignedBytesBeforeReadingOtherFrameFields`,
+  `TestAgentCommandRejectsStaleSessionGeneration`,
+  `TestAgentCommandRejectsStaleFence`,
+  `TestAgentCommandRejectsSignedFrameFromDifferentKeyAtCurrentGeneration`,
+  `TestAgentCommandRejectsSessionAgentIDMismatchBeforeReplay`,
+  `TestAgentCommandRejectsRunGenerationAfterKeyRotation`,
+  `TestAgentCommandRejectsSessionBeforeStaleFence`,
+  `TestAuthenticatedAdapterRejectsWrongRecipient`,
+  `TestSignedClientResolverErrorDoesNotFallbackToPeers`,
+  `TestSignedClientRejectsZeroResolvedGeneration`,
+  `TestAgentCommandRejectsAttemptMismatch`,
+  `TestAgentCommandRevokedSessionDoesNotReturnPriorReceipt`,
+  `TestAgentCommandReplayAfterRevisionGrowthReturnsPriorReceipt`,
+  `TestAgentCommandBoundaryResolvesActorInsideLock`,
+  `TestAgentCommandBoundaryRejectsKnownRunIDWithoutAuthenticatedSession`,
+  `TestAgentCommandRejectsRoleIdentityCollisionBeforeReplay`,
+  `TestAgentCommandCommitsEventReceiptOutboxAtomically`,
+  `TestAgentCommandRejectsInboxWithoutCommittedAcknowledgement`,
+  `TestAgentCommandTransportDeliveryIsNotAcceptance`,
+  `TestSignedClientAuthenticatedFrameCopiesReceivedSignedBytes`,
+  `TestAgentCommandLegacyPeersDoNotAuthorizeAgentCommand` и
+  `TestAgentCommandIgnoresActorIDFromBody`.
+- (документация) Ограничения: production Coordinator/Telepathy command path ещё не подключён;
+  legacy `Coordinator.Handle` остаётся действующим для production сообщений.
+  OwnerCredential/Owner command boundary, управление AgentSession командами и
+  production integration остаются P0-3; schema остаётся v1. Эта запись описывает
+  библиотечную границу и её тестовый transport integration, а не production
+  authorization path.
+
 ## 2026-10-09 — Нормативная запись решений OWNER R128–R131 по Q1–Q4 ([#20](https://github.com/naghuale/coord/issues/20))
 
 - (документация) Записаны четыре решения OWNER, принятые 2026-10-09 по вопросам Q1–Q4

@@ -25,8 +25,12 @@ func newCanonicalWithTestClock(t *testing.T, p CanonicalPersistence, clock *cano
 	return s
 }
 
+func sessionTestPrivateKey(fill byte) ed25519.PrivateKey {
+	return ed25519.NewKeyFromSeed([]byte(strings.Repeat(string([]byte{fill}), ed25519.SeedSize)))
+}
+
 func sessionTestKey(fill byte) ed25519.PublicKey {
-	return ed25519.PublicKey(strings.Repeat(string([]byte{fill}), ed25519.PublicKeySize))
+	return sessionTestPrivateKey(fill).Public().(ed25519.PublicKey)
 }
 
 func TestCanonicalAgentSessionRegistrationPersistsOperatorBinding(t *testing.T) {
