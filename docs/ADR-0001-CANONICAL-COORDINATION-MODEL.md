@@ -340,6 +340,27 @@ Discussion Graph фиксирует значимые факты и связи д
   проекцией.
   Проверка: не реализовано
 
+- **CM-11a — Типизированная схема Discussion Graph (R138, R139).** Discussion Graph
+  типизирован: тип узла — не свободная метка. Общие обязательные поля узла: `NodeID`,
+  `Type`, `TaskID`, `Actor`, `Role`, `CreatedAt`, `Summary`, `Refs[]`. Поля по типу:
+  `BLOCKER` — `ReasonCode`; `DECISION` — `OwnerDecisionRef` или `ConflictID`; `FINDING` —
+  `ReviewResultRef` или `AuditResultRef`; `RESULT` — `ResultRef` (примеры OWNER). Типы
+  `QUESTION`, `PROPOSAL`, `FACT`, `ACTION` имеют только общий минимум, новых полей нет
+  (R139). `Refs[]` не пуст для `FACT` и `FINDING` (R139; раздел Startup Card: «Discussion
+  facts содержат автора и роль… summary и ссылки на evidence»). Conflict Fact — это `FACT`
+  с `ConflictID`, который дополнительно требует `ReviewResultRef` и `AuditResultRef`
+  (R137). Все ссылки указывают на существующие объекты той же Task. Общие обязательные поля
+  связи: `EdgeID`, `Type`, `FromNodeID`, `ToNodeID`, `TaskID`, `Actor`, `CreatedAt`.
+  Полная матрица допустимых пар (From type → To type) задана R139 и приведена в
+  `docs/plans/p0-review-audit/DESIGN.md` §5.1; любая другая пара отклоняется fail-closed,
+  даже если оба узла существуют. Discussion только дописывается и восстанавливается из
+  Events; он не меняет Task и не заменяет Result, ReviewResult, AuditResult или решение
+  OWNER, а изменение workflow остаётся отдельным каноническим переходом. Свободные
+  сообщения без схемы типа не допускаются. Вариант A отклонён: тип узла — не свободная
+  метка. Вариант C отложен: `ArtifactID`, `Digest` и локатор цитаты зависят от R135 и от
+  design проверки содержимого; позже B расширяется этими полями без замены базовой модели.
+  Проверка: не реализовано
+
 - **CM-12 — Owner identity подтверждается OwnerCredential (R110).** `OwnerCredential`
   — каноническая сущность Coord с собственным потоком событий. Каждая Owner-команда
   связывается с credential, проверенной Coord; trusted identity извлекается из

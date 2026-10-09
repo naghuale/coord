@@ -201,9 +201,9 @@ actor/role из command payload не являются источником ис�
 игнорируются. P0-3 добавит проверку, что аутентифицированный отправитель совпадает
 с `AgentID` этого Run. Owner events не выводят actor из Run и требуют отдельной
 Owner authority в P0-3. Evidence ссылается на artifact или проверяемый источник;
-обязательные payload-поля для каждого node/edge type остаются открытым вопросом
-в §7; R108 определяет Finding внутри ReviewResult/AuditResult, но не поля
-Discussion node/edge.
+обязательные payload-поля для каждого node/edge type заданы решениями R138 и R139 и
+разбираются в §5.1; R108 определяет Finding внутри ReviewResult/AuditResult, но не
+поля Discussion node/edge.
 
 Ни ACK, HEARTBEAT, delivery, transport retry, Outbox retry, ни произвольные
 реплики не становятся Discussion node автоматически. Отдельной FSM Discussion
@@ -214,6 +214,89 @@ edges.
 Параметры событий, ID, правки и восстановления перечислены в §7. Любой
 утверждённый вариант обязан обеспечить детерминированное восстановление Graph
 только из canonical Events.
+
+### 5.1. Схема Discussion (R138, R139)
+
+Решения OWNER R138 и R139, вариант B: Discussion Graph типизирован, тип узла — не
+свободная метка. Вариант A отклонён. Вариант C отложен: `ArtifactID`, `Digest` и локатор
+цитаты зависят от R135 и от design проверки содержимого; позже B расширяется этими полями
+без замены базовой модели. Ниже каждое поле и каждая допустимая пара указаны с
+источником — R137, R138, R139, CM-08, CM-10a или CM-11.
+
+**1. Восемь типов узлов и поля сверх общего минимума**
+
+Общий минимум для любого узла (R138): `NodeID`, `Type`, `TaskID`, `Actor`, `Role`,
+`CreatedAt`, `Summary`, `Refs[]`. `Actor` берётся из проверенного `AgentID` или OWNER
+identity (CM-10a, R136).
+
+| Тип узла | Поля сверх общего минимума | Источник |
+|---|---|---|
+| `QUESTION` | только общий минимум, новых полей нет | R139 |
+| `PROPOSAL` | только общий минимум, новых полей нет | R139 |
+| `FACT` | только общий минимум; `Refs[]` не пуст; при наличии `ConflictID` обязательны `ReviewResultRef` и `AuditResultRef` (R137, п.5) | R139; `Refs[]` — ADR-0001, раздел Startup Card; дополнение по R137 |
+| `FINDING` | `ReviewResultRef` или `AuditResultRef`; `Refs[]` не пуст | R138, пример OWNER; `Refs[]` — R139, ADR-0001, раздел Startup Card |
+| `DECISION` | `OwnerDecisionRef` или `ConflictID` | R138, пример OWNER |
+| `ACTION` | только общий минимум, новых полей нет | R139 |
+| `RESULT` | `ResultRef` | R138, пример OWNER |
+| `BLOCKER` | `ReasonCode` | R138, пример OWNER |
+
+Ни один тип узла не влияет на Task или workflow (CM-10a, R136): изменение workflow
+выполняется только отдельным каноническим переходом. Поэтому отдельный вопрос OWNER о
+влиянии типов не возникает.
+
+**2. Шесть типов связей и матрица допустимых пар**
+
+Общий минимум для любой связи (R138): `EdgeID`, `Type`, `FromNodeID`, `ToNodeID`,
+`TaskID`, `Actor`, `CreatedAt`.
+
+R138 вводит матрицу как требование, а R139 задаёт её полностью: шесть типов связей и все
+допустимые пары (From type → To type) приведены ниже.
+
+| Тип связи | Допустимый `From type` | Допустимый `To type` | Источник |
+|---|---|---|---|
+| `ANSWERS` | `FACT`, `PROPOSAL`, `DECISION` | `QUESTION` | R139 |
+| `SUPPORTS` | `FACT`, `FINDING`, `RESULT` | `PROPOSAL`, `DECISION`, `FINDING` | R139 |
+| `CAUSED_BY` | `DECISION` | `FINDING` | R139 |
+| `CAUSED_BY` | `ACTION` | `DECISION` | R139 |
+| `CAUSED_BY` | `BLOCKER` | `FACT`, `FINDING` | R139 |
+| `RESULT_OF` | `RESULT` | `ACTION` | R139 |
+| `BLOCKS` | `BLOCKER` | `ACTION`, `DECISION`, `PROPOSAL` | R139 |
+| `REFERS_TO` | любой | любой | R139 |
+
+Любая другая пара отклоняется fail-closed. Мягкий вариант, где ограничены только
+`ANSWERS` и `RESULT_OF`, отклонён (R139).
+
+Цепочка ADR-0001 `FINDING → DECISION → ACTION → RESULT` (раздел «Discussion Graph»)
+описывает связи графа и не образует отдельную FSM Discussion; из неё нельзя вывести
+ни одну пару сверх приведённой. Для `BLOCKS` учтено, что Discussion не может снять
+blocker (CM-10a, R136), а для `RESULT_OF` — что Discussion не принимает Result.
+
+**3. Ссылочная целостность**
+
+Все ссылки указывают на существующие объекты той же Task (R138). Ссылка на
+несуществующий объект и ссылка в чужую Task отклоняются fail-closed; dangling links не
+скрываются в проекции (R108, строка «Dangling/cross-Task references»). Отдельная FSM
+Discussion не заводится, целостность проверяется на переходе (CM-11).
+
+**4. Неизвестные типы и поля**
+
+Неизвестный тип узла или связи отклоняется fail-closed. Неизвестное поле и лишнее поле
+отклоняются fail-closed: набор полей узла и связи фиксирован, «свободные сообщения без
+схемы типа не допускаются» (R138). Свободный текст допустим только внутри `Summary`,
+а приведение к free-form вместо типизированных полей не допускается.
+
+**5. Conflict Discussion Fact (R137)**
+
+Conflict Discussion Fact — узел типа `FACT` (CM-08, R137) с обязательными
+`ConflictID`, `ReviewResultRef` и `AuditResultRef` (R137). `ConflictID` ссылается на
+Conflict Event, записанный в том же durable commit (CM-08b, R137); `ReviewResultRef` и
+`AuditResultRef` указывают на исходные результаты этой Task.
+
+**6. Отрицательные тесты и мутации**
+
+Строки матрицы §9: по одной на группу правил (1)–(5) плюс существующие строки.
+
+**Кандидатов не осталось: R138 и R139 полностью задают схему.**
 
 ## 6. Независимость Reviewer и Auditor
 
@@ -255,14 +338,14 @@ fail-closed, а причина должна быть видна как blocker; 
 | Conflict criteria | Явный arbitration request или явное противоречие; различие verdict само по себе не эскалировать автоматически и не выбирать победителя. | Решено R108: рекомендация принята |
 | Порядок conflict fact и Owner escalation | Один durable commit: Conflict Event → связанный Discussion Fact → OWNER Escalation Event → состояние ожидания решения → при необходимости Outbox. Conflict Event и Discussion Fact имеют меньший EventSeq, чем эскалация; все записи одной Task и одной новой ревизии; эскалация и Discussion Fact ссылаются на ConflictID, Discussion Fact — также на исходные Review/Audit results; новое состояние публикуется только после успешного commit, при ошибке commit не видна ни одна запись; повтор команды возвращает прежний receipt и не создаёт вторую эскалацию. Вариант с двумя commit отклонён: промежуточное состояние и отдельная recovery-машина не нужны. | Решено R137: принят вариант A |
 | Discussion events and IDs | Отдельные typed events для node/edge; ID выдаёт Coord; только типизированные payload, без свободных сообщений. | Решено R108 |
-| Payload fields per Discussion node/edge type | Общий минимум `ID`, `type`, actor/role из canonical `Run.RoleSelection`, `summary`, `evidence refs`, `CreatedAt`; плюс поля, специфичные для каждого node/edge type; либо единая фиксированная схема | Рекомендовать общий минимум и type-specific поля: сохраняет авторство и временной контекст, не сводя разные типы к free-form тексту | Открыто; не блокирует result core, блокирует Discussion event schema |
+| Payload fields per Discussion node/edge type | Общий минимум `ID`, `type`, actor/role из canonical `Run.RoleSelection`, `summary`, `evidence refs`, `CreatedAt`; плюс поля, специфичные для каждого node/edge type; либо единая фиксированная схема | Рекомендовать общий минимум и type-specific поля: сохраняет авторство и временной контекст, не сводя разные типы к free-form тексту | Решено R138 (вариант B) и R139 (поля оставшихся типов, матрица пар) |
 | Discussion corrections, edge removal и duplicate command | Append-only compensating events, стабильные IDs и idempotency key; неизменяемые записи не переписывать. | Решено R108: рекомендация принята |
 | Dangling/cross-Task references | Отвергать fail-closed; не скрывать dangling links в projection. | Решено R108: рекомендация принята |
 | Blocker when no independent Auditor | Отдельный `NO_INDEPENDENT_AUDITOR`, fail-closed до назначения; без ослабления CM-03/CM-07. | Решено R108: рекомендация принята |
 
-Открыт один вопрос: обязательные payload-поля Discussion node/edge. Порядок
-conflict fact и Owner escalation решён R137. Остальные строки зафиксированы R108 и
-могут использоваться при реализации.
+Открытых вопросов не осталось: порядок conflict fact и Owner escalation решён R137,
+обязательные payload-поля Discussion node/edge — R138 и R139. Остальные строки
+зафиксированы R108 и могут использоваться при реализации.
 
 ## 8. Schema и durable storage
 
@@ -295,6 +378,11 @@ conflict fact и Owner escalation решён R137. Остальные строк
 | `TestDiscussionProjectionRebuildsFromEvents` | Повторное восстановление даёт те же node/edge IDs, данные и связи только из canonical Events | хранить изменяемую независимую копию Graph либо терять node/edge при rebuild |
 | `TestDiscussionRejectsDanglingOrCrossTaskEdges` | Node/edge schema валидна, ссылки принадлежат ожидаемой Task и существуют | принять dangling ID или ссылку на другую Task |
 | `TestDiscussionDoesNotPromoteTransportEvents` | ACK/heartbeat/delivery/retry и обычные реплики не создают пользовательский node/event | автоматически отображать transport envelope как FACT/RESULT |
+| `TestDiscussionNodeTypesCarryRequiredFields` | Узел каждого типа из перечня R138 принимается с общим минимумом и полем по типу: `FINDING` — `ReviewResultRef`/`AuditResultRef`, `DECISION` — `OwnerDecisionRef`/`ConflictID`, `RESULT` — `ResultRef`, `BLOCKER` — `ReasonCode`; для `QUESTION`, `PROPOSAL`, `FACT`, `ACTION` достаточно общего минимума | принять узел без поля по типу, с пустым `Summary`/`Refs` или принять FACT или FINDING с пустым `Refs[]` |
+| `TestDiscussionEdgeTypePairIsEnforced` | для каждого из шести типов связей каждая пара из матрицы §5.1 принимается, а каждая пара типов узлов вне матрицы отклоняется, даже если оба узла существуют, — табличная проверка по всем 8×8 парам; `REFERS_TO` принимает любую пару | разрешить пару вне матрицы, например `RESULT_OF: ACTION → RESULT`, или ограничить `REFERS_TO`; принять `ANSWERS` к существующему `FACT` либо связь с несуществующим `ToNodeID` |
+| `TestDiscussionRejectsUnknownTypeOrExtraField` | Неизвестный тип узла или связи, неизвестное и лишнее поле отклоняются fail-closed; свободный текст без типизированных полей не принимается | принять `free-form` вместо типизированного поля или добавить поле сверх схемы |
+| `TestDiscussionRejectsCrossTaskOrMissingReference` | Ссылка на несуществующий объект и ссылка в чужую Task отклоняются fail-closed; dangling link не скрывается в проекции | принять ссылку на чужую Task или на удалённый объект |
+| `TestConflictDiscussionFactCarriesR137Refs` | Conflict Discussion Fact — узел типа `FACT` с `ConflictID`, `ReviewResultRef` и `AuditResultRef`; ссылки указывают на Conflict Event и исходные результаты той же Task, записанные в том же commit | принять Fact без `AuditResultRef` или со ссылкой на результат другой Task |
 | `TestReviewerRejectsExecutorAgentIDAcrossHistory` | TM-23 держит alias session и прежнего Executor Attempt вне назначения Reviewer | сравнивать Session вместо AgentID или игнорировать прежний Run |
 | `TestAuditorRejectsExecutorAgentIDAcrossTaskRuns` | CM-03 запрещает Auditor с AgentID любого Executor из истории canonical Task | убрать cross-Run сравнение, смотреть только активный Run или сравнивать model name |
 | `TestIndependentAuditorMayUseSameModel` | Разные stable AgentID не конфликтуют только из-за совпавшей модели | ошибочно блокировать по Profile/model вместо identity |
@@ -327,8 +415,9 @@ history export и diagnostic log; его нельзя засчитать тес�
 
 Решения OWNER R108 зафиксировали schema path, result representation, verdict и
 finding schema, а также typed Discussion events/IDs; R137 зафиксировал порядок
-conflict/escalation одним durable commit (вариант A). В §7 остаётся один открытый
-вопрос: обязательные payload fields для Discussion node/edge types. Этап реализует только внутреннюю
+conflict/escalation одним durable commit (вариант A), R138 и R139 — типизированную схему
+Discussion Graph (вариант B, §5.1). Открытых вопросов в §7 не осталось. Этап реализует
+только внутреннюю
 canonical Task command boundary: State + DomainEvent + Outbox/Inbox атомарны,
 отказы не публикуют память, startup validation восстанавливает состояние, а
 Discussion Graph детерминированно строится из Event history. Verdict сохраняется
