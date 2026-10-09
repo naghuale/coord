@@ -1,5 +1,20 @@
 # История изменений
 
+## 2026-10-09 — Документация по тесту независимости до replay (#26) ([#26](https://github.com/naghuale/coord/issues/26))
+
+- (документация) `TestAgentCommandRoleIdentityCollisionRejectsPriorReceiptBeforeReplay` отмечен
+  как прямое доказательство порядка: команда сохранила receipt, Executor Run получил
+  `AgentID` Reviewer, и повтор того же кадра отклоняется `NO_INDEPENDENT_REVIEWER` до
+  replay lookup — `replayed` остаётся false, handler не вызван, durable Save не было,
+  состояние и каноническое состояние store не изменились. Мутант с проверкой
+  независимости после replay lookup этим тестом убивается.
+- (документация) ADR-0001 (CM-03, CM-15) и TASK-MODEL (TM-23, TM-29), а также блок
+  «Часть 4» в `docs/TARGET-ARCHITECTURE.md`: «порядок этой проверки до replay прямым
+  тестом не доказан (#26)» заменено на факт — независимость роли проверяется до replay
+  lookup. В CM-03 и TM-23 факт перенесён в подтверждённую часть, а «не реализовано:»
+  оставлено только за реальным остатком (проверка до назначения не подключена).
+- (документация) ADR-0001 CM-03a и TASK-MODEL TM-23b: тест добавлен в список подтверждающих
+  в строке «Проверка: частично — …».
 ## 2026-10-09 — Нормативная запись решений OWNER R132–R136 ([#23](https://github.com/naghuale/coord/issues/23))
 
 - (документация) R132 — `docs/ROADMAP.md`: порядок этапов до P0-3 сохраняется (Review/Audit,
