@@ -359,7 +359,26 @@ Discussion Graph фиксирует значимые факты и связи д
   сообщения без схемы типа не допускаются. Вариант A отклонён: тип узла — не свободная
   метка. Вариант C отложен: `ArtifactID`, `Digest` и локатор цитаты зависят от R135 и от
   design проверки содержимого; позже B расширяется этими полями без замены базовой модели.
-  Проверка: не реализовано
+  R140 уточняет `DECISION`: `OwnerDecisionRef` и `ConflictID` могут присутствовать вместе;
+  если присутствуют, обе ссылки должны существовать и относиться к той же Task, а решение
+  должно разрешать именно этот конфликт. Пока canonical Owner decisions и Conflict Events
+  отсутствуют, обе формы `DECISION` отклоняются fail-closed. В #30 нет актора OWNER; его
+  authority появляется в P0-3. R141 уточняет `RESULT`: `ResultRef` указывает только на
+  canonical Executor Result той же Task, а `RESULT_OF` направлено строго `RESULT → ACTION`.
+  До реализации #6 `RESULT` отклоняется fail-closed; наличие `fsm.Run.Result` само по себе
+  пока не является canonical Executor Result. Исправления и удаление Discussion узлов вынесены в отдельную единицу;
+  Discussion остаётся append-only (TD по R142). Production agent command path не подключён
+  до P0-3.
+  Проверка: `TestDiscussionAgentCommandCommitsTypedNodeAndRebuildsProjection`,
+  `TestDiscussionProjectionRebuildsFromEvents`,
+  `TestDiscussionAgentCommandUsesVerifiedActorAndIsReplaySafe`,
+  `TestDiscussionRejectsDanglingOrCrossTaskEdges`, `TestDiscussionEdgeTypePairIsEnforced`,
+  `TestDiscussionNodeTypesCarryRequiredFields`, `TestDiscussionFindingRequiresExactlyOneResultReference`,
+  `TestDiscussionRejectsUnknownFields`, `TestDiscussionDecisionAndResultReferencesFailClosed`,
+  `TestDiscussionResultReferenceFailsClosedUntilExecutorResultSlice`,
+  `TestDiscussionRejectsCrossTaskEdgeEndpoint`, `TestDiscussionDoesNotPromoteTransportEvents`,
+  `TestDiscussionConflictFactRequiresR137References`, `TestDiscussionAgentCommandFailureDoesNotPublish`,
+  `TestDiscussionRejectsCallerGeneratedIdentity`, `TestDiscussionEventCannotChangeTaskWorkflow`.
 
 - **CM-12 — Owner identity подтверждается OwnerCredential (R110).** `OwnerCredential`
   — каноническая сущность Coord с собственным потоком событий. Каждая Owner-команда

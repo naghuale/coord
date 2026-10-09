@@ -298,6 +298,60 @@ Conflict Event, записанный в том же durable commit (CM-08b, R137
 
 **Кандидатов не осталось: R138 и R139 полностью задают схему.**
 
+### Реализация core в #30 (R140–R142)
+
+Core #30 сохраняет типизированные узлы и связи в `DomainEvent`; Graph строится только
+`task.ProjectDiscussion` из этой истории. `RecordDiscussionNode` и
+`RecordDiscussionEdge` принимают authenticated agent frame через `ApplyAgentCommand`;
+Coord назначает IDs вида `<DomainEventID>/node` и `<DomainEventID>/edge`, Actor и Role
+берутся из `Run.RoleSelection`. Успешная запись атомарно меняет только Revision,
+LastEventSeq и UpdatedAt Task, Event, Inbox и Outbox. Workflow поля Task не меняются.
+Production agent command path не подключён до P0-3.
+
+По R140 `DECISION` допускает обе ссылки одновременно, но ссылки на Owner decision и
+Conflict пока fail-closed: соответствующих canonical aggregates/events нет. OWNER не
+является актором в #30; authority появляется в P0-3. По R141 `RESULT` должен указывать на
+canonical Executor Result того же Task, но до #6 `RESULT` и ResultRef fail-closed. Наличие
+`fsm.Run.Result` не считается canonical Executor Result в этом срезе. Review/Audit result
+refs указывают на событие соответствующего результата той же Task. `RESULT_OF` допустим
+только от RESULT к ACTION. Artifact refs и conflict facts отклоняются fail-closed, пока их
+канонические источники отсутствуют.
+
+TD по R142: формат ResultRef оставлен для #6, поскольку canonical Executor Result будет
+определён там. Удаление и исправление Discussion узлов вынесены в отдельную единицу;
+события #30 append-only. В этой поставке
+покрыты command commit/replay, проекция, типовые поля и ссылки, strict JSON fields,
+матрица рёбер и отсутствие workflow изменений.
+
+Журнал решений #30 по R142:
+
+- **FD1:** Artifact и OwnerDecisionRef отклоняются fail-closed: соответствующих
+  canonical stores нет.
+- **FD2:** OWNER не может быть Discussion actor в #30; его authority появляется в P0-3.
+- **FD3:** ConflictID отклоняется fail-closed до появления Conflict Events.
+- **FD4:** ReviewResultRef и AuditResultRef указывают на существующее событие
+  соответствующего типа в той же Task; отсутствующая или неверная ссылка отклоняется fail-closed.
+  Это проверяет `TestDiscussionResultReferenceRequiresMatchingEventType`.
+- **FD5:** `RESULT`/ResultRef отклоняются до #6, даже если `fsm.Run.Result` заполнен:
+  это поле ещё не является принятой canonical Executor Result моделью. Матрица всё равно
+  ограничивает `RESULT_OF` парой `RESULT → ACTION`.
+- **TD1:** Исправления и удаление узлов вынесены в отдельный срез; причины — append-only
+  DomainEvent history и стабильная проекция.
+- **TD2 (класс R2):** FINDING требует ровно одну result reference; ноль и две ссылки
+  отклоняются тестом `TestDiscussionFindingRequiresExactlyOneResultReference`.
+- **TD3 (R142):** отдельный role guard в `RecordDiscussionEdge` удалён как избыточный:
+  `ApplyAgentCommand` fail-closed проверяет canonical `Run.RoleSelection` и допустимую роль
+  до callback, а схема edge требует непустой Actor, назначаемый из этой роли.
+  `TestDiscussionRunRoleAssignmentIsRequired` проверяет отказ edge-команды без role assignment.
+- **TD4 (R142):** Discussion edge намеренно не имеет поля `Role`; роль автора edge
+  определяется `Run.RoleSelection`. Node и edge schemas отдельно требуют непустой Actor;
+  node schema отдельно требует непустой Role, проверки возвращают typed errors. Пустой
+  AgentID отвергается `ApplyAgentCommand` до callback; whitespace AgentID проходит раннюю
+  проверку и тестируется через команду, чтобы подтвердить отказ именно schema validation.
+  Некорректный Role отклоняется `validateAgentCommandRoleStage`, поэтому обязательность
+  node.Role также проверяется непосредственно через typed schema error. Тесты доказывают
+  неизменность Task, Graph, Events, Inbox, Outbox и durable state после reopen.
+
 ## 6. Независимость Reviewer и Auditor
 
 ### Reviewer
@@ -351,7 +405,7 @@ fail-closed, а причина должна быть видна как blocker; 
 
 Текущая CanonicalState имеет `CanonicalSchemaVersion = 1`; R108 выбирает
 дополнение этой версии до production writer по образцу R85. Для этого изменения
-не вводится versioned migration по ST-05. Startup validation fail-closed
+не вводится schema bump или versioned migration по ST-05. Startup validation fail-closed
 отклоняет невозможные сочетания result/event/role/Task revision до readiness,
 без частичной записи.
 
@@ -373,16 +427,32 @@ fail-closed, а причина должна быть видна как blocker; 
 | `TestAuditVerdictWaitsForSupervisorStopProof` | То же для Audit verdict, включая PASS | завершить Task или начать rework до stop proof |
 | `TestReviewAuditConflictIsRecordedBeforeOwnerEscalation` | До `OWNER_DECISION` существует конфликт DomainEvent и связанный Discussion fact; Owner decision указывает conflict ID | сначала перевести Task в OWNER_DECISION, пропустить fact/event или отвязать Owner decision |
 | `TestConflictEscalationCommitsAtomically` | Conflict Event, Discussion Fact и эскалация записываются одним durable commit одной ревизии; при ошибке commit нет ни одной из записей ни в памяти, ни на диске; повтор команды после успеха возвращает прежний receipt без второй эскалации | записать conflict/fact отдельным commit, опубликовать память до durable commit или создать вторую эскалацию при повторе |
-| `TestDiscussionActorComesFromRunRoleSelection` | Внутренний agent-authored event получает ActorID/role из canonical Run.RoleSelection | принять подменённый ActorID или role из payload команды |
-| `TestDiscussionEventsAreTypedAndCoordIDsAreStable` | Разрешённые node/edge types представлены отдельными typed events с Coord-generated IDs и восстанавливаются из Event history | принять неизвестный type, free-form message или caller-controlled node/edge ID |
+| `TestDiscussionAgentCommandUsesVerifiedActorAndIsReplaySafe` | Внутренний agent-authored event получает ActorID/role из canonical Run.RoleSelection | принять подменённый ActorID или role из payload команды |
+| `TestDiscussionRunRoleAssignmentIsRequired` | Node и Edge команды fail-closed отклоняются без canonical Run.RoleSelection | принять node или edge без role assignment |
+| `TestDiscussionAgentCommandCommitsTypedNodeAndRebuildsProjection` | Typed node event получает Coord-generated ID и восстанавливается из Event history | принять caller-controlled node ID или потерять node при rebuild |
 | `TestDiscussionProjectionRebuildsFromEvents` | Повторное восстановление даёт те же node/edge IDs, данные и связи только из canonical Events | хранить изменяемую независимую копию Graph либо терять node/edge при rebuild |
 | `TestDiscussionRejectsDanglingOrCrossTaskEdges` | Node/edge schema валидна, ссылки принадлежат ожидаемой Task и существуют | принять dangling ID или ссылку на другую Task |
 | `TestDiscussionDoesNotPromoteTransportEvents` | ACK/heartbeat/delivery/retry и обычные реплики не создают пользовательский node/event | автоматически отображать transport envelope как FACT/RESULT |
+| `TestDiscussionNodeRequiresActor` | Node schema отдельно отклоняет пустой и пробельный Actor с `ErrDiscussionNodeActorRequired`; whitespace AgentID проходит в callback и даёт этот schema error; после отказа Task/Graph/Events/Inbox/Outbox/durable state не меняются и reopen совпадает | убрать проверку node Actor |
+| `TestDiscussionNodeRequiresRole` | Node schema отдельно отклоняет пустой и пробельный Role с `ErrDiscussionNodeRoleRequired`; командный путь отдельно подтверждает, что `validateAgentCommandRoleStage` отклоняет неправильную Run role до callback; state и reopen неизменны | убрать проверку node Role |
+| `TestDiscussionEdgeRequiresActor` | Edge schema отдельно отклоняет пустой и пробельный Actor с `ErrDiscussionEdgeActorRequired`; whitespace AgentID проходит в callback и даёт schema error; после отказа Task/Graph/Events/Inbox/Outbox/durable state не меняются и reopen совпадает | убрать проверку edge Actor |
 | `TestDiscussionNodeTypesCarryRequiredFields` | Узел каждого типа из перечня R138 принимается с общим минимумом и полем по типу: `FINDING` — `ReviewResultRef`/`AuditResultRef`, `DECISION` — `OwnerDecisionRef`/`ConflictID`, `RESULT` — `ResultRef`, `BLOCKER` — `ReasonCode`; для `QUESTION`, `PROPOSAL`, `FACT`, `ACTION` достаточно общего минимума | принять узел без поля по типу, с пустым `Summary`/`Refs` или принять FACT или FINDING с пустым `Refs[]` |
+| `TestDiscussionFindingRequiresExactlyOneResultReference` | FINDING требует ровно одну из `ReviewResultRef` и `AuditResultRef` | принять FINDING без ссылки или с двумя ссылками |
+| `TestDiscussionConflictFactRequiresR137References` | Conflict FACT требует `ConflictID`, ReviewResultRef и AuditResultRef | принять конфликтный FACT без одной из ссылок или без ConflictID |
+| `TestDiscussionResultReferenceFailsClosedUntilExecutorResultSlice` | ResultRef не принимается до появления canonical Executor Result в #6 | принять `fsm.Run.Result` как canonical result до #6 |
 | `TestDiscussionEdgeTypePairIsEnforced` | для каждого из шести типов связей каждая пара из матрицы §5.1 принимается, а каждая пара типов узлов вне матрицы отклоняется, даже если оба узла существуют, — табличная проверка по всем 8×8 парам; `REFERS_TO` принимает любую пару | разрешить пару вне матрицы, например `RESULT_OF: ACTION → RESULT`, или ограничить `REFERS_TO`; принять `ANSWERS` к существующему `FACT` либо связь с несуществующим `ToNodeID` |
-| `TestDiscussionRejectsUnknownTypeOrExtraField` | Неизвестный тип узла или связи, неизвестное и лишнее поле отклоняются fail-closed; свободный текст без типизированных полей не принимается | принять `free-form` вместо типизированного поля или добавить поле сверх схемы |
-| `TestDiscussionRejectsCrossTaskOrMissingReference` | Ссылка на несуществующий объект и ссылка в чужую Task отклоняются fail-closed; dangling link не скрывается в проекции | принять ссылку на чужую Task или на удалённый объект |
-| `TestConflictDiscussionFactCarriesR137Refs` | Conflict Discussion Fact — узел типа `FACT` с `ConflictID`, `ReviewResultRef` и `AuditResultRef`; ссылки указывают на Conflict Event и исходные результаты той же Task, записанные в том же commit | принять Fact без `AuditResultRef` или со ссылкой на результат другой Task |
+| `TestDiscussionRejectsUnknownFields` | JSON узла и связи не принимает неизвестные поля | проигнорировать неизвестное поле при чтении canonical snapshot |
+| `TestDiscussionNodeTypesCarryRequiredFields`, `TestDiscussionEdgeRejectsUnknownType`, `TestDiscussionRejectsUnknownFields` | Неизвестные node/edge types (включая free-form `MESSAGE`) и JSON-поля отклоняются | принять неизвестный node/edge type, free-form message или неизвестное поле |
+| `TestDiscussionDecisionAndResultReferencesFailClosed` | OwnerDecisionRef, ConflictID, Artifact refs и отсутствующий canonical Executor Result не принимаются пока их источники отсутствуют | принять заглушку или dangling reference вместо canonical объекта |
+| `TestDiscussionSnapshotValidationRejectsInconsistentNode` | При загрузке snapshot отклоняются нестабильный NodeID, несовпадающий author и рассинхронизация Summary с событием | принять некорректный Discussion node из snapshot |
+| `TestDiscussionSnapshotValidationRejectsEdgeAuthorOutsideRun` | При загрузке snapshot edge author обязан совпадать с canonical Run.RoleSelection | принять edge с чужим ActorID |
+| `TestDiscussionAgentCommandFailureDoesNotPublish` | Невалидный node не меняет память и не создаёт durable commit | опубликовать частичный Task/Event state до отказа |
+| `TestDiscussionRejectsCallerGeneratedIdentity` | NodeID, TaskID, Actor, Role и CreatedAt назначаются Coord | принять caller-controlled author или ID |
+| `TestDiscussionEventCannotChangeTaskWorkflow` | Discussion event не меняет Stage, Status, Fence или прочие Task поля | позволить Discussion записи менять Status или смешивать её с workflow event |
+| `TestDiscussionRejectsCrossTaskEdgeEndpoint` | Edge endpoint обязаны быть node этой Task | принять существующий node ID, принадлежащий другой Task |
+| `TestDiscussionReferencesRequireSameTaskAndPriorEvent` | Task/DomainEvent refs существуют, принадлежат той же Task, а DomainEvent предшествует текущему; Artifact refs отклоняются fail-closed | принять ссылку на чужую Task, будущий/отсутствующий Event или Artifact |
+| `TestDiscussionResultReferenceRequiresMatchingEventType` | ReviewResultRef указывает на ReviewResult, AuditResultRef — на AuditResult той же Task | принять ссылку на событие результата другого типа |
+| `TestConflictDiscussionFactCarriesR137Refs` (цель R137, не реализуется в #30) | Conflict Discussion Fact — узел типа `FACT` с `ConflictID`, `ReviewResultRef` и `AuditResultRef`; ссылки указывают на Conflict Event и исходные результаты той же Task, записанные в том же commit | принять Fact без `AuditResultRef` или со ссылкой на результат другой Task |
 | `TestReviewerRejectsExecutorAgentIDAcrossHistory` | TM-23 держит alias session и прежнего Executor Attempt вне назначения Reviewer | сравнивать Session вместо AgentID или игнорировать прежний Run |
 | `TestAuditorRejectsExecutorAgentIDAcrossTaskRuns` | CM-03 запрещает Auditor с AgentID любого Executor из истории canonical Task | убрать cross-Run сравнение, смотреть только активный Run или сравнивать model name |
 | `TestIndependentAuditorMayUseSameModel` | Разные stable AgentID не конфликтуют только из-за совпавшей модели | ошибочно блокировать по Profile/model вместо identity |

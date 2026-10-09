@@ -242,6 +242,9 @@ func ValidateCanonicalState(state CanonicalState) error {
 	if err := validateTaskResultEvents(state); err != nil {
 		return err
 	}
+	if err := validateCanonicalDiscussion(state); err != nil {
+		return err
+	}
 	if err := agentsession.ValidateHistory(state.AgentSessions, state.AgentSessionEvents); err != nil {
 		return err
 	}
@@ -720,6 +723,9 @@ func ValidateCanonicalTransition(previous, next CanonicalState) error {
 		newEvents[event.TaskID] = append(newEvents[event.TaskID], event)
 		newEventIDs[event.ID] = event
 	}
+	if err := validateDiscussionOnlyMutations(previous, next, newEvents); err != nil {
+		return err
+	}
 	for key, receipt := range next.Inbox {
 		if _, existed := previous.Inbox[key]; existed {
 			continue
@@ -866,6 +872,45 @@ func ValidateCanonicalTransition(previous, next CanonicalState) error {
 	}
 	if err := validateCanonicalAgentSessionAssignments(previous, next); err != nil {
 		return err
+	}
+	if err := validateCanonicalDiscussion(next); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateDiscussionOnlyMutations(previous, next CanonicalState, events map[taskid.ID][]task.DomainEvent) error {
+	hasAnyDiscussion := false
+	for id, added := range events {
+		taskHasDiscussion := false
+		for _, event := range added {
+			if event.Type == task.DiscussionNodeRecorded || event.Type == task.DiscussionEdgeRecorded {
+				taskHasDiscussion = true
+			}
+		}
+		if !taskHasDiscussion {
+			continue
+		}
+		hasAnyDiscussion = true
+		for _, event := range added {
+			if event.Type != task.DiscussionNodeRecorded && event.Type != task.DiscussionEdgeRecorded {
+				return fmt.Errorf("discussion events cannot share a Task revision with workflow events")
+			}
+		}
+		oldTask, hadOld := previous.Tasks[id]
+		newTask, hasNew := next.Tasks[id]
+		if !hadOld || !hasNew {
+			return fmt.Errorf("discussion event requires an existing Task")
+		}
+		oldTask.Revision, newTask.Revision = 0, 0
+		oldTask.LastEventSeq, newTask.LastEventSeq = 0, 0
+		oldTask.UpdatedAt, newTask.UpdatedAt = time.Time{}, time.Time{}
+		if !reflect.DeepEqual(oldTask, newTask) {
+			return fmt.Errorf("discussion event cannot change Task workflow or other Task fields")
+		}
+	}
+	if hasAnyDiscussion && !reflect.DeepEqual(previous.Runs, next.Runs) {
+		return fmt.Errorf("discussion event cannot change Run state")
 	}
 	return nil
 }

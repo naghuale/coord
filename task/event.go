@@ -14,22 +14,26 @@ const (
 	TaskOwnershipTransferred EventType = "TASK_OWNERSHIP_TRANSFERRED"
 	ReviewResultRecorded     EventType = "REVIEW_RESULT_RECORDED"
 	AuditResultRecorded      EventType = "AUDIT_RESULT_RECORDED"
+	DiscussionNodeRecorded   EventType = "DISCUSSION_NODE_RECORDED"
+	DiscussionEdgeRecorded   EventType = "DISCUSSION_EDGE_RECORDED"
 )
 
 // DomainEvent is an auditable fact in a Task's canonical history.
 type DomainEvent struct {
-	ID           string        `json:"id"`
-	TaskID       taskid.ID     `json:"task_id"`
-	RunID        string        `json:"run_id,omitempty"`
-	EventSeq     uint64        `json:"event_seq"`
-	TaskRevision uint64        `json:"task_revision"`
-	TaskFence    uint64        `json:"task_fence"`
-	Type         EventType     `json:"type"`
-	ActorID      string        `json:"actor_id,omitempty"`
-	Summary      string        `json:"summary,omitempty"`
-	ReviewResult *ReviewResult `json:"review_result,omitempty"`
-	AuditResult  *AuditResult  `json:"audit_result,omitempty"`
-	CreatedAt    time.Time     `json:"created_at"`
+	ID             string          `json:"id"`
+	TaskID         taskid.ID       `json:"task_id"`
+	RunID          string          `json:"run_id,omitempty"`
+	EventSeq       uint64          `json:"event_seq"`
+	TaskRevision   uint64          `json:"task_revision"`
+	TaskFence      uint64          `json:"task_fence"`
+	Type           EventType       `json:"type"`
+	ActorID        string          `json:"actor_id,omitempty"`
+	Summary        string          `json:"summary,omitempty"`
+	ReviewResult   *ReviewResult   `json:"review_result,omitempty"`
+	AuditResult    *AuditResult    `json:"audit_result,omitempty"`
+	DiscussionNode *DiscussionNode `json:"discussion_node,omitempty"`
+	DiscussionEdge *DiscussionEdge `json:"discussion_edge,omitempty"`
+	CreatedAt      time.Time       `json:"created_at"`
 }
 
 func EventID(id taskid.ID, seq uint64) string {
@@ -47,6 +51,26 @@ func (e DomainEvent) Validate() error {
 		return fmt.Errorf("invalid event type or timestamp")
 	}
 	switch e.Type {
+	case DiscussionNodeRecorded:
+		if e.DiscussionNode == nil || e.DiscussionEdge != nil || e.ReviewResult != nil || e.AuditResult != nil {
+			return fmt.Errorf("DISCUSSION_NODE_RECORDED requires only a DiscussionNode payload")
+		}
+		if err := e.DiscussionNode.Validate(); err != nil {
+			return fmt.Errorf("invalid DiscussionNode: %w", err)
+		}
+		if e.DiscussionNode.TaskID != e.TaskID || !e.DiscussionNode.CreatedAt.Equal(e.CreatedAt) || e.DiscussionNode.Actor != e.ActorID || e.DiscussionNode.Summary != e.Summary {
+			return fmt.Errorf("DiscussionNode metadata differs from DomainEvent")
+		}
+	case DiscussionEdgeRecorded:
+		if e.DiscussionEdge == nil || e.DiscussionNode != nil || e.ReviewResult != nil || e.AuditResult != nil {
+			return fmt.Errorf("DISCUSSION_EDGE_RECORDED requires only a DiscussionEdge payload")
+		}
+		if err := e.DiscussionEdge.Validate(); err != nil {
+			return fmt.Errorf("invalid DiscussionEdge: %w", err)
+		}
+		if e.DiscussionEdge.TaskID != e.TaskID || !e.DiscussionEdge.CreatedAt.Equal(e.CreatedAt) || e.DiscussionEdge.Actor != e.ActorID {
+			return fmt.Errorf("DiscussionEdge metadata differs from DomainEvent")
+		}
 	case ReviewResultRecorded:
 		if e.ReviewResult == nil || e.AuditResult != nil {
 			return fmt.Errorf("REVIEW_RESULT_RECORDED requires only a ReviewResult payload")
@@ -62,8 +86,8 @@ func (e DomainEvent) Validate() error {
 			return fmt.Errorf("invalid AuditResult payload: %w", err)
 		}
 	default:
-		if e.ReviewResult != nil || e.AuditResult != nil {
-			return fmt.Errorf("event type %q cannot contain a Review/Audit result payload", e.Type)
+		if e.ReviewResult != nil || e.AuditResult != nil || e.DiscussionNode != nil || e.DiscussionEdge != nil {
+			return fmt.Errorf("event type %q cannot contain a typed payload", e.Type)
 		}
 	}
 	return nil

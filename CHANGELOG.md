@@ -1,5 +1,28 @@
 # История изменений
 
+## 2026-10-10 — Discussion Graph core ([#30](https://github.com/naghuale/coord/issues/30))
+
+- (код) Добавлены типизированные Discussion nodes/edges и DomainEvents; Graph
+  восстанавливается только из Events. `RecordDiscussionNode` и
+  `RecordDiscussionEdge` идут через `ApplyAgentCommand`, используют Coord-generated IDs,
+  подтверждённого автора из Run и атомарный Event/Inbox/Outbox commit
+  (`TestDiscussionAgentCommandCommitsTypedNodeAndRebuildsProjection`,
+  `TestDiscussionAgentCommandUsesVerifiedActorAndIsReplaySafe`).
+- (код) Добавлены fail-closed проверки обязательных полей, строгого JSON schema,
+  ссылок той же Task, матрицы пар рёбер и запрета Discussion менять workflow Task.
+  OwnerDecisionRef и ConflictID отклоняются до наличия соответствующих canonical объектов;
+  ResultRef отклоняется до реализации #6, даже если `fsm.Run.Result` заполнен
+  (`TestDiscussionDecisionAndResultReferencesFailClosed`,
+  `TestDiscussionResultReferenceFailsClosedUntilExecutorResultSlice`,
+  `TestDiscussionEdgeTypePairIsEnforced`, `TestDiscussionEventCannotChangeTaskWorkflow`).
+- (документация) `docs/plans/p0-review-audit/DESIGN.md` дополнен решениями R140/R141,
+  выбором TD по R142 и фактическим срезом #30; в ADR-0001 CM-11a записаны R140 и R141.
+  Production agent command path не подключён до P0-3.
+- (тесты) Добавлены сценарии командного commit/replay, проекции, авторства, типов узлов,
+  ровно одной ссылки FINDING, строгих полей, fail-closed ссылок и полной матрицы edge pairs
+  (`TestDiscussionFindingRequiresExactlyOneResultReference`, `TestDiscussionRejectsUnknownFields`,
+  `TestDiscussionDoesNotPromoteTransportEvents`, `TestDiscussionRejectsCrossTaskEdgeEndpoint`).
+
 ## 2026-10-09 — Синхронизация §2 и имён тестов AGENT-COMMAND-BOUNDARY с частью 4 ([#25](https://github.com/naghuale/coord/issues/25))
 
 - (документация) `docs/plans/p0-2-task/AGENT-COMMAND-BOUNDARY.md`, §2: строка «поколение
