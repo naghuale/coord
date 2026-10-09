@@ -1,5 +1,42 @@
 # История изменений
 
+## 2026-10-09 — Фактическое состояние agent command boundary после части 4 (#5) ([#22](https://github.com/naghuale/coord/issues/22))
+
+- (документация) ADR-0001 (CM-13, CM-14, CM-15) и TASK-MODEL (TM-27, TM-28, TM-29):
+  строки «Проверка» приведены к коду `CanonicalStore.ApplyAgentCommand`
+  (`store/canonical_agent_command.go`) и `transport.AuthenticatedFrame` /
+  `SignedClient.IncomingAuthenticated` / `AuthenticatedAdapter.ReceiveAuthenticated`
+  (`transport/signed.go`): подпись и совпадение с телом, получатель, сессия и поколение
+  до replay, Run, эпоха и Attempt, роль и Stage, независимость роли — проверяется в канонической границе без durable Save
+  (`TestAgentCommandRejectsRoleIdentityCollisionBeforeReplay`), причём порядок этой проверки до replay прямым тестом не
+  доказан ([#26](https://github.com/naghuale/coord/issues/26)); затем replay и дедупликация без записи, CAS для новой команды и один commit с
+  переходом, событием, receipt и подтверждением в Outbox; actor берётся из проверенного
+  назначения Run, а не из тела команды; обязательный `AgentID` проверяется и при
+  назначении Task-scoped Run (`validateRunAgentSessionBinding`), и на входящей команде
+  для всех ролей. Фразы «отклонение команд до replay относится к части 4 и пока
+  не реализовано» заменены на утверждение о реализованной границе.
+- (документация) Остаток «не реализовано» одинаков и назван явно: production command path
+  не подключён — `ApplyAgentCommand` вызывается только из тестов, реальный вход остаётся
+  legacy `Coordinator.Handle` (`coordinator.go`); `OwnerCredential` не реализован; команд
+  управления `AgentSession` (регистрация, ротация ключа, смена адреса) в границе нет;
+  Executor RESULT (#6) не подключён — P0-3.
+- (документация) ADR-0001 CM-03 и TASK-MODEL TM-23: «проверка до назначения в agent command
+  boundary не существует» заменено на факт — каноническая граница проверяет независимость
+  через `validateCanonicalRoleIndependence`
+  (`TestAgentCommandRejectsRoleIdentityCollisionBeforeReplay`,
+  `TestAgentCommandAppliesRoleIndependenceFromCommittedRun`), порядок этой проверки до
+  replay прямым тестом не доказан ([#26](https://github.com/naghuale/coord/issues/26)),
+  но проверка до назначения не реализована, потому что production command path не
+  подключён и назначение идёт через legacy `Coordinator.Handle`.
+- (документация) `docs/plans/p0-2-task/AGENT-COMMAND-BOUNDARY.md`: фразы об отклонении
+  команд до replay как о нереализованной части 4 в §5.1 (решения R125) и в §5.3 приведены
+  к реализованной границе с оговоркой о неподключённом production command path.
+- (документация) `docs/TARGET-ARCHITECTURE.md`, строка AgentSession (CM-13, TM-27): добавлен
+  блок «Часть 4» с составом transport и store границы и списком проверок; список
+  «Не реализовано» приведён к фактическому остатку P0-3.
+- (документация) Текст норм, статус ADR и порядок R121 не менялись: правились только строки
+  «Проверка» и фразы о статусе реализации. Каждый названный тест проверен на существование и
+  на соответствие утверждению рядом (`grep func` по `*_test.go` и чтение тела теста).
 ## 2026-10-09 — Удалён повторный заголовок в CHANGELOG ([#21](https://github.com/naghuale/coord/issues/21))
 
 - (документация) Заголовок «# История изменений» повторялся дважды начиная с
@@ -10,10 +47,11 @@
 - `transport.AuthenticatedFrame` сохраняет проверенный подписанный кадр, sender,
   ключ и generation; ключ разрешается через внедрённый интерфейс AgentSession,
   legacy `Peers` не является fallback. `CanonicalStore.ApplyAgentCommand` повторно
-  проверяет подпись и текущую привязку под сериализованной границей, затем
-  выполняет role/Stage и Fence checks до replay, а Revision CAS — после replay
-  только для новой команды; commit объединяет переход, Event, Inbox receipt и
-  Outbox acknowledgment (`TestAgentCommandCommitsEventReceiptOutboxAtomically`,
+  проверяет подпись на границе store до блокировки, а текущую привязку, поколение и
+  совпадение ключа — под `s.mu`, затем выполняет role/Stage и Fence checks до
+  replay, а Revision CAS — после replay только для новой команды; commit
+  объединяет переход, Event, Inbox receipt и Outbox acknowledgment
+  (`TestAgentCommandCommitsEventReceiptOutboxAtomically`,
   `TestAgentCommandReplayReturnsPriorReceiptWithoutWriting`).
 - Сценарии и проверки: `TestAgentCommandRejectsFabricatedAuthenticatedFrame`,
   `TestAgentCommandRejectsEnvelopeDifferentFromSignedBytes`,
