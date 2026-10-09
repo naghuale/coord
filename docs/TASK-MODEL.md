@@ -58,6 +58,20 @@ Run
 └─ Inputs, Result, Artifacts, timestamps
 ```
 
+- **TM-04a — Метаданные Artifact канонические, содержимое внешнее (R135).** В
+  `CanonicalState` хранятся только метаданные Artifact; содержимое остаётся во внешнем
+  хранилище или рабочем дереве. Минимальные метаданные: `ArtifactID`, `TaskID`,
+  `ProducerRunID`, `Kind`, `ExternalReference`, `DigestAlgorithm`, `Digest`, `Size`, если
+  источник предоставляет размер, и `CreatedAt`. Правила: `ArtifactID` устойчив и уникален;
+  Artifact относится к существующей Task; `ProducerRunID` относится к той же Task; digest
+  обязателен для Artifact, который используют Review, Audit или переходы; изменение
+  содержимого создаёт новый Artifact или новую версию и не переписывает старый digest;
+  credentials, private keys и закрытое runtime evidence не попадают ни в метаданные, ни
+  в Git; недоступность внешнего содержимого не меняет сохранённую историю, но делает
+  Artifact недоступным для операций, которым нужно его проверить. Точные виды Artifact и
+  политику хранения можно расширять позднее, не меняя этих базовых свойств.
+  Проверка: не реализовано
+
 - **TM-05 — Owner identity подтверждается credential (R110).** `OwnerID` names a
   stable human principal, not an `agent_id`, session address or transport
   identity. `OwnerCredential` is a canonical Coord aggregate with its own event
@@ -77,6 +91,20 @@ Run
   written in the same transaction as the state transition. Derived projections do
   not add stored Task status fields.
   Проверка: частично — `TestCanonicalTransitionRejectsTaskMutationWithoutEvent`, `TestCanonicalStoreRejectsTaskMutationWithoutEvent`, `TestCanonicalTransitionRejectsTaskMutationWithoutRevisionIncrement`, `TestCanonicalStateRejectsTaskRevisionAheadOfEventHistory`; не реализовано: authenticated expected-Revision Owner command boundary.
+- **TM-06a — Discussion входит в каноническую модель, но не заменяет решения и Results
+  (R136).** Discussion Graph хранит структурированное обсуждение Task: узлы обсуждения;
+  автора по проверенному `AgentID` или OWNER identity; `TaskID`; время; тип сообщения;
+  связи между узлами; ссылки на Run, Result, Artifact, Review/Audit или решение OWNER.
+  Discussion не может самостоятельно изменить Status или Stage Task, назначить роль,
+  принять Result, заменить `ReviewResult` или `AuditResult`, снять blocker, создать
+  решение OWNER или служить источником recovery без соответствующего канонического
+  перехода. Если сообщение Discussion должно изменить workflow, отдельная команда проходит
+  обычную проверку и durable transition; текст обсуждения сам по себе командой не
+  считается. Для P0-2 достаточно минимального Discussion Graph и ссылочной целостности:
+  summary, рекомендации, автоматическое принятие решений и генерация новых Task из текста
+  остаются вне этого среза.
+  Проверка: не реализовано
+
 - **TM-26 — EventSeq непрерывен внутри Task.** Каждый Domain Event Task имеет
   `EventSeq`: монотонный, уникальный и непрерывный с 1 в пределах Task.
   `Task.LastEventSeq` равен номеру последнего события и присваивается в той же
@@ -216,7 +244,30 @@ Run — одно назначение одной роли внутри одно�
   `NO_INDEPENDENT_REVIEWER`; Coord не подменяет его Executor, а Owner не может
   отменить hard policy. Аналогичные ограничения AUDITOR задаются ADR-0001.
   Проверка: частично — `TestReviewerRejectsExecutorAgentIDAcrossHistory` (независимость по `agent_id` всей истории Executor Runs, отказ `NO_INDEPENDENT_REVIEWER`), `TestNoIndependentReviewerOrAuditorFailsClosed` (fail-closed без durable Save и без изменения состояния), `TestCanonicalStartupRejectsRoleIdentityConflict`, `TestCanonicalTransitionRejectsRoleIdentityConflict`, `TestCanonicalRoleIndependenceFailsClosedWithoutStableAgentID`, `TestSameAgentMayHoldRolesInDifferentTasks`, `TestExecutorWithoutStableSelectionFailsClosedBeforeReviewer`, `TestRoleIndependenceDoesNotRequireAnExecutorAssignment`; каноническая command boundary проверяет независимость (`validateCanonicalRoleIndependence` в `ApplyAgentCommand`, `store/canonical_agent_command.go`; `TestAgentCommandRejectsRoleIdentityCollisionBeforeReplay` — отказ `NO_INDEPENDENT_REVIEWER` без durable Save, `TestAgentCommandAppliesRoleIndependenceFromCommittedRun` — независимая команда проходит, а Inbox получает actor из сохранённого Reviewer Run); не реализовано: порядок этой проверки до replay прямым тестом не доказан (#26); проверка до назначения не реализована: production command path не подключён, `ApplyAgentCommand` вызывается только из тестов, а назначение идёт через legacy `Coordinator.Handle` (`coordinator.go`); также не реализованы `OwnerCredential`, команды управления `AgentSession` в границе и Executor RESULT (#6) — P0-3; поведение «Task остаётся blocked на Stage REVIEW с причиной `NO_INDEPENDENT_REVIEWER`» как durable или derived факт — канонические проверки фиксируют отказ, но не состояние и Stage Task
+- **TM-23a — Бывший Reviewer или Auditor не становится Executor той же Task (R133).**
+  Для одной Task запрещено назначать Executor агента, который ранее в этой Task был
+  REVIEWER или AUDITOR. Правило действует на всю историю Task, а не только на текущий
+  Stage или активные Runs. Разрешено: быть Executor в другой Task; повторно выполнять
+  Reviewer или Auditor в пределах разрешённой политики; менять техническую сессию при
+  том же устойчивом `AgentID`. Проверка идёт по устойчивому `AgentID` и полной
+  `RoleSelectionHistory`, а не по адресу сессии или имени frontend. Основание: иначе
+  агент сначала даёт независимый вердикт, а затем изменяет проверенный результат в
+  роли Executor той же Task.
+  Кода и теста этого запрета в дереве нет; существующая проверка независимости
+  касается только обратного направления — Reviewer и Auditor против истории Executor.
+  Проверка: не реализовано
 
+- **TM-23b — Причины отсутствия независимого агента (R134).** Отсутствие независимого
+  агента выражается двумя различимыми структурированными причинами:
+  `NO_INDEPENDENT_REVIEWER` и `NO_INDEPENDENT_AUDITOR`. Семантика: подходящий агент для обязательной роли не найден; Task не считается
+  проваленной; обязательный Stage не пропускается; новый Run с нарушением независимости
+  не создаётся; Task остаётся заблокированной на соответствующем Stage; причина
+  содержит проверенную выборку кандидатов и основания их исключения; после изменения
+  реестра агентов или завершения конфликтующих назначений eligibility пересчитывается;
+  OWNER вызывается только тогда, когда принятые нормы не дают безопасного способа
+  продолжить работу. Эти причины не объединяются в общее `NO_AGENT`: владельцу и
+  Explain нужно видеть, какая именно гарантия независимости не выполнена.
+  Проверка: частично — `TestReviewerRejectsExecutorAgentIDAcrossHistory`, `TestAuditorRejectsExecutorAgentIDAcrossTaskRuns`, `TestAgentCommandRejectsRoleIdentityCollisionBeforeReplay`; не реализовано: durable blocked-состояние Task с такой причиной, проверенная выборка кандидатов с основаниями исключения и пересчёт eligibility после изменения реестра агентов или завершения конфликтующих назначений
 - **TM-27 — AgentSession — каноническая привязка сессии агента (R114).** Оператор
   регистрирует `AgentSession`, связывающий устойчивый `AgentID`, адрес сессии,
   монотонное поколение и публичный ключ или его отпечаток. Поколение записывается

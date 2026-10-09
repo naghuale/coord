@@ -129,13 +129,34 @@ committed Coord ResultRecord. Исходящий `RESULT_ACK` сообщает �
   стабильному `agent_id` и всей истории Executor Runs задачи; без независимого
   Reviewer переход закрыт fail-closed. Проверка AUDITOR задана CM-03. Текущая
   реализация проверяет независимость Reviewer и Auditor по истории Executor Runs
-  (`store/canonical_independence.go`, RA-2, commit `2d0cf60`). Это не вводит
-  симметричного запрета на назначение бывшего Reviewer или Auditor исполнителем:
-  такое ограничение не установлено и остаётся открытым до отдельного решения
-  OWNER.
+  (`store/canonical_independence.go`, RA-2, commit `2d0cf60`).
+- **CM-02a — Бывший Reviewer или Auditor не становится Executor той же Task (R133).** Для
+  одной Task запрещено назначать Executor агента, который ранее в этой Task был
+  REVIEWER или AUDITOR. Правило действует на всю историю Task, а не только на
+  текущий Stage или активные Runs. Разрешено: быть Executor в другой Task; повторно
+  выполнять Reviewer или Auditor в пределах разрешённой политики; менять техническую
+  сессию при том же устойчивом `AgentID`. Проверка идёт по устойчивому `AgentID` и
+  полной `RoleSelectionHistory`, а не по адресу сессии или имени frontend. Основание:
+  иначе агент сначала даёт независимый вердикт, а затем изменяет проверенный результат
+  в роли Executor той же Task.
+  Кода и теста этого запрета в дереве нет; существующая проверка независимости
+  касается только обратного направления — Reviewer и Auditor против истории Executor.
+  Проверка: не реализовано
 - **CM-03 — Auditor независим по agent_id и истории.** Независимость AUDITOR проверяется по стабильному `agent_id` и истории
   исполнителей, а не по имени модели или адресу сессии.
   Проверка: частично — `TestRolesIndependenceAndImmutableAssignment` (legacy: Auditor того же `agent_id` через другую сессию отклоняется, а активное назначение не меняется при RoleUpdate), `TestAuditorRejectsExecutorAgentIDAcrossTaskRuns` и `TestReviewerRejectsExecutorAgentIDAcrossHistory` (канонические: отказ `NO_INDEPENDENT_AUDITOR`/`NO_INDEPENDENT_REVIEWER`, когда `agent_id` совпадает с любым текущим или прежним Executor этой Task), `TestIndependentAuditorMayUseSameModel` (имя модели не признак зависимости), `TestNoIndependentReviewerOrAuditorFailsClosed` (fail-closed на `UpdateCanonical`: отказ без durable Save и без изменения состояния), `TestCanonicalStartupRejectsRoleIdentityConflict` и `TestCanonicalTransitionRejectsRoleIdentityConflict` (тот же отказ на startup и на переходе), `TestCanonicalRoleIndependenceFailsClosedWithoutStableAgentID` (пустой `AgentID` или отсутствие selection), `TestSameAgentMayHoldRolesInDifferentTasks` (история ограничена Task), `TestReviewerOrAuditorMayOnlyUseAnAgentThatBecameExecutorLaterThanItsPastAssignment` и `TestExecutorAtPreviousAdjacentEventSequenceIsNotIndependent` (агент, позже ставший Executor, и соседний EventSeq), `TestExecutorWithoutStableSelectionFailsClosedBeforeReviewer`, `TestRoleIndependenceDoesNotRequireAnExecutorAssignment`, `TestRoleHistoryExtraSelectionRequiresEventAfterTransfer`, `TestRoleHistoryWithoutTransferMarkersUsesConservativeEventBounds`, `TestRoleHistoryRejectsRoleChange`; каноническая command boundary проверяет независимость (`validateCanonicalRoleIndependence` в `ApplyAgentCommand`, `store/canonical_agent_command.go`; `TestAgentCommandRejectsRoleIdentityCollisionBeforeReplay` — отказ `NO_INDEPENDENT_REVIEWER` без durable Save, `TestAgentCommandAppliesRoleIndependenceFromCommittedRun` — независимая команда проходит, а Inbox получает actor из сохранённого Reviewer Run); не реализовано: порядок этой проверки до replay прямым тестом не доказан (#26); проверка до назначения не реализована: production command path не подключён, `ApplyAgentCommand` вызывается только из тестов, а назначение идёт через legacy `Coordinator.Handle` (`coordinator.go`); также не реализованы `OwnerCredential`, команды управления `AgentSession` в границе и Executor RESULT (#6) — P0-3; отдельного изолированного теста только на смену адреса сессии нет, хотя канонические проверки совпадения используют разные session addresses и падают при сравнении по `Session` вместо `agent_id`
+
+- **CM-03a — Причины отсутствия независимого агента (R134).** Отсутствие независимого
+  агента выражается двумя различимыми структурированными причинами:
+  `NO_INDEPENDENT_REVIEWER` и `NO_INDEPENDENT_AUDITOR`. Семантика: подходящий агент для обязательной роли не найден; Task не считается
+  проваленной; обязательный Stage не пропускается; новый Run с нарушением независимости
+  не создаётся; Task остаётся заблокированной на соответствующем Stage; причина
+  содержит проверенную выборку кандидатов и основания их исключения; после изменения
+  реестра агентов или завершения конфликтующих назначений eligibility пересчитывается;
+  OWNER вызывается только тогда, когда принятые нормы не дают безопасного способа
+  продолжить работу. Эти причины не объединяются в общее `NO_AGENT`: владельцу и
+  Explain нужно видеть, какая именно гарантия независимости не выполнена.
+  Проверка: частично — `TestReviewerRejectsExecutorAgentIDAcrossHistory`, `TestAuditorRejectsExecutorAgentIDAcrossTaskRuns`, `TestAgentCommandRejectsRoleIdentityCollisionBeforeReplay`; не реализовано: durable blocked-состояние Task с такой причиной, проверенная выборка кандидатов с основаниями исключения и пересчёт eligibility после изменения реестра агентов или завершения конфликтующих назначений
 
 ### Ролевая модель
 
@@ -246,9 +267,21 @@ summary и ссылками на входные/выходные artifacts. Со
 разбором произвольного текста. Проверка результата и независимость AUDITOR
 остаются в Coord policy.
 
-Artifact имеет канонические метаданные и проверяемую идентичность. Место хранения
-самого содержимого и его миграция уточняются отдельным storage/operations
-решением.
+- **CM-08a — Метаданные Artifact канонические, содержимое внешнее (R135).** В
+  `CanonicalState` хранятся только метаданные Artifact; содержимое остаётся во внешнем
+  хранилище или рабочем дереве. Минимальные метаданные: `ArtifactID`, `TaskID`,
+  `ProducerRunID`, `Kind`, `ExternalReference`, `DigestAlgorithm`, `Digest`, `Size`, если
+  источник предоставляет размер, и `CreatedAt`. Правила: `ArtifactID` устойчив и уникален;
+  Artifact относится к существующей Task; `ProducerRunID` относится к той же Task; digest
+  обязателен для Artifact, который используют Review, Audit или переходы; изменение
+  содержимого создаёт новый Artifact или новую версию и не переписывает старый digest;
+  credentials, private keys и закрытое runtime evidence не попадают ни в метаданные, ни
+  в Git; недоступность внешнего содержимого не меняет сохранённую историю, но делает
+  Artifact недоступным для операций, которым нужно его проверить. Точные виды Artifact и
+  политику хранения можно расширять позднее, не меняя этих базовых свойств. Место
+  хранения самого содержимого и его миграция уточняются отдельным storage/operations
+  решением.
+  Проверка: не реализовано
 
 ### Discussion Graph
 
@@ -263,6 +296,20 @@ Discussion Graph фиксирует значимые факты и связи д
 Типы связей:
 
 `ANSWERS`, `SUPPORTS`, `CAUSED_BY`, `RESULT_OF`, `BLOCKS`, `REFERS_TO`.
+
+- **CM-10a — Discussion входит в каноническую модель, но не заменяет решения и Results
+  (R136).** Discussion Graph хранит структурированное обсуждение Task: узлы обсуждения;
+  автора по проверенному `AgentID` или OWNER identity; `TaskID`; время; тип сообщения;
+  связи между узлами; ссылки на Run, Result, Artifact, Review/Audit или решение OWNER.
+  Discussion не может самостоятельно изменить Status или Stage Task, назначить роль,
+  принять Result, заменить `ReviewResult` или `AuditResult`, снять blocker, создать
+  решение OWNER или служить источником recovery без соответствующего канонического
+  перехода. Если сообщение Discussion должно изменить workflow, отдельная команда
+  проходит обычную проверку и durable transition; текст обсуждения сам по себе командой
+  не считается. Для P0-2 достаточно минимального Discussion Graph и ссылочной
+  целостности: summary, рекомендации, автоматическое принятие решений и генерация новых
+  Task из текста остаются вне этого среза.
+  Проверка: не реализовано
 
 - **CM-11 — Discussion Graph не вторая истина.** Узлы и связи принадлежат Task, проходят проверку схемы и ссылочной целостности.
   Их авторитетная запись представляется типизированным доменным событием с
@@ -432,6 +479,13 @@ Discussion facts содержат автора и роль, присвоенны
 Для Owner формируется отдельная decision card только при `NEEDS_OWNER_DECISION`.
 Она сообщает причину, evidence, вопрос и разрешённые варианты. Для остальных
 задач Owner не получает обязательную карточку подтверждения.
+
+Закрытые вопросы #8 (решения OWNER, записаны с номерами): повторная регистрация
+отозванного адреса — R126; запрет назначать бывшего Reviewer или Auditor исполнителем
+той же Task — R133; причины `NO_INDEPENDENT_REVIEWER` и `NO_INDEPENDENT_AUDITOR` —
+R134; метаданные Artifact — R135; Discussion в канонической модели — R136. Перечень
+не считается источником истины: действующие формулировки — в CM-02a, CM-03a, CM-08a,
+CM-10a и TM-23a, TM-23b, TM-04a, TM-06a.
 
 ## Архитектурные границы
 
