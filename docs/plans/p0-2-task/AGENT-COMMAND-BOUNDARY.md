@@ -176,13 +176,13 @@ Stage и принадлежность Run (см. §1.1 и итог под таб
 |---|---|---|---|
 | TaskID команды существует и принадлежит Task | Task существует в snapshot и проходит `Validate` (`ValidateCanonicalState`, `store/canonical.go`) | валидный формат `TaskID` в команде (проверка формата есть; принадлежность Run проверяется в цели, §3 шаг 4) | TM-02; RT-04 |
 | Команда адресована текущему активному Run | активный writer ровно один и его `Run.Fence == Task.Fence` (`ValidateCanonicalState`, `store/canonical.go`) | `RunID` входа равен этому Run — **не реализовано в общем пути**: `ApplyInboxCommand` `RunID` не принимает (§3.1). Частично реализовано в специализированном пути: `RecordReviewResult`/`RecordAuditResult` принимают `runID` и сверяют принадлежность Run этой Task (`store/canonical_result.go:71-75`, `:78`), но не сверяют эпоху, попытку и сессию | RT-04; RT-06 |
-| Attempt команды равен текущему проходу | `Attempt` неизменен у Task-scoped Run, Executor получает `max+1`, Reviewer/Auditor сохраняют текущий (`ValidateCanonicalTransition` и `validateTransferredAttempt`, `store/canonical.go`) | `Attempt` входа равен `Run.Attempt` — **не реализовано**: `ApplyInboxCommand` не принимает `Attempt` | TM-17; TM-20; TM-21; TM-22 |
-| эпоха записи актуальна | при передаче `Task.Fence` повышается ровно на 1, `Run.Fence == Task.Fence` (`validateTaskOwnershipTransfers`, `store/canonical.go`) | `Fence` входа равен `Task.Fence` и `Run.Fence` — **не реализовано**: входного `Fence` у канонического command path нет | RT-06 (ADR-0004); TASK-MODEL, «Task-wide Fence и ownership» |
-| писатель — текущий владелец | `RoleSelection.Session == Run.OwnerSession` (`validateTaskRunRole`, `store/canonical.go`) | `OwnerSession` входа равен `Run.OwnerSession` — **не реализовано**: `ApplyInboxCommand` не принимает сессию; в legacy это делает `coordinator.go:270` | RT-04 |
-| агент известен и его роль верна | `validateTaskRunRole` (`store/canonical.go`) сверяет `Profile.Role` с `RequiredRole` и сессию с владельцем; Stage соответствует роли (`store/canonical_result.go:97`, `:110`); непустой `AgentID` обязателен там, где его требует независимость (RA-2) | actor берётся из persisted Run, а не из входа (`store/canonical_result.go:71-75`) — реализовано для Review/Audit, **не реализовано** для Executor-команд, которых ещё нет. Непустой `AgentID` для любого Task-scoped Run, принимающего агентскую команду, — норма по R116 (§5.4); правка TASK-MODEL под неё — в §6 | Нормы: CM-07, TM-16 (роль и запрет самопроверки), TM-23 и RA-2 (непустой `AgentID` для Reviewer/Auditor и для Executor-истории). Требование для всех Task-scoped Run этими нормами не установлено — оно введено решением R116 |
+| Attempt команды равен текущему проходу | `Attempt` неизменен у Task-scoped Run, Executor получает `max+1`, Reviewer/Auditor сохраняют текущий (`ValidateCanonicalTransition` и `validateTransferredAttempt`, `store/canonical.go`) | **Реализовано** в `ApplyAgentCommand` на canonical command model: `Attempt` сверяется с `Run.Attempt` (`store/canonical_agent_command.go:140`; `TestAgentCommandRejectsAttemptMismatch`); production path не подключён до P0-3; `ApplyInboxCommand` не принимает `Attempt` | TM-17; TM-20; TM-21; TM-22 |
+| эпоха записи актуальна | при передаче `Task.Fence` повышается ровно на 1, `Run.Fence == Task.Fence` (`validateTaskOwnershipTransfers`, `store/canonical.go`) | **Реализовано** в `ApplyAgentCommand` на canonical command model: Run fence сверяется с Task fence (`store/canonical_agent_command.go:131`), входной `Fence` проверяется на stale/future (`:134-139`; `TestAgentCommandRejectsStaleFence`, `TestAgentCommandRejectsFutureFence`, `TestAgentCommandRejectsNonCurrentWriter`); production path не подключён до P0-3; `ApplyInboxCommand` не принимает `Fence` | RT-06 (ADR-0004); TASK-MODEL, «Task-wide Fence и ownership» |
+| писатель — текущий владелец | `RoleSelection.Session == Run.OwnerSession` (`validateTaskRunRole`, `store/canonical.go`) | **Реализовано** в `ApplyAgentCommand` на canonical command model: authenticated session сверяется с `Run.OwnerSession` (`store/canonical_agent_command.go:114`; `TestAgentCommandRejectsForeignOwnerSession`); production path не подключён до P0-3; `ApplyInboxCommand` не принимает сессию. В legacy это делает `coordinator.go:270` | RT-04 |
+| агент известен и его роль верна | `validateTaskRunRole` (`store/canonical.go`) сверяет `Profile.Role` с `RequiredRole` и сессию с владельцем; Stage соответствует роли (`store/canonical_result.go:97`, `:110`); непустой `AgentID` обязателен там, где его требует независимость (RA-2) | В result path actor берётся из persisted Run, не из входа (`store/canonical_result.go:71-75`), и роль/Stage сверяются для Review/Audit (`:97`, `:110`). В `ApplyAgentCommand` на canonical command model для любой роли, включая Executor, требуется непустой `AgentID` (`store/canonical_agent_command.go:102`, `:143`; `TestAgentCommandRejectsMissingAgentIDForEveryRole`), равенство AgentID сессии и Run (`:146`; `TestAgentCommandRejectsSessionAgentIDMismatchBeforeReplay`) и соответствие роли/Stage (`:149`; `TestAgentCommandRejectsRoleStageMismatch`, `TestAgentCommandRoleStageMappingRejectsWrongRoleAndStage`). Production path не подключён до P0-3. Executor RESULT и Executor-команды не реализованы (#6) | Нормы: CM-07, TM-16 (роль и запрет самопроверки), TM-23 и RA-2 (непустой `AgentID` для Reviewer/Auditor и для Executor-истории). Требование для всех Task-scoped Run этими нормами не установлено — оно введено решением R116 |
 | ревизия не устарела | — | CAS по `Task.Revision` до изменения состояния (проверка CAS в `ApplyInboxCommand`) — **реализовано**, одна из реализованных проверок общего `ApplyInboxCommand` | TM-06 |
 | переход допустим | FSM для legacy (`fsm/fsm.go:139-217`) | Stage/Status проверки result path (`store/canonical_result.go:85-90`) — реализовано для Review/Audit; для Executor-команд канонического пути нет | TM-07; TM-12; TM-16 |
-| поколение сессии актуально | **нет представления в модели** | **не реализовано**: сверка вводится вместе с агрегатом `AgentSession` (R114, §5.1) | CM-10; RT-04 |
+| поколение сессии актуально | поколение входит в `SameDomainState` (`fsm/fsm.go`), при хранении проверяется `validateRunAgentSessionBinding`, recovery transfer требует текущей активной привязки (`store/canonical_agentsession_binding.go`) | **реализовано** в `ApplyAgentCommand`: generation кадра сверяется с `AgentSession.Generation` и с `Run.AgentSessionGeneration` до replay (`TestAgentCommandRejectsStaleSessionGeneration`, `TestAgentCommandRejectsStaleGenerationBeforeReplay`, `TestAgentCommandRejectsRunGenerationAfterKeyRotation`) | CM-10; RT-04 |
 
 Итог таблицы различает два канонических входа, и различие существенно.
 
@@ -197,14 +197,22 @@ Stage и принадлежность Run (см. §1.1 и итог под таб
   Дальше он проверяет Stage и роль (`:97`, `:110`), нетерминальность Run и его
   статус (`:88`), время результата (`:91-93`). Это реальные проверки входящей
   команды, но не в общем пути и не для Executor-команд, которых ещё нет.
-- **Чего нет нигде:** сверки входного `Task.Fence`/`Run.Fence`, `Attempt` и
-  аутентифицированной сессии. В legacy их делает `Coordinator.Handle`
-  (`coordinator.go:260`, `:265`, `:270`), но это не канонический путь.
+- **Третий путь — `CanonicalStore.ApplyAgentCommand`** (`store/canonical_agent_command.go`),
+  добавлен частью 4 (#5). Принимает подписанный кадр и сверяет, под `s.mu` и до
+  replay: адрес и поколение сессии, отпечаток ключа, принадлежность адреса Run,
+  поколение Run, единственного активного writer, `Run.Fence` против `Task.Fence`,
+  входной `Fence` (ниже и выше текущей эпохи), `Attempt`, `AgentID` и роль со Stage,
+  независимость роли; затем replay и дедупликация, и только для новой команды CAS
+  по `Task.Revision` и один durable commit.
+- **Чего нет:** production path, подключающего `ApplyAgentCommand`: команда в
+  Coord сегодня не приходит этим путём, реальный вход остаётся legacy
+  `Coordinator.Handle` (`coordinator.go:227`), который делает сверку адресата,
+  `Fence` и сессии сам, но это не канонический путь.
 
-Итог: канонический путь делится между собой — общий вход проверяет ревизию и
-формат, специализированный проверяет роль и принадлежность Run, а сверка эпохи,
-попытки и сессии отсутствует в обоих. Это расхождение с разделом «Task-wide Fence
-и ownership» TASK-MODEL и с RT-06 в ADR-0004 и есть предмет проекта.
+Итог: сверка эпохи, попытки и сессии существует в `ApplyAgentCommand`, но путь не
+подключён к production, а `Coordinator.Handle` остаётся фактическим входом. Это
+остаётся предметом P0-3 вместе с RT-06 в ADR-0004 и разделом «Task-wide Fence и
+ownership» TASK-MODEL.
 
 ### 2.1. Как fencing отсекает старого writer
 
@@ -478,12 +486,12 @@ replay в начале `ApplyInboxCommand`),
 | 3 | `TestAgentCommandRejectsUntrustedSignature` | проверка подписи кадра отключена или ключ ищется по адресу из тела |
 | 4 | `TestAgentCommandRejectsUnknownTaskOrRun` | ссылка на несуществующий Task или Run не отвергается |
 | 4 | `TestAgentCommandRejectsNonCurrentWriter` | проверка «единственный активный writer» отключена |
-| 5 | `TestAgentCommandRejectsStaleTaskFence` | сверка входного `Fence` с `Task.Fence` отключена |
-| 5 | `TestAgentCommandRejectsFutureTaskFence` | приведённый эпохой Fence принимается |
-| 5 | `TestAgentCommandRejectsFenceCheckBypassedByKnownMessageID` | ранее виденный `messageID` обходит проверку эпохи |
-| 5 | `TestTaskFenceIsAuthoritativeAndMonotonic` (цель ROADMAP) | `Run.Fence` трактуется как авторитетный, а `Task.Fence` как производный |
+| 5 | `TestAgentCommandRejectsStaleFence` — плановое имя в коде отсутствовало, покрытие есть под этим именем | сверка входного `Fence` с `Task.Fence` отключена |
+| 5 | `TestAgentCommandRejectsFutureFence` — плановое имя в коде отсутствовало, покрытие есть под этим именем | приведённый эпохой Fence принимается |
+| 5 | **не доказано отдельным тестом** (Gap): в коде сверка Fence стоит до replay lookup (`store/canonical_agent_command.go:131-139` против `:157`), но тест, где известный `messageID` той же сессии приходит со старой эпохой, отсутствует. Ближайшее покрытие того же порядка для соседней проверки: `TestAgentCommandRejectsOldSessionBeforeFenceCheckBypassedByKnownMessageID` (известный `messageID` старой сессии отклоняется на сверке сессии до Fence) и `TestAgentCommandRejectsSessionBeforeStaleFence` | ранее виденный `messageID` обходит проверку эпохи |
+| 5 | монотонность `Task.Fence` покрыта `TestCanonicalTransitionRequiresRevisionEventAndMonotonicFence`; утверждение, что `Run.Fence` авторитетен, а `Task.Fence` производен: **не доказано отдельным тестом** (Gap) — в коде `run.Fence != currentTask.Fence` даёт `NOT_CURRENT_WRITER` (`store/canonical_agent_command.go:131`), отдельного теста на это толкование нет | `Run.Fence` трактуется как авторитетный, а `Task.Fence` как производный |
 | 6 | `TestAgentCommandRejectsAttemptMismatch` | сверка `Attempt` отключена |
-| 6 | `TestRecoveryAcrossRunsRejectsOldTaskFence` (цель ROADMAP) | recovery сохраняет старую эпоху |
+| 6 | перенос эпохи при recovery покрыт `TestCanonicalTransitionRecoveryPreservesAttemptAndIncrementsTaskFence` (recovery сохраняет Attempt и повышает `Task.Fence`) и `TestCanonicalStartupRejectsRunFenceDifferentFromLatestTransfer` (startup отвергает `Run.Fence`, расходящийся с его маркером передачи). Отдельного теста на старую эпоху при recovery нет | recovery сохраняет старую эпоху |
 | 7 | `TestAgentCommandRejectsForeignOwnerSession` | сверка `OwnerSession` отключена |
 | 7 | `TestAgentCommandRejectsStaleSessionGeneration` (вместе с R114) | сравнение поколения сессии отключено |
 | 8 | `TestAgentCommandIgnoresActorIDFromBody` | actor берётся из тела команды |
@@ -493,13 +501,13 @@ replay в начале `ApplyInboxCommand`),
 | 9 | `TestAgentCommandReplayReturnsPriorReceiptWithoutWriting` | повторная доставка создаёт новый commit или второй event |
 | 9 | `TestAgentCommandReplayAfterRevisionGrowthReturnsPriorReceipt` | повтор уже применённой команды после роста `Task.Revision` отклоняется как устаревший вместо возврата прежнего receipt |
 | 9 | `TestAgentCommandReplayWithDifferentExpectedRevisionRefused` | replay с чужим `expectedRevision` принимается |
-| 9 | `TestAgentCommandReplayDoesNotChangeAttempt` | повторная доставка меняет `Attempt` |
+| 9 | покрыто `TestAgentCommandReplayReturnsPriorReceiptWithoutWriting`: он сверяет `Attempt` до и после replay. Отдельного теста только на `Attempt` при replay в коде нет | повторная доставка меняет `Attempt` |
 | 10 | `TestAgentCommandRejectsStaleRevision` | сравнение `Revision` отключено |
 | 11 | `TestAgentCommandRejectsForbiddenTransition` | FSM-проверка перехода отключена |
 | 12 | `TestAgentCommandCommitsEventReceiptOutboxAtomically` | событие или receipt пишутся вторым commit |
-| 12 | `TestAgentCommandRefusalLeavesDurableStateUntouched` | отказ вызывает `Save` или публикует состояние |
-| порядок | `TestAgentCommandChecksEpochBeforeReplay` (R115) | шаги 4–8 перенесены после шага 9 |
-| порядок | `TestAgentCommandKeepsRevisionCheckAfterReplay` (R115) | CAS ревизии перенесён до replay |
+| 12 | покрыто `TestAgentCommandRejectsInvalidFrameBeforePersistence`: отказ даёт `saveCalls == 0` и неизменное состояние. Отдельного теста только на неизменность durable-состояния при отказе в коде нет | отказ вызывает `Save` или публикует состояние |
+| порядок | **не доказано отдельным тестом** (Gap): в коде сверки `run.Fence != currentTask.Fence` и входного `Fence` (`store/canonical_agent_command.go:131-139`) стоят до replay lookup (`:157`), но теста, фиксирующего этот порядок именно для эпохи, нет. Ближайшее покрытие порядка «проверка до replay»: `TestAgentCommandRejectsOldSessionBeforeFenceCheckBypassedByKnownMessageID` и `TestAgentCommandRejectsStaleGenerationBeforeReplay` — они доказывают порядок для сессии и поколения | шаги 4–8 перенесены после шага 9 |
+| порядок | покрыто `TestAgentCommandReplayAfterRevisionGrowthReturnsPriorReceipt` (повтор возвращает прежний receipt несмотря на рост `Task.Revision`) и `TestAgentCommandRejectsStaleRevision` (CAS применяется для новой команды). Отдельного теста только на порядок «replay перед CAS» в коде нет | CAS ревизии перенесён до replay |
 | форма API | `TestAgentCommandBoundaryResolvesActorInsideLock` (R118, вариант (b)) | actor принимается аргументом и не сверяется с persisted Run |
 | форма API | `TestAgentCommandBoundaryRejectsActorUnboundToRun` | аутентифицированная сессия принимается для чужого Run |
 | форма API | `TestAgentCommandBoundaryRejectsKnownRunIDWithoutAuthenticatedSession` (R118) | верный `RunID` без аутентифицированной сессии принимается как разрешение на запись |
@@ -507,7 +515,7 @@ replay в начале `ApplyInboxCommand`),
 | порядок | `TestAgentCommandRejectsUnknownRunBeforeReplayLookup` | replay ищется по RunID вместо reject |
 | канал | `TestAgentCommandTransportDeliveryIsNotAcceptance` | успешная доставка или `RESULT_ACK` трактуется как принятие |
 | канал | `TestAgentCommandValidSignatureWithoutRunOwnershipIsRefused` | подпись проверяется, а Run-принадлежность нет |
-| recovery | `TestAssignTickRecoveryFailClosedWithMultipleWriters` (цель ROADMAP) | второй активный writer допускается |
+| recovery | **не реализовано**: отдельного теста на fail-closed recovery при двух активных writer нет; ROADMAP-цель относится к recovery tick, а не к границе команд. Смежное покрытие: `TestAgentCommandRejectsNonCurrentWriter` (второй активный writer отклоняется в границе команд) и `TestRecoveryCASAndOldOwnerRejected` (повторный claim и чужой claim отклоняются) | второй активный writer допускается |
 
 Тесты используют fake clock, fake transport и существующие in-memory
 персистентности `CanonicalPersistence` (интерфейс `store.CanonicalPersistence`,

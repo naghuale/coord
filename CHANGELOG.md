@@ -1,5 +1,41 @@
 # История изменений
 
+## 2026-10-09 — Синхронизация §2 и имён тестов AGENT-COMMAND-BOUNDARY с частью 4 ([#25](https://github.com/naghuale/coord/issues/25))
+
+- (документация) `docs/plans/p0-2-task/AGENT-COMMAND-BOUNDARY.md`, §2: строка «поколение
+  сессии актуально» приведена к коду — поколение входит в `SameDomainState` и проверяется
+  при хранении и recovery transfer, а в границе команд generation кадра сверяется с
+  `AgentSession.Generation` и `Run.AgentSessionGeneration` до replay.
+- (документация) Там же итог под таблицей: добавлен третий канонический вход
+  `CanonicalStore.ApplyAgentCommand` с перечнем его проверок, а утверждения «Чего нет
+  нигде: сверки входного `Task.Fence`/`Run.Fence`, `Attempt` и аутентифицированной сессии»
+  и «сверка эпохи, попытки и сессии отсутствует в обоих» заменены на факт: сверка
+  существует, но production path не подключён, реальный вход остаётся legacy
+  `Coordinator.Handle`.
+- (документация) Матрица тестов: десять плановых имён, которых нет в коде, заменены на
+  реальные проверки, помечены «не реализовано» либо «не доказано отдельным тестом».
+  Совпали по смыслу:
+  `TestAgentCommandRejectsStaleFence`, `TestAgentCommandRejectsFutureFence`,
+  `TestAgentCommandReplayReturnsPriorReceiptWithoutWriting` (сверяет `Attempt` до и после
+  replay), `TestAgentCommandRejectsInvalidFrameBeforePersistence` (отказ при `saveCalls == 0`
+  и неизменном состоянии), `TestAgentCommandReplayAfterRevisionGrowthReturnsPriorReceipt`
+  вместе с `TestAgentCommandRejectsStaleRevision`,
+  `TestCanonicalTransitionRecoveryPreservesAttemptAndIncrementsTaskFence` вместе с
+  `TestCanonicalStartupRejectsRunFenceDifferentFromLatestTransfer`,
+  `TestCanonicalTransitionRequiresRevisionEventAndMonotonicFence`.
+- (документация) Разведены случаи «нет кода» и «нет отдельного теста». Для двух строк
+  про эпоху — «эпоха при ранее виденном `messageID`» и «порядок: сверка эпохи до replay» —
+  код есть: сверки `run.Fence != currentTask.Fence` и входного `Fence`
+  (`store/canonical_agent_command.go:131-139`) стоят до replay lookup (`:157`), поэтому
+  они помечены «не доказано отдельным тестом», а не «не реализовано». Для строки про
+  `Run.Fence` авторитетный указан код: расхождение даёт `NOT_CURRENT_WRITER` (`:131`).
+  Строка про recovery при двух активных writer осталась «не реализовано»: ROADMAP-цель
+  относится к recovery tick, а не к границе команд.
+- (документация) В §2 уточнены строки «Attempt», «эпоха», «писатель» и «роль» по
+  `ApplyAgentCommand`: приведены проверки, ссылки на код и сценарные тесты; отдельно
+  указано, что production path не подключён до P0-3, а `ApplyInboxCommand` не принимает
+  Attempt, Fence или сессию.
+
 ## 2026-10-09 — Нормативная запись решений OWNER R138 и R139: типизированный Discussion Graph ([#29](https://github.com/naghuale/coord/issues/29))
 
 - (документация) `docs/ADR-0001`: после CM-11 добавлено правило «CM-11a — Типизированная
