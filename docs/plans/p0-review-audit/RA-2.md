@@ -76,7 +76,7 @@ RA-1 evidence refs пока не поддерживают Artifact metadata: р�
 `TestCanonicalStartupRejectsRoleIdentityConflict`,
 `TestCanonicalTransitionRejectsRoleIdentityConflict`,
 `TestCanonicalRoleIndependenceFailsClosedWithoutStableAgentID`,
-`TestReviewerOrAuditorMayOnlyUseAnAgentThatBecameExecutorLaterThanItsPastAssignment`,
+`TestFormerReviewerOrAuditorCannotLaterBecomeExecutor`,
 `TestExecutorAtPreviousAdjacentEventSequenceIsNotIndependent`,
 `TestSameAgentMayHoldRolesInDifferentTasks`,
 `TestExecutorWithoutStableSelectionFailsClosedBeforeReviewer`,
@@ -84,6 +84,11 @@ RA-1 evidence refs пока не поддерживают Artifact metadata: р�
 `TestRoleIndependenceDoesNotRequireAnExecutorAssignment`,
 `TestRoleHistoryWithoutTransferMarkersUsesConservativeEventBounds` и
 `TestRoleHistoryRejectsRoleChange`.
+
+Для обратного правила R133 (#27) удаление сравнения порядка назначений
+(`prior.seq > candidate.seq`) — эквивалентная мутация: обратный порядок уже
+отклоняет проверка Reviewer/Auditor против истории Executor
+(`NO_INDEPENDENT_REVIEWER`/`NO_INDEPENDENT_AUDITOR`), наблюдаемое решение не меняется.
 
 Отсутствие transfer marker отдельно отвергается startup-проверкой истории
 событий (`TestCanonicalStartupRejectsTaskScopedRunWithoutTransferMarker`) и

@@ -19,8 +19,9 @@ type roleAssignmentIdentity struct {
 }
 
 var (
-	ErrNoIndependentReviewer = errors.New("no independent reviewer: NO_INDEPENDENT_REVIEWER")
-	ErrNoIndependentAuditor  = errors.New("no independent auditor: NO_INDEPENDENT_AUDITOR")
+	ErrNoIndependentReviewer       = errors.New("no independent reviewer: NO_INDEPENDENT_REVIEWER")
+	ErrNoIndependentAuditor        = errors.New("no independent auditor: NO_INDEPENDENT_AUDITOR")
+	ErrExecutorRoleHistoryConflict = errors.New("executor role history conflict: EXECUTOR_ROLE_HISTORY_CONFLICT")
 )
 
 // validateCanonicalRoleIndependence checks stable AgentID identities across
@@ -102,6 +103,25 @@ func validateCanonicalRoleIndependence(state CanonicalState) error {
 			}
 			if executor.agent == candidate.agent {
 				return roleIndependenceError(candidate.role, candidate.taskID, fmt.Sprintf("AgentID %q appears in prior Executor history", candidate.agent))
+			}
+		}
+	}
+
+	for _, candidate := range assignments {
+		if candidate.role != roles.Executor {
+			continue
+		}
+		for _, prior := range assignments {
+			if prior.taskID != candidate.taskID ||
+				(prior.role != roles.Reviewer && prior.role != roles.Auditor) ||
+				prior.seq > candidate.seq {
+				continue
+			}
+			if candidate.agent == "" {
+				return fmt.Errorf("%w for Task %q: Executor assignment has no verifiable stable AgentID after prior %s assignment", ErrExecutorRoleHistoryConflict, candidate.taskID, prior.role)
+			}
+			if prior.agent == candidate.agent {
+				return fmt.Errorf("%w for Task %q: AgentID %q previously held %s role", ErrExecutorRoleHistoryConflict, candidate.taskID, candidate.agent, prior.role)
 			}
 		}
 	}

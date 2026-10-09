@@ -253,9 +253,10 @@ Run — одно назначение одной роли внутри одно�
   `RoleSelectionHistory`, а не по адресу сессии или имени frontend. Основание: иначе
   агент сначала даёт независимый вердикт, а затем изменяет проверенный результат в
   роли Executor той же Task.
-  Кода и теста этого запрета в дереве нет; существующая проверка независимости
-  касается только обратного направления — Reviewer и Auditor против истории Executor.
-  Проверка: не реализовано
+  Отказ обозначается `EXECUTOR_ROLE_HISTORY_CONFLICT`; он действует и тогда, когда у
+  назначаемого Executor нет проверяемого `AgentID`, а в истории Task уже есть Reviewer
+  или Auditor.
+  Проверка: частично — `TestCanonicalStartupRejectsFormerReviewerOrAuditorAsExecutor` (startup отклоняет тот же AgentID после Reviewer или Auditor в терминальном Run, назначенном через другую сессию), `TestCanonicalStartupRejectsExecutorMatchingOnlyPriorRoleHistory` (AgentID есть только в RoleHistory терминального Run), `TestCanonicalTransitionRejectsFormerReviewerOrAuditorAsExecutorWithoutSave` (переход отклонён для обеих ролей без durable Save), `TestCanonicalStartupRejectsExecutorWithoutStableAgentIDAfterReviewOrAudit` и `TestCanonicalTransitionRejectsExecutorWithoutStableAgentIDAfterReviewOrAudit` (Executor без проверяемого AgentID после прежнего Reviewer/Auditor отклоняется на startup и переходе; переход без Save), `TestCanonicalStartupAllowsExecutorWithoutStableAgentIDBeforeReviewOrAudit` (legacy Executor без AgentID до Reviewer/Auditor допускается), `TestSameAgentMayBeExecutorInAnotherTaskAfterReview` (тот же AgentID разрешён в другой Task для обеих предшествующих ролей; EventSeq назначения в Task B больше), `TestSameAgentMayReviewAgainInSameTask` (повторный Reviewer разрешён). Общая проверка `validateCanonicalRoleIndependence` также вызывается в `ApplyAgentCommand` до replay; `TestAgentCommandRejectsRoleIdentityCollisionBeforeReplay` проверяет общий путь, но отдельного теста reverse-direction ветки Executor в `ApplyAgentCommand` нет. Реализовано и проверено на canonical command model; production agent command path не подключён до P0-3; не реализовано: проверка до назначения в production — назначение идёт через legacy `Coordinator.Handle`, production command path не подключён до P0-3.
 
 - **TM-23b — Причины отсутствия независимого агента (R134).** Отсутствие независимого
   агента выражается двумя различимыми структурированными причинами:

@@ -1,5 +1,26 @@
 # История изменений
 
+## 2026-10-09 — Запрет Executor после Reviewer или Auditor в той же Task ([#27](https://github.com/naghuale/coord/issues/27))
+
+- (код) Каноническая проверка role independence отклоняет назначение Executor, если устойчивый
+  `AgentID` встречается в более ранней Reviewer или Auditor `RoleSelectionHistory` этой Task;
+  ошибка — `EXECUTOR_ROLE_HISTORY_CONFLICT`. Если после такого назначения у Executor нет
+  проверяемого `AgentID`, назначение также отклоняется; до первого Reviewer/Auditor legacy
+  Executor без `AgentID` допускается. Проверка включает терминальные Runs и историю смены
+  selection, работает при startup validation и до durable Save на переходе
+  (`TestCanonicalTransitionRejectsFormerReviewerOrAuditorAsExecutorWithoutSave`).
+- (тесты) Отказы с известным `AgentID` покрыты
+  `TestCanonicalStartupRejectsFormerReviewerOrAuditorAsExecutor`,
+  `TestCanonicalStartupRejectsExecutorMatchingOnlyPriorRoleHistory` и
+  `TestCanonicalTransitionRejectsFormerReviewerOrAuditorAsExecutorWithoutSave`; без
+  проверяемого `AgentID` — `TestCanonicalStartupRejectsExecutorWithoutStableAgentIDAfterReviewOrAudit`
+  и `TestCanonicalTransitionRejectsExecutorWithoutStableAgentIDAfterReviewOrAudit`.
+  Совместимость до Reviewer/Auditor проверяет
+  `TestCanonicalStartupAllowsExecutorWithoutStableAgentIDBeforeReviewOrAudit`. Положительные
+  случаи — `TestSameAgentMayBeExecutorInAnotherTaskAfterReview` и
+  `TestSameAgentMayReviewAgainInSameTask`; обратный порядок назначений (сначала
+  Reviewer/Auditor, затем Executor) проверяет
+  `TestFormerReviewerOrAuditorCannotLaterBecomeExecutor`.
 ## 2026-10-09 — Нормативная запись решения OWNER R137: конфликт и эскалация одним commit ([#28](https://github.com/naghuale/coord/issues/28))
 
 - (документация) `docs/plans/p0-review-audit/DESIGN.md`: решение владельца по строке
@@ -51,7 +72,6 @@
 - (документация) Сохранена фактическая ссылка в разделе «Назначение»: сегодня commit
   создаёт координатор-агент, а не runtime Coord — это описание текущего состояния
   процесса, а не норма продукта.
-
 ## 2026-10-09 — Документация по тесту независимости до replay (#26) ([#26](https://github.com/naghuale/coord/issues/26))
 
 - (документация) `TestAgentCommandRoleIdentityCollisionRejectsPriorReceiptBeforeReplay` отмечен

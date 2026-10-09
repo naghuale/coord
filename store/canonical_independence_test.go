@@ -327,6 +327,263 @@ func TestRoleHistoryRejectsRoleChange(t *testing.T) {
 	}
 }
 
+func TestCanonicalStartupRejectsFormerReviewerOrAuditorAsExecutor(t *testing.T) {
+	for _, role := range []roles.Role{roles.Reviewer, roles.Auditor} {
+		t.Run(string(role), func(t *testing.T) {
+			_, state := canonicalPriorReviewerOrAuditorThenExecutor(t, role, "agent-former-reviewer", false)
+			prior := state.Runs["prior-review-role"]
+			if !prior.Terminal() {
+				t.Fatal("fixture prior Reviewer/Auditor Run must be terminal")
+			}
+			candidate := state.Runs["executor-after-review"]
+			if candidate.RoleSelection.AgentID != "agent-former-reviewer" || candidate.OwnerSession == prior.OwnerSession {
+				t.Fatalf("fixture must reuse stable AgentID through a different session: candidate=%+v prior=%+v", candidate, prior)
+			}
+			p := &canonicalMemory{state: state}
+			_, err := NewCanonical(p)
+			if !errors.Is(err, ErrExecutorRoleHistoryConflict) || !strings.Contains(err.Error(), "AgentID \"agent-former-reviewer\"") {
+				t.Fatalf("startup error=%v, want EXECUTOR_ROLE_HISTORY_CONFLICT for stable AgentID", err)
+			}
+			if p.saveCalls != 0 {
+				t.Fatalf("invalid startup snapshot was saved %d times", p.saveCalls)
+			}
+		})
+	}
+}
+
+func TestCanonicalStartupRejectsExecutorMatchingOnlyPriorRoleHistory(t *testing.T) {
+	_, state := canonicalPriorReviewerOrAuditorThenExecutor(t, roles.Reviewer, "agent-history-only", true)
+	prior := state.Runs["prior-review-role"]
+	if prior.RoleSelection.AgentID == "agent-history-only" || prior.RoleHistory[0].AgentID != "agent-history-only" || !prior.Terminal() {
+		t.Fatalf("fixture must keep the colliding AgentID only in terminal Run RoleHistory: %+v", prior)
+	}
+	p := &canonicalMemory{state: state}
+	_, err := NewCanonical(p)
+	if !errors.Is(err, ErrExecutorRoleHistoryConflict) {
+		t.Fatalf("startup error=%v, want EXECUTOR_ROLE_HISTORY_CONFLICT from RoleHistory", err)
+	}
+	if p.saveCalls != 0 {
+		t.Fatalf("invalid startup snapshot was saved %d times", p.saveCalls)
+	}
+}
+
+func TestCanonicalStartupRejectsExecutorWithoutStableAgentIDAfterReviewOrAudit(t *testing.T) {
+	for _, role := range []roles.Role{roles.Reviewer, roles.Auditor} {
+		t.Run(string(role), func(t *testing.T) {
+			_, state := canonicalPriorReviewerOrAuditorThenExecutor(t, role, "agent-former-reviewer", false)
+			executor := state.Runs["executor-after-review"]
+			executor.RoleSelection = nil
+			executor.RoleHistory = nil
+			state.Runs[executor.RunID] = executor
+
+			p := &canonicalMemory{state: state}
+			_, err := NewCanonical(p)
+			if !errors.Is(err, ErrExecutorRoleHistoryConflict) || !strings.Contains(err.Error(), "Executor assignment has no verifiable stable AgentID") {
+				t.Fatalf("startup error=%v, want EXECUTOR_ROLE_HISTORY_CONFLICT for unverifiable Executor identity after %s", err, role)
+			}
+			if p.saveCalls != 0 {
+				t.Fatalf("invalid startup snapshot was saved %d times", p.saveCalls)
+			}
+		})
+	}
+}
+
+func TestCanonicalStartupAllowsExecutorWithoutStableAgentIDBeforeReviewOrAudit(t *testing.T) {
+	state := canonicalIndependenceBase(task.Execution)
+	executor := state.Runs["executor-current"]
+	executor.RoleSelection = nil
+	executor.RoleHistory = nil
+	state.Runs[executor.RunID] = executor
+
+	p := &canonicalMemory{state: state}
+	if _, err := NewCanonical(p); err != nil {
+		t.Fatalf("Executor without stable AgentID before any Reviewer/Auditor assignment was rejected: %v", err)
+	}
+	if p.saveCalls != 0 {
+		t.Fatalf("valid legacy snapshot was rewritten %d times", p.saveCalls)
+	}
+}
+
+func TestCanonicalTransitionRejectsExecutorWithoutStableAgentIDAfterReviewOrAudit(t *testing.T) {
+	for _, role := range []roles.Role{roles.Reviewer, roles.Auditor} {
+		t.Run(string(role), func(t *testing.T) {
+			previous, next := canonicalPriorReviewerOrAuditorThenExecutor(t, role, "agent-former-reviewer", false)
+			executor := next.Runs["executor-after-review"]
+			executor.RoleSelection = nil
+			executor.RoleHistory = nil
+			next.Runs[executor.RunID] = executor
+
+			if err := ValidateCanonicalTransition(previous, next); !errors.Is(err, ErrExecutorRoleHistoryConflict) || !strings.Contains(err.Error(), "Executor assignment has no verifiable stable AgentID") {
+				t.Fatalf("transition validation error=%v, want EXECUTOR_ROLE_HISTORY_CONFLICT for unverifiable Executor identity after %s", err, role)
+			}
+			p := &canonicalMemory{state: previous}
+			s, err := NewCanonical(p)
+			if err != nil {
+				t.Fatalf("open pre-assignment state: %v", err)
+			}
+			defer func() { _ = s.Close() }()
+			before, err := copyCanonicalState(s.state)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = s.UpdateCanonical(func(state *CanonicalState) error {
+				*state = next
+				return nil
+			})
+			if !errors.Is(err, ErrExecutorRoleHistoryConflict) {
+				t.Fatalf("UpdateCanonical error=%v, want EXECUTOR_ROLE_HISTORY_CONFLICT", err)
+			}
+			if p.saveCalls != 0 || !reflect.DeepEqual(s.state, before) || !reflect.DeepEqual(p.state, before) {
+				t.Fatal("rejected Executor assignment changed state or performed durable Save")
+			}
+		})
+	}
+}
+
+func TestCanonicalTransitionRejectsFormerReviewerOrAuditorAsExecutorWithoutSave(t *testing.T) {
+	for _, role := range []roles.Role{roles.Reviewer, roles.Auditor} {
+		t.Run(string(role), func(t *testing.T) {
+			previous, next := canonicalPriorReviewerOrAuditorThenExecutor(t, role, "agent-former-reviewer", false)
+			if err := ValidateCanonicalTransition(previous, next); !errors.Is(err, ErrExecutorRoleHistoryConflict) {
+				t.Fatalf("transition validation error=%v, want EXECUTOR_ROLE_HISTORY_CONFLICT", err)
+			}
+
+			p := &canonicalMemory{state: previous}
+			s, err := NewCanonical(p)
+			if err != nil {
+				t.Fatalf("open valid pre-assignment state: %v", err)
+			}
+			defer func() { _ = s.Close() }()
+			before, err := copyCanonicalState(s.state)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = s.UpdateCanonical(func(state *CanonicalState) error {
+				*state = next
+				return nil
+			})
+			if !errors.Is(err, ErrExecutorRoleHistoryConflict) {
+				t.Fatalf("UpdateCanonical error=%v, want EXECUTOR_ROLE_HISTORY_CONFLICT", err)
+			}
+			if p.saveCalls != 0 || !reflect.DeepEqual(s.state, before) || !reflect.DeepEqual(p.state, before) {
+				t.Fatal("rejected Executor assignment changed state or performed durable Save")
+			}
+		})
+	}
+}
+
+func TestSameAgentMayBeExecutorInAnotherTaskAfterReview(t *testing.T) {
+	for _, priorRole := range []roles.Role{roles.Reviewer, roles.Auditor} {
+		t.Run(string(priorRole), func(t *testing.T) {
+			state, _ := canonicalPriorReviewerOrAuditorThenExecutor(t, priorRole, "agent-cross-task", false)
+			var priorAssignmentSeq uint64
+			for _, event := range state.Events {
+				if event.RunID == "prior-review-role" && event.Type == task.TaskOwnershipTransferred {
+					priorAssignmentSeq = event.EventSeq
+				}
+			}
+			if priorAssignmentSeq == 0 {
+				t.Fatal("fixture has no prior Reviewer/Auditor assignment event")
+			}
+
+			otherTaskID := taskid.ID("task_01ARZ3NDEKTSV4RRFFQ69G5FAW")
+			executorRunID := "other-task-executor"
+			addIndependentTaskExecutor(t, &state, otherTaskID, executorRunID, "agent-cross-task", priorAssignmentSeq+1)
+			var executorAssignmentSeq uint64
+			for _, event := range state.Events {
+				if event.TaskID == otherTaskID && event.RunID == executorRunID && event.Type == task.TaskOwnershipTransferred {
+					executorAssignmentSeq = event.EventSeq
+				}
+			}
+			if executorAssignmentSeq <= priorAssignmentSeq {
+				t.Fatalf("fixture must compare a larger Task B EventSeq (%d) with prior %s EventSeq (%d)", executorAssignmentSeq, priorRole, priorAssignmentSeq)
+			}
+			if err := ValidateCanonicalState(state); err != nil {
+				t.Fatalf("same AgentID as %s in Task A was rejected as Executor in Task B: %v", priorRole, err)
+			}
+		})
+	}
+}
+
+func TestSameAgentMayReviewAgainInSameTask(t *testing.T) {
+	state := canonicalIndependenceBase(task.Review)
+	state = canonicalRoleTransfer(t, state, roles.Reviewer, "review-first", "agent-repeat-reviewer", "review-model")
+	first := state.Runs["review-first"]
+	first.Status = fsm.Failed
+	state.Runs[first.RunID] = first
+	state = canonicalRoleTransfer(t, state, roles.Reviewer, "review-again", "agent-repeat-reviewer", "review-model")
+	if err := ValidateCanonicalState(state); err != nil {
+		t.Fatalf("repeating Reviewer with the same AgentID in one Task was rejected: %v", err)
+	}
+}
+
+func canonicalPriorReviewerOrAuditorThenExecutor(t *testing.T, priorRole roles.Role, priorAgentID string, historyOnly bool) (CanonicalState, CanonicalState) {
+	t.Helper()
+	priorStage := task.Review
+	if priorRole == roles.Auditor {
+		priorStage = task.Audit
+	}
+	state := canonicalRoleTransfer(t, canonicalIndependenceBase(priorStage), priorRole, "prior-review-role", priorAgentID, "prior-role-model")
+	prior := state.Runs["prior-review-role"]
+	if historyOnly {
+		current := *prior.RoleSelection
+		current.AgentID = "agent-current-review-role"
+		prior.RoleHistory = append(prior.RoleHistory, current)
+		prior.RoleSelection = &current
+		bindCanonicalTestRun(&state, &prior, current.AgentID, state.Tasks[prior.TaskID].UpdatedAt)
+		appendTaskDomainEvent(&state, prior.TaskID, prior.RunID, "ROLE_HISTORY_UPDATED")
+	}
+	prior.Status = fsm.Failed
+	state.Runs[prior.RunID] = prior
+	taskValue := state.Tasks[prior.TaskID]
+	execution := task.Execution
+	taskValue.CurrentStage = &execution
+	state.Tasks[prior.TaskID] = taskValue
+
+	next := ownershipTransferCandidate(t, state, "executor-after-review", roles.Executor, 3, taskValue.Fence+1)
+	executor := next.Runs["executor-after-review"]
+	bindCanonicalTestRun(&next, &executor, priorAgentID, next.Tasks[executor.TaskID].UpdatedAt)
+	next.Runs[executor.RunID] = executor
+	return state, next
+}
+
+func addIndependentTaskExecutor(t *testing.T, state *CanonicalState, id taskid.ID, runID, agentID string, transferSeq uint64) {
+	t.Helper()
+	if transferSeq < 2 {
+		t.Fatalf("transfer EventSeq must follow Task creation, got %d", transferSeq)
+	}
+	now := time.Unix(4000, 0).UTC()
+	execution := task.Execution
+	updatedAt := now.Add(time.Duration(transferSeq-1) * time.Second)
+	state.Tasks[id] = task.Task{
+		ID: id, Title: "other task", OwnerID: "owner", Revision: transferSeq, LastEventSeq: transferSeq,
+		StagePlan:    task.StagePlan{Stages: []task.Stage{task.Execution, task.Review}, PolicyVersion: task.StagePlanPolicyVersion},
+		CurrentStage: &execution, Status: task.InProgress, Fence: 1, CreatedAt: now, UpdatedAt: updatedAt,
+	}
+	state.Events = append(state.Events, task.DomainEvent{ID: task.EventID(id, 1), TaskID: id, EventSeq: 1, TaskRevision: 1, Type: task.TaskCreated, ActorID: "owner", CreatedAt: now})
+	for seq := uint64(2); seq <= transferSeq; seq++ {
+		event := task.DomainEvent{
+			ID: task.EventID(id, seq), TaskID: id, EventSeq: seq, TaskRevision: seq,
+			TaskFence: 0, Type: "TASK_NOTE", ActorID: "owner", CreatedAt: now.Add(time.Duration(seq-1) * time.Second),
+		}
+		if seq == transferSeq {
+			event.RunID = runID
+			event.Type = task.TaskOwnershipTransferred
+			event.TaskFence = 1
+		}
+		state.Events = append(state.Events, event)
+	}
+	selection := roles.Selection{AgentID: agentID, Session: "other-task-session", Profile: roles.Profile{Role: roles.Executor}}
+	run := fsm.Run{
+		Task: "task B", TaskID: id, RunID: runID, Attempt: 1, Fence: 1,
+		OwnerSession: selection.Session, Worktree: "worktree", Deadline: updatedAt.Add(time.Hour), AssignedAt: updatedAt,
+		LastUpdate: updatedAt, Status: fsm.Pending, RequiredRole: roles.Requirement{Role: roles.Executor},
+		RoleSelection: &selection, RoleHistory: []roles.Selection{selection},
+	}
+	bindCanonicalTestRun(state, &run, agentID, updatedAt)
+	state.Runs[run.RunID] = run
+}
+
 func canonicalRoleTransfer(t *testing.T, previous CanonicalState, role roles.Role, runID, agentID, model string) CanonicalState {
 	t.Helper()
 	maxAttempt := uint64(0)
@@ -374,54 +631,12 @@ func canonicalIndependenceBase(stage task.Stage) CanonicalState {
 	return state
 }
 
-func TestReviewerOrAuditorMayOnlyUseAnAgentThatBecameExecutorLaterThanItsPastAssignment(t *testing.T) {
-	for _, reviewerCandidate := range []bool{true, false} {
-		name, role := "auditor", roles.Auditor
-		if reviewerCandidate {
-			name, role = "reviewer", roles.Reviewer
-		}
-		t.Run(name, func(t *testing.T) {
-			state := canonicalIndependenceBase(task.Review)
-			// R is independent when assigned to review the then-current Executor.
-			state = canonicalRoleTransfer(t, state, roles.Reviewer, "review-past", "agent-r", "review-model")
-			pastReviewer := state.Runs["review-past"]
-			pastReviewer.Status = fsm.Failed
-			state.Runs[pastReviewer.RunID] = pastReviewer
-			// Later, R becomes the Executor for a rework attempt. The historical
-			// review remains valid, while a subsequent review/audit by R must fail.
-			state.Tasks[pastReviewer.TaskID] = func() task.Task {
-				taskValue := state.Tasks[pastReviewer.TaskID]
-				stage := task.Execution
-				taskValue.CurrentStage = &stage
-				return taskValue
-			}()
-			state = ownershipTransferCandidate(t, state, "executor-rework", roles.Executor, 3, state.Tasks[pastReviewer.TaskID].Fence+1)
-			rework := state.Runs["executor-rework"]
-			rework.RoleSelection.AgentID = "agent-r"
-			rework.RoleHistory[0].AgentID = "agent-r"
-			bindCanonicalTestRun(&state, &rework, "agent-r", state.Tasks[pastReviewer.TaskID].UpdatedAt)
-			state.Runs[rework.RunID] = rework
-			if err := ValidateCanonicalState(state); err != nil {
-				t.Fatalf("future Executor identity retroactively invalidated prior Reviewer assignment: %v", err)
-			}
-			// End the rework Run without inventing a ReviewResult, then record a
-			// later Review/Audit transfer for the same identity.
-			rework.Status = fsm.Failed
-			state.Runs[rework.RunID] = rework
-			taskValue := state.Tasks[pastReviewer.TaskID]
-			stage := task.Review
-			if role == roles.Auditor {
-				stage = task.Audit
-			}
-			taskValue.CurrentStage = &stage
-			state.Tasks[pastReviewer.TaskID] = taskValue
-			state = canonicalRoleTransfer(t, state, role, "review-later", "agent-r", "role-model")
-			want := ErrNoIndependentReviewer
-			if role == roles.Auditor {
-				want = ErrNoIndependentAuditor
-			}
-			if err := ValidateCanonicalState(state); !errors.Is(err, want) {
-				t.Fatalf("later assignment error=%v, want %v", err, want)
+func TestFormerReviewerOrAuditorCannotLaterBecomeExecutor(t *testing.T) {
+	for _, priorRole := range []roles.Role{roles.Reviewer, roles.Auditor} {
+		t.Run(string(priorRole), func(t *testing.T) {
+			_, candidate := canonicalPriorReviewerOrAuditorThenExecutor(t, priorRole, "agent-r", false)
+			if err := ValidateCanonicalState(candidate); !errors.Is(err, ErrExecutorRoleHistoryConflict) {
+				t.Fatalf("Executor assignment after prior %s selection error=%v, want EXECUTOR_ROLE_HISTORY_CONFLICT", priorRole, err)
 			}
 		})
 	}
