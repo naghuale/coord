@@ -94,12 +94,15 @@ Coord, кода и тестов (AGENTS.md, «Источники истины»)
   `cmd/` и `internal/`, совпадений нет; тестов нет.
 - Gap: агрегат `OwnerCredential`, verifier challenge, команда decide, схема события
   решения OWNER (см. раздел 6 и раздел 12), правило массового изменения
-  зависимых Task (см. раздел 13, вопрос Q3).
+  зависимых Task (решение OWNER R130, Q3).
 
 ### 2.3 Web read-only boundary
 
 Веб-интерфейс остаётся read-only, пока отдельно не спроектирована безопасная
 OWNER-аутентификация для браузера (OWNER-1; правило приёмки 5 из OWNER-3 §14).
+Решение OWNER R131 (Q4) фиксирует эту границу: решение принимается через CLI, а
+варианты с командами из браузера требуют отдельного security design и до его
+принятия не реализуются.
 
 - Норма: ADR-0004 RT-05 (Dashboard — read-only API), ADR-0001 CM-09 (секреты не
   попадают в Task, Startup Card, Discussion Graph, DomainEvent и логи; в журнал
@@ -107,7 +110,7 @@ OWNER-аутентификация для браузера (OWNER-1; прави�
 - Current: веб-интерфейса нет — «нет».
 - Gap: отдельный security design для браузера; до него web остаётся проекцией без
   командного канала. Это граница, которую нельзя пройти кнопкой в вебе: OWNER
-  identity в браузере не устанавливается (раздел 13, вопрос Q4).
+  identity в браузере не устанавливается (решение OWNER R131, Q4).
 
 ## 3. Карта экранов
 
@@ -118,10 +121,10 @@ OWNER-аутентификация для браузера (OWNER-1; прави�
 | Список задач (CONCEPT §4) | проекция, статусы OWNER вычисляются | частично: Tasks/Runs/StagePlan в canonical state есть | read API, `TaskSummaries` | Tasks, StagePlan, Runs, Events | derived | при чтении snapshot | read channel | нет | неизвестное значение показывать как UNKNOWN с пометкой «источник не найден», не заменять предположением | проекции списка в дереве нет; `TestCanonicalStateValidatesTaskEventAndRunRelations` доказывает инварианты хранилища, а не проекцию | ADR-0006 и read API |
 | «Кратко» (CONCEPT §5) | детерминированная сводка | частично: Task и Runs есть; Task Brief не реализован | ADR-0007 (Proposed), read API | Task, Runs, Results, Brief | derived | при чтении snapshot | read channel | нет | неизвестное значение показывать как UNKNOWN с пометкой «источник не найден», не заменять предположением | Task Brief не реализован (ADR-0007 Proposed), сводки «Кратко» в дереве нет | ADR-0006 и read API |
 | «Работа» (CONCEPT §5) | детализация назначений и проверок | частично: `AgentID`, `AgentSessionGeneration`, RoleHistory в Run есть (части AgentSession 1–3) | Agent command boundary (P0-3), результаты Executor | Runs, RoleSelection/RoleHistory, Results | derived из canonical | при чтении snapshot | read channel | нет | неизвестное значение показывать как UNKNOWN с пометкой «источник не найден», не заменять предположением | данные Run есть (`TestCanonicalStartupRequiresGenerationAndBindingForActiveTaskRun`), но вкладки «Работа» в дереве нет | ADR-0006 и read API |
-| «Доказательства» (CONCEPT §5) | ссылки на источник для каждого пункта | частично: см. раздел 7 | публикационные факты (раздел 13, вопрос Q1) | Canonical state, внешние наблюдения публикации | canonical для фактов, external для публикации | факты — по committed revision; публикация — по `observed_at` | read channel | нет | устаревшее или недоступное наблюдение помечать как устаревшее с `observed_at`; нет источника — UNKNOWN, не «зелёный» | вкладки в дереве нет; состав полей — раздел 7.2 | ADR-0006 для наблюдений; норма о фактах — вопрос Q1 |
+| «Доказательства» (CONCEPT §5) | ссылки на источник для каждого пункта | частично: см. раздел 7 | публикационные факты (решение OWNER R128, Q1) | Canonical state, внешние наблюдения публикации | canonical для фактов, external для публикации | факты — по committed revision; публикация — по `observed_at` | read channel | нет | устаревшее или недоступное наблюдение помечать как устаревшее с `observed_at`; нет источника — UNKNOWN, не «зелёный» | вкладки в дереве нет; состав полей — раздел 7.2 | ADR-0006 для наблюдений; решение OWNER R128 (Q1) |
 | Explain (CONCEPT §6) | ближний блокер, кто действует, «не является причиной» | нет — TM-12 не реализована, структуры blocker не существует | TM-12, структурированный blocker, спецификация порядка | StagePlan, Runs, Results, blockers | derived | при чтении snapshot | read channel | нет | неизвестное значение показывать как UNKNOWN с пометкой «источник не найден», не заменять предположением | реализации нет: TM-12 не реализована, структуры blocker нет, спецификации порядка нет | ADR-0006 и read API |
-| Changes (CONCEPT §7) | разница с последней точкой | нет — в журнале только четыре типа событий (раздел 5) | типы событий, cursor (раздел 9) | Domain Events + cursor | canonical для событий, client-local для cursor | события — по `EventSeq`; устаревший cursor показывать как устаревший | read channel | нет | устаревший cursor показывать как устаревшее с указанием `observed_at`; типы событий, которых нет в журнале, — UNKNOWN, а не «событий не было» | реализации нет: журнал ограничен четырьмя типами, cursor не хранится | ADR-0006 для read-модели и типы событий для полноты журнала; cursor по Q2 |
-| Publication (CONCEPT §8) | внешние наблюдения с источником и временем | частично: git и CI наблюдаемы (`.github/workflows/ci.yml`), в Coord не хранятся | норма о фактах публикации (раздел 13, вопрос Q1) | Git, CI, deployment | external | по `observed_at` наблюдения | внешний наблюдатель | нет | устаревшее наблюдение — помечать устаревшим с `observed_at`; отсутствие наблюдения — UNKNOWN, не успех | наблюдателя в Coord нет; внешние источники (Git, CI) вне канонического состояния | ADR-0006 и решение Q1 по фактам публикации |
+| Changes (CONCEPT §7) | разница с последней точкой | нет — в журнале только четыре типа событий (раздел 5) | разница с последней точкой; решение OWNER R129 (Q2) | Domain Events + cursor | canonical для событий, client-local для cursor | события — по `EventSeq`; устаревший cursor показывать как устаревший | read channel | нет | устаревший cursor показывать как устаревшее с указанием `observed_at`; типы событий, которых нет в журнале, — UNKNOWN, а не «событий не было» | реализации нет: журнал ограничен четырьмя типами, cursor не хранится | решение OWNER R129 (Q2): cursor локальный, client-local, без изменений `CanonicalState` |
+| Publication (CONCEPT §8) | внешние наблюдения с источником и временем | частично: git и CI наблюдаемы (`.github/workflows/ci.yml`), в Coord не хранятся | решение OWNER R128 (Q1): факты публикации — внешняя read-only проекция, в `CanonicalState` не входят | Git, CI, deployment | external | по `observed_at` наблюдения | внешний наблюдатель | нет | устаревшее наблюдение — помечать устаревшим с `observed_at`; отсутствие наблюдения — UNKNOWN, не успех | наблюдателя в Coord нет; внешние источники (Git, CI) вне канонического состояния | ADR-0006 для read API; решение OWNER R128 (Q1) по фактам публикации |
 | System (CONCEPT §2) | готовность, ownership, schema, очереди | частично: readiness и ownership есть; pending Outbox вычислим, источника для «Inbox pending» нет — `Inbox` хранит обработанные receipt | read API, AgentSession registry в UI | runtime coordd, canonical state | derived; canonical для schema и очередей | при чтении; not-ready — с причиной | read channel | нет | неизвестное значение показывать как UNKNOWN с пометкой «источник не найден», не заменять предположением | частично: `/readyz` (`TestDaemonReadinessLifecycle`) и ownership (`TestCoorddSecondProcessCannotOpenOwnedNamespace`); блока System в дереве нет | ADR-0006 и read API |
 | Первый запуск (CONCEPT §10) | init → discover → start | нет | ADR-0006, OwnerCredential, приём COORDINATOR | локальная конфигурация, coordd, OwnerCredential | client-local + external (transport) | локальная конфигурация; transport — по наблюдению | локальный CLI; OWNER identity — только через OwnerCredential | нет | недоступный daemon или отсутствующая привязка — UNKNOWN с причиной, не «зелёный» статус | реализации нет: команд `init`, `discover`, `start` в дереве нет | ADR-0006, `OwnerCredential` и приём COORDINATOR (CM-04) |
 
@@ -155,10 +158,10 @@ deployment или transport; `client-local` — настройка или cursor
 | Требуют решения | открытые OWNER Attention | нет: Attention projection не реализована | TM-11/TM-12 | Task blocker, Attention projection | derived | при чтении snapshot; неизвестный blocker не даёт карточки | read channel | нет | неизвестное значение показывать как UNKNOWN с пометкой «источник не найден», не заменять предположением | реализации нет: Attention projection отсутствует | ADR-0006 и read API |
 | Заблокированы | следующий переход невозможен | `Status=BLOCKED` есть, structured blocker — нет | TM-12, структурированный blocker | Status, blockers, readiness | derived | при чтении snapshot | read channel | нет | неизвестное значение показывать как UNKNOWN с пометкой «источник не найден», не заменять предположением | `Status=BLOCKED` валидируется (`TestTaskValidationSeparatesStageAndStatus`), структурированного blocker нет | ADR-0006 и read API |
 | Готовы к commit | все обязательные gates выполнены | не реализовано: в Coord нет ни commit path, ни проекции готовности; нормы продукта о готовности к commit нет: ADR-0008 (Proposed) — единственная норма о commit-модели Coord; правило работы координатора-разработчика вынесено в раздел 12.1 | проекция готовности (ADR-0006); для автокоммита — принятие ADR-0008 | Run, Review, Audit, tree, gates | derived | при чтении snapshot | read channel | нет | неизвестное значение показывать как UNKNOWN с пометкой «источник не найден», не заменять предположением | реализация не существует, прямой тест не найден | ADR-0006 и read API |
-| Локально зафиксированы | наблюдается локальный commit | git наблюдаем извне, в Coord не хранится | вопрос Q1 | Git observation | external | по `observed_at` | внешний наблюдатель | нет | нет наблюдения — UNKNOWN, не «не публиковано» | наблюдателя в Coord нет; git как внешний источник вне канонического состояния | решение Q1 |
-| Ожидают публикации | commit есть, push не подтверждён | наблюдаемо | вопрос Q1 | Git local/remote | external | по `observed_at` | внешний наблюдатель | нет | нет наблюдения push — UNKNOWN, а не ошибка публикации | наблюдателя в Coord нет: git-факты нигде не собираются; внешняя сторона (репозиторий, CI) вне кода coord | решение Q1 |
-| CI выполняется | CI сообщает активный run | `.github/workflows/ci.yml` выполняет `make check` на ubuntu-latest и macos-latest (commit `6eb78e3`) | чтение статуса CI | CI provider | external | по `observed_at` | внешний наблюдатель | нет | нет данных CI — UNKNOWN с источником и временем наблюдения | наблюдателя в Coord нет; файл `.github/workflows/ci.yml` — конфигурация CI, а не чтение его статуса | решение Q1 и чтение статуса CI |
-| Готовы к merge | push и gates подтверждены | нет | вопрос Q1 | Git + CI | derived из external | по `observed_at` наблюдений | внешний наблюдатель | нет | нет наблюдения CI или push — UNKNOWN | реализации нет: ни наблюдателя, ни проекции | решение Q1 |
+| Локально зафиксированы | наблюдается локальный commit | git наблюдаем извне, в Coord не хранится | решение OWNER R128 (Q1): внешняя read-only проекция | Git observation | external | по `observed_at` | внешний наблюдатель | нет | нет наблюдения — UNKNOWN, не «не публиковано» | наблюдателя в Coord нет; git как внешний источник вне канонического состояния | решение OWNER R128 (Q1) |
+| Ожидают публикации | commit есть, push не подтверждён | наблюдаемо | решение OWNER R128 (Q1): внешняя read-only проекция | Git local/remote | external | по `observed_at` | внешний наблюдатель | нет | нет наблюдения push — UNKNOWN, а не ошибка публикации | наблюдателя в Coord нет: git-факты нигде не собираются; внешняя сторона (репозиторий, CI) вне кода coord | решение OWNER R128 (Q1) |
+| CI выполняется | CI сообщает активный run | `.github/workflows/ci.yml` выполняет `make check` на ubuntu-latest и macos-latest (commit `6eb78e3`) | решение OWNER R128 (Q1): внешняя read-only проекция | CI provider | external | по `observed_at` | внешний наблюдатель | нет | нет данных CI — UNKNOWN с источником и временем наблюдения | наблюдателя в Coord нет; файл `.github/workflows/ci.yml` — конфигурация CI, а не чтение его статуса | решение OWNER R128 (Q1) |
+| Готовы к merge | push и gates подтверждены | нет | решение OWNER R128 (Q1): внешняя read-only проекция | Git + CI | derived из external | по `observed_at` наблюдений | внешний наблюдатель | нет | нет наблюдения CI или push — UNKNOWN | реализации нет: ни наблюдателя, ни проекции | решение OWNER R128 (Q1) |
 
 Расхождение с вводной OWNER-3: в строке «Приоритет» и «Прогресс %» вводная
 правильно относит их к `unknown`; в коде `Task` таких полей нет (проверено по
@@ -194,7 +197,7 @@ ProgressPct`) и заполняется из heartbeat, поэтому как «
 | Attempt | не generation | есть | — | `Run.Attempt` | canonical | текущий | command channel при сверке | да — сверка попытки | неизвестное значение показывать как UNKNOWN с пометкой «источник не найден», не заменять предположением | `TestCanonicalTransitionRetryPreservesAttemptAndTaskFence` (store/canonical_test.go): изменение `Attempt` отклоняется как «Attempt is immutable» | ADR-0006 и read API |
 | Назначен | ссылка на событие | **Gap**: события «назначение Run» в журнале нет | тип события | assignment event | canonical | по событию | read channel | нет | неизвестное значение показывать как UNKNOWN с пометкой «источник не найден», не заменять предположением | реализации нет: события «назначение Run» в типе `DomainEvent` нет | тип события назначения Run в норме журнала |
 | Последняя активность | не transport activity | `InboxReceipt.RecordedAt` есть | проекция | последняя принятая команда | canonical | по committed receipt | read channel | нет | неизвестное значение показывать как UNKNOWN с пометкой «источник не найден», не заменять предположением | `TestApplyInboxCommandRejectsStaleExpectedRevision` и другие проверки `ApplyInboxCommand` формируют `InboxReceipt` с `RecordedAt` (store/canonical_test.go:99,128,145); отдельного теста только на `RecordedAt` нет | ADR-0006 и read API |
-| Provider availability | UNKNOWN по умолчанию | нет | норма наблюдения | supervisor/OWNER | external / unknown | по наблюдению; без наблюдения — UNKNOWN | внешний наблюдатель | нет | без наблюдения — UNKNOWN по умолчанию, не «доступен» | реализации нет: наблюдения провайдера в canonical state нет | ADR-0006 для наблюдений; норма о фактах — вопрос Q1 |
+| Provider availability | UNKNOWN по умолчанию | нет | ADR-0006 для наблюдений; норма наблюдения провайдера не определена | supervisor/OWNER | external / unknown | по наблюдению; без наблюдения — UNKNOWN | внешний наблюдатель | нет | без наблюдения — UNKNOWN по умолчанию, не «доступен» | реализации нет: наблюдения провайдера в canonical state нет | ADR-0006 для наблюдений; норма наблюдения провайдера не определена |
 | Result | только после принятия Coord | есть для Review/Audit (RA-1); Executor Result command нет (R117, RT-04) | Executor result path | `task.ReviewResult`/`AuditResult` | canonical | по committed result | read channel | да — принятый результат Coord переводит Task | неизвестное значение показывать как UNKNOWN с пометкой «источник не найден», не заменять предположением | `TestReviewResultCommitsWithTransitionEvent` и `TestAuditResultCommitsWithTransitionEvent` (store/canonical_result_test.go): результат фиксируется одним commit с событием перехода | ADR-0006 и read API |
 | Tree hash | не из текущего worktree; `Run.TargetSHA` — цель назначения, а не хеш результата | Gap: в `ResultPayload` (`envelope/envelope.go:78-82`) и `ReviewResult`/`AuditResult` (`task/result.go`) поля tree hash нет; `TargetSHA` попадает в `RESULT_ACK` (`store/canonical_result.go:185`), что подтверждает только цель назначения | поле tree hash в результате либо норма об его источнике | хеш дерева принятого результата, ревью или аудита | canonical / будущее | на момент результата | read channel | нет | неизвестное значение показывать как UNKNOWN с пометкой «источник не найден», не заменять предположением | реализация не существует, прямой тест не найден | ADR-0006 и read API |
 | Независимость роли | не OS isolation | есть: `TestReviewerRejectsExecutorAgentIDAcrossHistory` | — | `AgentID` против истории Executor | derived из canonical | при чтении snapshot | read channel | нет | неизвестное значение показывать как UNKNOWN с пометкой «источник не найден», не заменять предположением | `TestReviewerRejectsExecutorAgentIDAcrossHistory` и `TestAuditorRejectsExecutorAgentIDAcrossTaskRuns` (store/canonical_independence_test.go) | ADR-0006 и read API |
@@ -257,8 +260,8 @@ Stage (TM-12); блокировка по зависимости называет
 | Последствия | без прогнозов без основания | нет | спецификация | граф, структурированный анализ | derived | при чтении snapshot | read channel | нет | неизвестное значение показывать как UNKNOWN с пометкой «источник не найден», не заменять предположением | реализация не существует, прямой тест не найден | ADR-0006 и read API |
 | Рекомендация | не применяется автоматически | нет | формат рекомендации | выбор координатора и основание | derived | при чтении snapshot | read channel | нет | неизвестное значение показывать как UNKNOWN с пометкой «источник не найден», не заменять предположением | реализация не существует, прямой тест не найден | ADR-0006 и read API |
 | Время создания | время события | для Attention события нет | тип события | Domain Event | canonical | по событию | read channel | нет | неизвестное значение показывать как UNKNOWN с пометкой «источник не найден», не заменять предположением | реализация не существует, прямой тест не найден | ADR-0006 и read API |
-| «Принять A» | подписанный challenge одной команды | нет | OwnerCredential, decide, схема события | команда OWNER | mutation | при записи | command channel | да | неизвестное значение показывать как UNKNOWN с пометкой «источник не найден», не заменять предположением | реализация не существует, прямой тест не найден | ADR-0006 и read API |
-| «Другой вариант» | текст не подменяет identity | нет | то же | команда OWNER | mutation | при записи | command channel | да | неизвестное значение показывать как UNKNOWN с пометкой «источник не найден», не заменять предположением | реализация не существует, прямой тест не найден | ADR-0006 и read API |
+| «Принять A» | подписанный challenge одной команды | нет | OwnerCredential, decide, схема события (Gap P0-3); решение OWNER R131 (Q4): команда подаётся из CLI, web только показывает точную CLI-команду и данные challenge | команда OWNER | mutation | при записи | command channel | да | неизвестное значение показывать как UNKNOWN с пометкой «источник не найден», не заменять предположением | реализация не существует, прямой тест не найден | решение OWNER R131 (Q4) и Gap P0-3 (OwnerCredential, decide, схема события) |
+| «Другой вариант» | текст не подменяет identity | нет | то же; решение OWNER R131 (Q4): также только CLI | команда OWNER | mutation | при записи | command channel | да | неизвестное значение показывать как UNKNOWN с пометкой «источник не найден», не заменять предположением | реализация не существует, прямой тест не найден | решение OWNER R131 (Q4) |
 | «Отложить» | по умолчанию скрывает локально | нет | норма об откладывании | UI или отдельная команда | client-local либо canonical | локально | нет — пока только UI | зависит от нормы | N/A — значение клиентское; staleness внешних данных UI не проверяет | реализация не существует, прямой тест не найден | N/A — значение клиентское |
 
 Граница записи: Attention read model → выбор в TUI → подписанный challenge одной
@@ -268,8 +271,8 @@ OWNER decision. Кнопка не пишет в storage сама.
 Расхождение с вводной OWNER-3 §3: вводная относит «Решение OWNER» к событию
 журнала. Типа события решения OWNER нет ни в коде (`task/event.go:13-16`), ни в
 норме; `OWNER_DECISION` в TASK-MODEL — это Stage, а не тип `DomainEvent`. Это Gap и
-зависимость проекта границы команд P0-3, не вопрос OWNER (см. раздел 12 и
-вопрос Q3 в разделе 13 — про побочные эффекты, а не про имя события).
+зависимость проекта границы команд P0-3, не вопрос OWNER (см. раздел 12; решение
+OWNER R130, Q3 — про побочные эффекты решения, а не про имя события).
 
 ## 7. Explain и доказательства
 
@@ -308,7 +311,7 @@ Gap: TM-12, структура blocker, спецификация порядка 
 | Outbox record | состояние доставки Run | canonical Outbox | canonical | при доставке | read channel | нет | есть: `Envelope`, `EventID` (`store/canonical.go:27-38`) | pending вычислим, но не хранится как метрика | пустая очередь — «нет pending», не ошибка | `TestCanonicalTransitionCommitsStateEventOutboxAtomically` (checkpoint/canonical_test.go) | ADR-0006 для показа |
 | ReviewResult / AuditResult | принятый вердикт с findings | canonical | canonical | по committed result | read channel | да — результат переводит Task | есть (RA-1) | Executor Result command нет (R117, RT-04) | вердикт без durable commit — не показывать | `TestReviewResultCommitsWithTransitionEvent`, `TestAuditResultCommitsWithTransitionEvent` (store/canonical_result_test.go) | путь Executor RESULT |
 | Source tree hash | хеш дерева принятого результата | Result/Review/Audit | canonical / будущее | на момент результата | read channel | нет | Gap: поля tree hash нет ни в `ResultPayload` (`envelope/envelope.go:78-82`), ни в `ReviewResult`/`AuditResult` (`task/result.go`); `Run.TargetSHA` — цель назначения и попадает в `RESULT_ACK` (`store/canonical_result.go:185`) | цель назначения не заменяет хеш результата | нет поля — не показывать, а не показывать `TargetSHA` как хеш результата | прямого теста нет: искал в `store/canonical_result_test.go` и `executor/` | поле tree hash в результате либо норма об источнике |
-| Commit SHA, push, CI, merge, deploy | доказательства публикации | Git, CI, deployment | external | по `observed_at` | внешний наблюдатель | нет | внешние наблюдения; в Coord наблюдателя нет | вопрос Q1 | нет наблюдения — UNKNOWN с источником и временем | наблюдателей в коде нет: искал в `cmd/coordd` и `store/` | решение Q1 |
+| Commit SHA, push, CI, merge, deploy | доказательства публикации | Git, CI, deployment | external | по `observed_at` | внешний наблюдатель | нет | внешние наблюдения; в Coord наблюдателя нет | решение OWNER R128 (Q1) | нет наблюдения — UNKNOWN с источником и временем | наблюдателей в коде нет: искал в `cmd/coordd` и `store/` | решение OWNER R128 (Q1) |
 Приватные ключи и credentials не показываются; для ключа — только fingerprint
 (OWNER-3 §7, правило приёмки 10). Отдельно: ссылки `ARTIFACT` в результатах
 fail-closed с «artifact metadata not defined» — метаданные артефакта зарезервированы
@@ -329,15 +332,15 @@ fail-closed с «artifact metadata not defined» — метаданные арт
 | UI element | Target | Current | Gap | Source | Data class | Freshness | Trust boundary | Affects Task transitions | UNKNOWN / stale behavior | Current evidence | Required dependency |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | Commit readiness | все обязательные gates выполнены | не реализовано: в Coord нет ни readiness-проекции, ни commit path; `ADR-0008` (Proposed) описывает только целевое поведение, код проверок готовности commit нет | проекция готовности (ADR-0006) и, для автокоммита, принятие ADR-0008 | Run + Review + Audit + tree + gates | derived | при чтении snapshot | read channel | нет | неизвестное значение показывать как UNKNOWN с пометкой «источник не найден», не заменять предположением | реализация не существует, прямой тест не найден | ADR-0006 и read API |
-| Local commit | SHA, source tree | наблюдаемо извне, в `CanonicalState` нет | вопрос Q1 | Git | external | наблюдение с `observed_at` | внешний наблюдатель | нет во внешних наблюдениях; целевой переход из ADR-0008 (Proposed) в действующей норме не действует | нет наблюдения — UNKNOWN | реализация не существует, прямой тест не найден | решение Q1 |
-| Commit signature | evidence | наблюдаемо | — | Git verification | external | наблюдение с `observed_at` | внешний наблюдатель | нет | нет проверки подписи — UNKNOWN, а не «подписано» | наблюдателя в Coord нет; проверка подписи Git — вне coord | решение Q1 |
-| Push | remote, branch | наблюдаемо, в Coord нет | вопрос Q1 | remote Git | external | наблюдение с `observed_at` | внешний наблюдатель | нет | нет наблюдения remote — UNKNOWN | наблюдателя в Coord нет: remote/branch в canonical state не хранятся | решение Q1 |
-| CI | SHA, источник, время | workflow есть (`6eb78e3`, `make check` на ubuntu-latest и macos-latest), статус в Coord нет | чтение статуса CI | CI provider | external | наблюдение с `observed_at` | внешний наблюдатель | нет | нет данных CI — UNKNOWN | наблюдателя в Coord нет; есть только конфигурация workflow | решение Q1 и чтение статуса CI |
-| Merge readiness | не Task Status | нет | — | branch, CI, policy | derived из external | при чтении наблюдений | read channel | нет | устаревшее или недоступное наблюдение помечать как устаревшее с `observed_at`; нет источника — UNKNOWN, не «зелёный» | реализация не существует, прямой тест не найден | ADR-0006 для наблюдений; норма о фактах — вопрос Q1 |
-| Merge в main | факт merge в целевую ветку: SHA, источник и время наблюдения | наблюдателя merge в Coord нет; правила merge в нормах Coord нет | вопрос Q1 | Git | external | наблюдение с `observed_at` | внешний наблюдатель | нет | нет наблюдения merge — UNKNOWN | в нормах Coord правила нет, наблюдателя в Coord нет | решение Q1 |
-| Deploy | evidence | нет системы деплоя в дереве | вопрос Q1 | deployment provider | external | наблюдение с `observed_at` | внешний наблюдатель | нет | нет наблюдения deploy — UNKNOWN | реализация не существует, прямой тест не найден | ADR-0006 для наблюдений; норма о фактах — вопрос Q1 |
-| Release | отдельная норма | нет | норма | release system | external | наблюдение с `observed_at` | внешний наблюдатель | нет | нет наблюдения release — UNKNOWN | реализация не существует, прямой тест не найден | ADR-0006 для наблюдений; норма о фактах — вопрос Q1 |
-| Retry state | не в Task без нормы | нет | — | процесс координатора-разработчика | client-local / process state | локально | нет | нет | нет наблюдения retry — UNKNOWN | реализация не существует, прямой тест не найден | норма о publication facts (вопрос Q1) |
+| Local commit | SHA, source tree | наблюдаемо извне, в `CanonicalState` нет | решение OWNER R128 (Q1) | Git | external | наблюдение с `observed_at` | внешний наблюдатель | нет во внешних наблюдениях; целевой переход из ADR-0008 (Proposed) в действующей норме не действует | нет наблюдения — UNKNOWN | реализация не существует, прямой тест не найден | решение OWNER R128 (Q1) |
+| Commit signature | evidence | наблюдаемо | решение OWNER R128 (Q1) для наблюдений подписи | Git verification | external | наблюдение с `observed_at` | внешний наблюдатель | нет | нет проверки подписи — UNKNOWN, а не «подписано» | наблюдателя в Coord нет; проверка подписи Git — вне coord | решение OWNER R128 (Q1) |
+| Push | remote, branch | наблюдаемо, в Coord нет | решение OWNER R128 (Q1) | remote Git | external | наблюдение с `observed_at` | внешний наблюдатель | нет | нет наблюдения remote — UNKNOWN | наблюдателя в Coord нет: remote/branch в canonical state не хранятся | решение OWNER R128 (Q1) |
+| CI | SHA, источник, время | workflow есть (`6eb78e3`, `make check` на ubuntu-latest и macos-latest), статус в Coord нет | чтение статуса CI | CI provider | external | наблюдение с `observed_at` | внешний наблюдатель | нет | нет данных CI — UNKNOWN | наблюдателя в Coord нет; есть только конфигурация workflow | решение OWNER R128 (Q1); чтение статуса CI — разрыв ADR-0006 |
+| Merge readiness | не Task Status | нет | решение OWNER R128 (Q1) для наблюдений merge и CI; правило готовности к merge не определено | branch, CI, policy | derived из external | при чтении наблюдений | read channel | нет | устаревшее или недоступное наблюдение помечать как устаревшее с `observed_at`; нет источника — UNKNOWN, не «зелёный» | реализация не существует, прямой тест не найден | ADR-0006 для наблюдений; решение OWNER R128 (Q1); правило готовности к merge не определено |
+| Merge в main | факт merge в целевую ветку: SHA, источник и время наблюдения | наблюдателя merge в Coord нет; правила merge в нормах Coord нет | решение OWNER R128 (Q1) | Git | external | наблюдение с `observed_at` | внешний наблюдатель | нет | нет наблюдения merge — UNKNOWN | в нормах Coord правила нет, наблюдателя в Coord нет | решение OWNER R128 (Q1) |
+| Deploy | evidence | нет системы деплоя в дереве | решение OWNER R128 (Q1) | deployment provider | external | наблюдение с `observed_at` | внешний наблюдатель | нет | нет наблюдения deploy — UNKNOWN | реализация не существует, прямой тест не найден | решение OWNER R128 (Q1) |
+| Release | отдельная норма | нет | решение OWNER R128 release не перечисляет; отдельная норма | release system | external | наблюдение с `observed_at` | внешний наблюдатель | нет | нет наблюдения release — UNKNOWN | реализация не существует, прямой тест не найден | решение OWNER R128 release не покрывает: отдельная норма |
+| Retry state | не в Task без нормы | нет | норма о retry state не определена; R128 его не покрывает | процесс координатора-разработчика | client-local / process state | локально | нет | нет | нет наблюдения retry — UNKNOWN | реализация не существует, прямой тест не найден | норма о retry state не определена; R128 его не покрывает |
 
 Внешние наблюдения (push, CI, merge, deploy) не завершают Task и не участвуют в
 recovery: по OWNER-2 §8 они остаются external observations. Целевой local commit из
@@ -361,16 +364,17 @@ status, observed_at, freshness, external reference.
   достаточно клиентского cursor; cursor нельзя использовать как доказательство
   ознакомления.
 - Норма: прямой нормы о cursor или acknowledgement нет. ADR-0003 применяется, только
-  если решение Q2-C сделает acknowledgement каноническим фактом: тогда это внешняя
-  ссылка с provenance по ADR-0003.
+  если будущая подписанная OWNER-команда сделает acknowledgement каноническим фактом:
+  тогда это внешняя ссылка с provenance по ADR-0003.
 | UI element | Target | Current | Gap | Source | Data class | Freshness | Trust boundary | Affects Task transitions | UNKNOWN / stale behavior | Current evidence | Required dependency |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| Точка отсчёта `changes` | разница с последней точкой | нет: в `CanonicalState` нет ни cursor, ни acknowledgement (`store/canonical.go:68-77`), локальной настройки в коде тоже нет | место хранения и семантика; вопрос Q2 | локальный профиль клиента либо каноническое состояние | client-local (по умолчанию) либо canonical (при решении Q2-C) | устаревший cursor показывается как устаревший | нет — не доказательство ознакомления | нет | N/A — значение клиентское; staleness внешних данных UI не проверяет | реализация не существует, прямой тест не найден | N/A — значение клиентское |
-| Ознакомление OWNER | отдельная отметка с автором и временем | нет | сущность и команда; вопрос Q2 | команда OWNER | client-local либо canonical | при подтверждении | command channel | нет | нет acknowledgement — UNKNOWN, cursor ознакомления не доказывает | реализации нет: сущности acknowledgement нет | N/A — значение клиентское |
+| Точка отсчёта `changes` | разница с последней точкой | нет: в `CanonicalState` нет ни cursor, ни acknowledgement (`store/canonical.go:68-77`), локальной настройки в коде тоже нет | решение OWNER R129 (Q2): cursor локальный; доказуемое ознакомление — отдельная подписанная команда в будущем | локальный профиль клиента | client-local (R129) | устаревший cursor показывается как устаревший | нет — не доказательство ознакомления | нет | N/A — значение клиентское; staleness внешних данных UI не проверяет | реализация не существует, прямой тест не найден | N/A — значение клиентское |
+| Ознакомление OWNER | отдельная отметка с автором и временем | нет | решение OWNER R129 (Q2): ознакомление не следует из cursor | команда OWNER | UNKNOWN — форма будущей подписанной OWNER-команды не определена (R129) | при подтверждении | command channel | нет | нет acknowledgement — UNKNOWN, cursor ознакомления не доказывает | реализации нет: сущности acknowledgement нет | решение OWNER R129 (Q2); будущая подписанная OWNER-команда |
 
 Правило приёмки 9 (OWNER-3 §14): UI cursor не является подтверждением ознакомления
-OWNER. Gap: место хранения cursor и семантика ознакомления; вопрос вынесен в раздел
-13 как Q2.
+OWNER. Это правило подтверждено решением OWNER R129 (Q2): cursor хранится в профиле
+клиента и не означает ознакомления. Gap: доказуемое ознакомление потребует отдельной
+подписанной OWNER-команды.
 
 ## 10. Соответствие ADR и TASK-MODEL
 
@@ -384,7 +388,7 @@ OWNER. Gap: место хранения cursor и семантика ознак�
 | «Обновление зависимых задач» после решения | ADR-0002 DG-08: изменение графа — Owner-команда с Task-scoped capability и ожидаемой Graph Revision, в одном commit | расходится по смыслу: массовое обновление зависимых Task не нормировано; см. Q3 |
 | Смысловые состояния публикации как состояния | TASK-MODEL (единственный `TaskStatus`), ADR-0001 CM-02, ROADMAP «UI не создаёт собственных Task/workflow states» | расходится: допустимы только как проекция; назвать для каждого канонический факт |
 | `READY_TO_COMMIT` в потоке задач | в нормах Task такого состояния нет; `READY_FOR_COMMIT` из AGENTS.md — состояние координатора, не Task Status | расходится |
-| Публикационные факты в каноническом состоянии | ADR-0005 (границы durable state), ADR-0008 Proposed и вне его области | расходится; вопрос Q1 |
+| Публикационные факты в каноническом состоянии | ADR-0005 (границы durable state), ADR-0008 Proposed и вне его области; решение OWNER R128 (Q1) | расходится: решение R128 оставляет факты публикации внешними |
 | `Key fingerprint SHA256` | привязка хранит публичный ключ или его отпечаток; формат не нормирован | расходится как норма; допустимо как вычисляемое отображение |
 | Стартовая карточка на первом запуске | ADR-0001 «Agent Startup Card» — артефакт назначенного Run | расходится: на первом запуске назначенного Run ещё нет |
 | Событие `OWNER_DECISION_ACCEPTED` | типа события нет ни в коде, ни в норме; `OWNER_DECISION` в TASK-MODEL — Stage | расходится: Gap проекта границы команд, не вопрос OWNER |
@@ -435,11 +439,11 @@ ROADMAP. Ниже только зависимости, следующие из �
 
 | Срез | Норма-зависимость | Кандидат в ROADMAP | Комментарий |
 |---|---|---|---|
-| 1. Read-only: status, tasks, task show, changes; daemon read API; OwnerView | ADR-0001 шаги 12–13; ADR-0004 RT-05 | «После ADR-0006 \| Dashboard и Project Map» (ROADMAP:48) | ADR-0006 не написан (TARGET-ARCHITECTURE, «Номера ADR»); без него срез не начинается |
+| 1. Read-only: status, tasks, task show, changes; daemon read API; OwnerView | ADR-0001 шаги 12–13; ADR-0004 RT-05; решение OWNER R129 (Q2): cursor локальный | «После ADR-0006 \| Dashboard и Project Map» (ROADMAP:48) | ADR-0006 не написан (TARGET-ARCHITECTURE, «Номера ADR»); без него срез не начинается |
 | 2. Attention: AttentionItem, `coord attention`, причина, источники, варианты | TM-11, TM-12; CM-06 | «После ADR-0006», в части «Attention/Health вычисляются» | требует исполненных TM-11/TM-12 |
-| 3. Owner decisions: OwnerCredential, challenge, `coord decide`, durable решение | CM-12 (R110), TM-24; ADR-0002 DG-08 | «До P0-3 \| Owner command boundary» (ROADMAP:38) и «После ADR-0006» | проект границы команд OWNER принят (R110–R113), реализация — P0-3 |
+| 3. Owner decisions: OwnerCredential, challenge, `coord decide`, durable решение | CM-12 (R110), TM-24; решение OWNER R130 (Q3): только предписанный нормой переход; ADR-0002 DG-08 | «До P0-3 \| Owner command boundary» (ROADMAP:38) и «После ADR-0006» | проект границы команд OWNER принят (R110–R113), реализация — P0-3 |
 | 4. Explain | CM-06; TM-12 | «После ADR-0006» | требует структуры blocker и журнала |
-| 5. Publication: commit/push/CI/merge/deploy | ADR-0008 (Proposed) как целевая норма о commit-модели Coord; правило работы над репозиторием — раздел 12.1 | «После ADR-0006» либо новая строка | зависит от Q1 |
+| 5. Publication: commit/push/CI/merge/deploy | решение OWNER R128 (Q1): внешняя read-only проекция по ADR-0006; ADR-0008 (Proposed) остаётся целевой нормой о commit-модели Coord и для этой проекции не требуется — раздел 12.1 | «После ADR-0006» | решение R128 принято; срез — после ADR-0006 |
 | 6. Полный TUI и темы | CM-02; ADR-0001 «Read-only API и Dashboard» | «После ADR-0006» | оформление нормами не затронуто |
 
 ### 12.1 Правило работы координатора-разработчика (не норма продукта)
@@ -450,7 +454,7 @@ AGENTS.md, Commit Readiness (R127) регулирует, кто и с какой
 задаёт ADR-0008-AUTONOMOUS-COMMIT.md (Proposed), и до его принятия Owner Console не
 показывает автономный commit Coord как действующую норму. В разделах 3–9 это
 правило не используется как источник требований; commit, push, CI, merge и deploy
-остаются внешними наблюдениями (вопрос Q1). В разделе 8 указано только, что
+остаются внешними наблюдениями (решение OWNER R128, Q1). В разделе 8 указано только, что
 ADR-0008 выводит push, merge и deploy за пределы своей области, — как факт о тексте
 ADR, без правил действий.
 
@@ -493,7 +497,9 @@ Q2), C7 подтверждён (раздел 12), C8 подтверждён (р�
 
 ## 13. Открытые вопросы OWNER
 
-Ровно четыре вопроса. Выбор не делается.
+Ровно четыре вопроса. Решения OWNER приняты 2026-10-09: R128, R129, R130, R131 —
+по одному на вопрос (Q1…Q4). Варианты ниже сохранены как обоснование выбора,
+включая отклонённые варианты и их последствия.
 
 ### Q1. Publication facts: где живут факты публикации
 
@@ -519,12 +525,19 @@ Q2), C7 подтверждён (раздел 12), C8 подтверждён (р�
   ADR-0003 разрешает внешние ссылки, но не делает внешние статусы источником
   workflow.
 
-Последствия: A — срез 5 реализуем без новой нормы, но остаётся внешним и не
-доказывает состояние системы; B — новый ADR и изменение схемы, до этого срез 5
-не начать; C — архитектурное последствие: отдельный журнал требует решения об ADR,
-владении и границах consistency, а ST-01 и ST-05 затронуты только если журнал
-войдёт в canonical command/commit boundary или в миграцию canonical schema; факты
-local commit, push, CI и merge остаются отдельными и не выводятся один из другого.
+**Решение OWNER R128: вариант A — внешняя read-only проекция.** Факты публикации
+наблюдаются во внешних системах; каждый отображается с источником, SHA, временем
+наблюдения и свежестью; в `CanonicalState` не входят, в recovery и переходах Task
+не участвуют; ошибка или недоступность внешней системы даёт UNKNOWN или STALE, но
+не изменяет каноническое состояние. Канонизация publication facts может быть
+рассмотрена отдельно при принятии модели автокоммита и публикации; сейчас менять
+schema и ST-01/ST-05 не нужно.
+
+Последствия: A — принято решением R128, срез 5 реализуем без новой нормы, но
+остаётся внешним и не доказывает состояние системы; B — не выбран, потребовал бы
+нового ADR и изменения схемы; C — не выбран, отдельный ADR, владение и границы
+consistency остаются открытым вопросом; факты local commit, push, CI и merge
+остаются отдельными и не выводятся один из другого.
 
 ### Q2. Точка последнего просмотра OWNER
 
@@ -538,9 +551,17 @@ local commit, push, CI и merge остаются отдельными и не в
   становится каноническим фактом, участвует в проекциях и может влиять на
   последующие решения.
 
-Последствия: A — минимальный объём, нет доказательства ознакомления; B — нужна
-команда и её фиксация, но вне transitions Task; C — изменение схемы и решение о
-том, участвует ли acknowledgement в transitions.
+**Решение OWNER R129: вариант A — локальный cursor клиента.** Cursor хранится в
+профиле конкретного клиента и используется только для изменений с прошлого
+просмотра; не означает, что OWNER прочитал или принял информацию; не влияет на
+Task, Attention, блокеры и сроки; потеря cursor приводит только к повторному показу
+изменений. Для доказуемого ознакомления в будущем потребуется отдельная подписанная
+OWNER-команда.
+
+Последствия: A — принято решением R129, минимальный объём, доказательства ознакомления
+нет; B — не выбран, соответствующая норма сейчас не вводится; C — не выбран,
+изменение схемы и решение о том, участвует ли acknowledgement в transitions,
+сейчас не вводятся.
 
 ### Q3. Побочные эффекты решения OWNER
 
@@ -562,11 +583,19 @@ local commit, push, CI и merge остаются отдельными и не в
   StagePlan: требует нормы о порядке (решение → назначение), иначе возможен
   недетерминированный порядок fence и ownership.
 
-Последствия: A — каноническая запись и переход уже нормированы, объём минимален,
-но OWNER получает «решение принято, а задача всё ещё blocked» без объяснения; B —
-нужна норма для графовой части и ясное ограничение «никакой массовой мутации»;
-C — нужна норма о порядке и о том, что создание Runs идёт через agent command
-boundary.
+**Решение OWNER R130: вариант A — запись решения и только предписанный нормой
+переход Task.** Решение фиксируется вместе с тем переходом, который прямо
+предусмотрен действующей нормой; блокеры и зависимые задачи после commit
+пересчитываются как проекции; массовые мутации зависимых Task не выполняются;
+новые Runs не создаются; Outbox формируется только тогда, когда его прямо требует
+выполняемый нормативный переход; если норма не определяет дальнейшее действие, Task
+остаётся заблокированной с конкретной причиной, а не разблокируется эвристически.
+`coord decide` не получает скрытой оркестрационной логики.
+
+Последствия: A — принято решением R130, каноническая запись и переход уже
+нормированы, объём минимален; задача может остаться BLOCKED, но с конкретной
+причиной, а объяснение строится проекцией; B — не выбран, соответствующая норма
+сейчас не вводится; C — не выбран, соответствующая норма сейчас не вводится.
 
 ### Q4. Web command channel
 
@@ -578,10 +607,17 @@ boundary.
   challenge, защитой от replay и проверкой revision — требует отдельного security
   design и, вероятно, нового ADR.
 
-Последствия: до решения web read-only (правило приёмки 5). A — минимум, но кнопка
-«Принять A» в вебе отсутствует; B — требует внешнего защищённого канала и его
-владельца; C — наибольший объём и новые риски, поэтому до его решения браузерная
-аутентификация OWNER не реализуется.
+**Решение OWNER R131: вариант A — web read-only, решения через CLI.** Web
+показывает Overview, Tasks, Attention, Explain и Evidence; кнопка решения в web не
+выполняет команду; web может показать точную CLI-команду и данные challenge, но не
+подписывает и не отправляет решение; `coord decide` проходит через защищённый Owner
+command boundary и `OwnerCredential`. Варианты B и C требуют отдельного security
+design; до него их не реализовывать.
+
+Последствия: A — принято решением R131, web остаётся read-only (правило приёмки 5),
+кнопка решения в web не выполняет команду; B — не выбран, требует отдельного
+security design; C — не выбран, требует отдельного security design, и до его
+принятия браузерная аутентификация OWNER не реализуется.
 
 ## 14. Проверяемые критерии приёмки
 
@@ -600,6 +636,15 @@ boundary.
 11. Для одной revision `OwnerView` детерминирован, кроме помеченных внешних
     наблюдений.
 12. TUI, CLI и JSON используют одну проекцию и одну семантику полей.
+13. Факты публикации не появляются в `CanonicalState` и не участвуют в recovery;
+    недоступность внешней системы даёт UNKNOWN или STALE (R128).
+14. Cursor не означает ознакомление OWNER и не влияет на Task, Attention, блокеры и
+    сроки (R129).
+15. Зависимые Task массово не мутируются, их блокеры пересчитываются как проекции;
+    если норма не определяет дальнейшее действие, Task остаётся заблокированной с
+    конкретной причиной (решение OWNER R130).
+16. Кнопка решения в web не подписывает и не отправляет решение: она показывает
+    только точную CLI-команду и данные challenge (R131).
 
 Критерий готовности анализа: для каждого элемента интерфейса из разделов 3, 4, 6,
 7, 8 и 9 заполнены все восемь полей — источник, класс, свежесть, trust boundary,
