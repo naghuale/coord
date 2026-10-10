@@ -149,6 +149,12 @@ Coord проверяет следующие инварианты:
   той же транзакции с ребром и событиями.
   Проверка: не реализовано
 
+- **DG-07 — Eligibility условия для Executor Run.** Dependent Task может
+  запустить новый Executor Run только если все `DEPENDS_ON`-зависимости выполнены.
+  Детальные случаи — DG-07a (первый Run), DG-07b (rework), DG-07c (позднее ребро),
+  DG-07d (FAILED prerequisite), DG-07e (atomic replacement).
+  Проверка: не реализовано
+
 - **DG-07a — Eligibility первого Executor Run.** `TASK DEPENDS_ON TASK`-зависимость
   считается выполненной только когда prerequisite имеет `Status=COMPLETED`. Создание
   первого Executor Run допустимо лишь если выполнены все `DEPENDS_ON`; Coord

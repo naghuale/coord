@@ -1,5 +1,24 @@
 # История изменений
 
+## 2026-10-10 — ADR-0003 normative cleanup: PriorStatus, EXT-11, provider evidence, TID-01a fix (документация)
+
+- (документация) ADR-0003-EXTERNAL-REFERENCE-MODEL.md: редакционная пометка
+  добавлена; все правки FD — принятые инварианты не затронуты.
+  - Добавлен `PriorStatus *ExternalReferenceStatus` в структуру `ExternalReference`
+    с инвариантом атомарной установки при переходе в `DELETED_EXTERNAL`.
+  - EXT-11: добавлен инвариант canonical command boundary с явным порядком шагов.
+  - Добавлен подраздел «Идентичность доказательства провайдера»: `ProviderEvidenceID`
+    обязателен в событиях deletion/restoration; команды без него отклоняются.
+  - Добавлен подраздел «Порядок обработки команд и replay» с явным порядком шагов.
+  - TID-01a: исправлена ошибка «128-битный счётчик» → «80-битный случайный
+    компонент ULID»; добавлено объяснение 48+80-битной структуры ULID.
+  - `EXTERNAL_REFERENCE_UPDATED`: явно указана неизменяемость `Provider`, `Instance`,
+    `ExternalID` после `EXTERNAL_REFERENCE_ADDED`.
+  - `Metadata`: добавлены ограничения глубины и типов; конкретная схема per-provider.
+  - API раздел: добавлен маркер «целевой контракт, не product capability до ADR-0006».
+  - Owner → OWNER; owner-команда → OWNER-команда — везде в документе.
+  - EXT-10: owner → OWNER.
+
 ## 2026-10-10 — ADR-0002 normative cleanup: type matrix, EdgeID identity, DG-07 split, terminology (документация)
 
 - (документация) ADR-0002-PROJECT-DEPENDENCY-GRAPH.md: редакционная пометка

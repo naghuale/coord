@@ -335,9 +335,7 @@ Discussion Graph фиксирует значимые факты и связи д
   не считается. Для P0-2 достаточно минимального Discussion Graph и ссылочной
   целостности: summary, рекомендации, автоматическое принятие решений и генерация новых
   Task из текста остаются вне этого среза.
-  Проверка: частично — canonical Discussion Graph реализован и проверен; production
-  command path, canonical OWNER decisions, Conflict Events, Executor Result и
-  пользовательские проекции остаются открытыми.
+  Проверка: частично — `TestDiscussionAgentCommandCommitsTypedNodeAndRebuildsProjection`, `TestDiscussionDoesNotPromoteTransportEvents`; не реализовано: production command path, canonical OWNER decisions, Conflict Events, Executor Result, пользовательские проекции.
 
 - **CM-11 — Discussion Graph не вторая истина.** Узлы и связи принадлежат Task, проходят проверку схемы и ссылочной целостности.
   Их авторитетная запись представляется типизированным доменным событием с
@@ -345,8 +343,7 @@ Discussion Graph фиксирует значимые факты и связи д
   запросов, но такая проекция должна восстанавливаться из канонической записи и не
   становиться второй изменяемой истиной. Пользовательская Timeline также является
   проекцией.
-  Проверка: частично — projection восстанавливается из canonical Events и проверяется
-  тестами; production read-only projection и пользовательская Timeline не реализованы.
+  Проверка: частично — `TestDiscussionProjectionRebuildsFromEvents`; не реализовано: production read-only projection, пользовательская Timeline.
 
 - **CM-11a — Типизированная схема Discussion Graph (R138, R139).** Discussion Graph
   типизирован: тип узла — не свободная метка. Общие обязательные поля узла: `NodeID`,
