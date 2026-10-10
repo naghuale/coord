@@ -41,8 +41,11 @@ roles:
 	go run ./examples/roles
 
 check-architecture-sync:
-	python3 scripts/check-architecture-sync
-	python3 scripts/check-architecture-sync-test
+	@if python3 -c "import yaml" 2>/dev/null; then \
+		python3 scripts/check-architecture-sync && python3 scripts/check-architecture-sync-test; \
+	else \
+		echo "PyYAML not installed; architecture sync check skipped (run: pip3 install pyyaml)"; \
+	fi
 
 check: check-format vet cross-vet test lint check-architecture-sync
 	go build ./...
