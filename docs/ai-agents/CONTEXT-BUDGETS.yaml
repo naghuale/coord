@@ -1,0 +1,46 @@
+apiVersion: coord.dev/v1alpha1
+kind: AgentContextBudgets
+metadata:
+  version: 1
+measurement:
+  source: approved_model_adapter
+  missingTokenCount: NOT_EVALUATED
+  countPromptEnvelope: true
+  countToolResults: true
+budgets:
+  COORDINATOR:
+    maxDocuments: 7
+    maxHistoricalDocuments: 0
+    maxToolEvidenceRecords: 20
+    maxInputTokens: 24000
+    overflowAction: RE_RESOLVE_AND_COMPACT
+  EXECUTOR:
+    maxDocuments: 6
+    maxHistoricalDocuments: 0
+    maxToolEvidenceRecords: 16
+    maxInputTokens: 20000
+    overflowAction: RE_RESOLVE_AND_COMPACT
+  REVIEWER:
+    maxDocuments: 8
+    maxHistoricalDocuments: 0
+    maxToolEvidenceRecords: 24
+    maxInputTokens: 28000
+    overflowAction: SPLIT_REVIEW_SCOPE
+  AUDITOR:
+    maxDocuments: 10
+    maxHistoricalDocuments: 1
+    maxToolEvidenceRecords: 32
+    maxInputTokens: 32000
+    overflowAction: SPLIT_AUDIT_PROPERTIES
+exceptions:
+  historicalInvestigation:
+    requiresEvent: HISTORICAL_INVESTIGATION
+    maxHistoricalDocuments: 5
+  emergencyIncident:
+    requiresIncidentRecord: true
+    extraEvidenceRecords: 20
+rules:
+  truncationAllowed: false
+  silentDocumentDropAllowed: false
+  budgetExceededResult: CONTEXT_BUDGET_EXCEEDED
+  exceptionRequiresEvidence: true

@@ -1,0 +1,3117 @@
+apiVersion: coord.dev/v1alpha1
+kind: DocumentRegistry
+metadata:
+  projectId: coord
+  registryVersion: 1
+  purpose: 'Машиночитаемый реестр документации Coord: назначение, authority, пользователи, события чтения и обновления,
+    порядок приёмки и связи.'
+  owningDocument: AGENTS.md
+vocabulary:
+  classes:
+    normative: Продуктовые нормы и обязательные инварианты.
+    architecture_status: Текущее устройство, зрелость и путь к принятой норме.
+    process: Правила разработки, оркестрации, проверки и эскалации.
+    operations: Инструкции запуска, диагностики и эксплуатации конкретного контура.
+    active_context: Текущее состояние проекта и следующая безопасная работа.
+    historical: Исторические evidence и снимки, не являющиеся текущей authority.
+    design: Проектирование реализации в пределах принятых норм.
+  statuses:
+    active: Действующий документ.
+    accepted: Принятая нормативная запись.
+    proposed: Предложение; не является действующей capability или нормой.
+    legacy: Документ действующего legacy-контура; не применяется к новой canonical разработке.
+    historical: Зафиксированный исторический снимок; не обновляется под текущий код.
+    generated: Производная проекция; источник задаётся отдельно.
+  roles:
+    - OWNER
+    - COORDINATOR
+    - EXECUTOR
+    - REVIEWER
+    - AUDITOR
+    - OPERATOR
+  readEvents:
+    - SESSION_START
+    - CONTEXT_RECOVERY
+    - ISSUE_PLANNING
+    - ASSIGNMENT_START
+    - IMPLEMENTATION
+    - REVIEW
+    - AUDIT
+    - OWNER_BOUNDARY_CHECK
+    - COMMIT_READINESS
+    - ARCHITECTURE_IMPACT
+    - RUNTIME_START
+    - INCIDENT
+    - MIGRATION
+    - HISTORICAL_INVESTIGATION
+    - ACTION_MAP_SCENARIO_VALIDATION
+  updateEvents:
+    - PRODUCT_NORM_CHANGED
+    - PROCESS_NORM_CHANGED
+    - COMPONENT_IMPLEMENTATION_CHANGED
+    - COMPONENT_MATURITY_CHANGED
+    - CLI_CHANGED
+    - PROTOCOL_CHANGED
+    - RUNTIME_BEHAVIOR_CHANGED
+    - WORKSPACE_POLICY_CHANGED
+    - STATE_MACHINE_TRANSITION
+    - ISSUE_STATE_CHANGED
+    - ASSIGNMENT_CHANGED
+    - REVIEW_COMPLETED
+    - AUDIT_COMPLETED
+    - INTEGRATION_COMPLETED
+    - INCIDENT_RECORDED
+    - RESOLUTION_REFERENCE_ADDED
+precedence:
+  product:
+    - accepted ADR
+    - docs/TASK-MODEL.md
+    - recorded OWNER decisions Rxx in the owning document
+    - docs/TARGET-ARCHITECTURE.md
+    - docs/ROADMAP.md
+    - design documents
+    - operational guides
+    - historical evidence
+  process:
+    - AGENTS.md
+    - Coordinator State Machine
+    - active assignment
+    - Operations Ledger
+    - role prompts
+    - development and verification guides
+  implementationStatus:
+    - docs/architecture/COMPONENT-STATUS.yaml
+    - docs/ARCHITECTURE.md
+    - docs/TARGET-ARCHITECTURE.md
+invariantOwners:
+  - id: canonical-coordination-model
+    source: docs/ADR-0001-CANONICAL-COORDINATION-MODEL.md
+  - id: task-lifecycle-and-run-binding
+    source: docs/TASK-MODEL.md
+  - id: project-dependency-graph
+    source: docs/ADR-0002-PROJECT-DEPENDENCY-GRAPH.md
+  - id: external-reference-model
+    source: docs/ADR-0003-EXTERNAL-REFERENCE-MODEL.md
+  - id: runtime-and-daemon-model
+    source: docs/ADR-0004-RUNTIME-AND-DAEMON-MODEL.md
+  - id: storage-and-durability
+    source: docs/ADR-0005-STORAGE-MODEL.md
+rules:
+  - id: DR-001
+    text: Каждый документ MUST иметь один class, status, purpose, usedBy, readWhen и updateWhen.
+  - id: DR-002
+    text: Historical documents MUST NOT иметь currentOperationalAuthority=true.
+  - id: DR-003
+    text: Legacy guides MUST NOT объявляться canonical production authority.
+  - id: DR-004
+    text: Accepted norms изменяются только отдельной нормативной правкой; реализация нормы не переписывает её автоматически.
+  - id: DR-005
+    text: Статус реализации компонента хранится в COMPONENT-STATUS.yaml и проецируется в ARCHITECTURE/TARGET-ARCHITECTURE.
+  - id: DR-006
+    text: Новая документация MUST быть добавлена в этот реестр в той же Issue.
+  - id: DR-007
+    text: Удаление или переименование документа MUST атомарно обновлять registry, ссылки и проверки.
+  - id: DR-008
+    text: Автор изменения документа MUST NOT единолично принимать собственную работу.
+  - id: DR-009
+    text: N/A для update impact требует проверяемой причины.
+  - id: DR-010
+    text: Credentials, secrets, session tokens и private evidence не регистрируются как документы Git.
+startupPaths:
+  coordinator:
+    required:
+      - .coord/project.yaml
+      - AGENTS.md
+      - .coord/CONTEXT-INDEX.yaml
+      - operations/project/CURRENT.yaml
+      - operations/project/OPEN-WORK.yaml
+    conditional:
+      - active assignment
+      - owning accepted norms
+      - docs/architecture/COMPONENT-STATUS.yaml
+    forbiddenByDefault:
+      - historical documents
+      - complete tool logs
+      - closed task transcripts
+  executor:
+    required:
+      - AGENTS.md
+      - active assignment
+      - WorkspaceBinding
+      - owning accepted norms
+    conditional:
+      - component design
+      - relevant operational guide
+  reviewer:
+    required:
+      - AGENTS.md
+      - active assignment
+      - frozen subject revision
+      - owning accepted norms
+      - required tests and mutations
+    conditional:
+      - docs/architecture/COMPONENT-STATUS.yaml
+      - affected architecture documents
+  auditor:
+    required:
+      - AGENTS.md
+      - active assignment
+      - frozen subject revision
+      - security/recovery/identity norms
+      - negative tests and mutation evidence
+      - reviewer verdict
+validation:
+  allowedClasses:
+    - normative
+    - architecture_status
+    - process
+    - operations
+    - active_context
+    - historical
+    - design
+  allowedStatuses:
+    - active
+    - accepted
+    - proposed
+    - legacy
+    - historical
+    - generated
+  requiredFields:
+    - id
+    - path
+    - class
+    - status
+    - purpose
+    - usedBy
+    - readWhen
+    - updateWhen
+    - ownership
+    - acceptance
+    - currentOperationalAuthority
+    - canonicalProductionAuthority
+    - normativeAuthority
+  invariants:
+    - document ids are unique
+    - document paths are unique
+    - every path exists unless optional=true
+    - every normative document declares normativeAuthority
+    - proposed documents set currentNormativeAuthority=false
+    - legacy and historical documents set canonicalProductionAuthority=false
+    - historical documents set currentOperationalAuthority=false
+    - every update event names an updating role
+    - every document names an independent acceptance rule
+    - every operations document declares appliesTo, notApplicableTo and currentOperationalAuthority
+    - every document file under docs/ and registered repository-root documentation is listed
+    - every invariant id maps to exactly one registered normative source
+    - DOCUMENT-MAP links resolve to existing files
+documents:
+  - id: agents
+    path: AGENTS.md
+    class: process
+    status: active
+    purpose:
+      - repository rules
+      - role and authority boundaries
+      - OwnerBoundaryCheck
+      - mandatory Document Registry and Action Map admission
+      - action cards before significant Coordinator transitions
+      - Commit Readiness
+      - Workspace Root policy
+      - Operations Ledger policy
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+      - OPERATOR
+    readWhen:
+      - SESSION_START
+      - ASSIGNMENT_START
+      - OWNER_BOUNDARY_CHECK
+      - COMMIT_READINESS
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+      - WORKSPACE_POLICY_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    normativeAuthority: process
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: only_for_class_R
+    related:
+      - docs/ROLE_PROMPTS.md
+      - docs/operations/COORDINATOR-STATE-MACHINE.md
+      - docs/operations/ARCHITECTURE-SYNC-PROCESS.md
+  - id: task-model
+    path: docs/TASK-MODEL.md
+    class: normative
+    status: accepted
+    purpose:
+      - canonical Task aggregate
+      - Stage and Status
+      - Task and Run transitions
+      - Attempt and Task.Fence
+      - role independence
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - ISSUE_PLANNING
+      - IMPLEMENTATION
+      - REVIEW
+      - AUDIT
+    updateWhen:
+      - PRODUCT_NORM_CHANGED
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: true
+    normativeAuthority: product
+    ownership:
+      creates: COORDINATOR
+      updates: EXECUTOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: required
+    related:
+      - docs/ADR-0001-CANONICAL-COORDINATION-MODEL.md
+      - docs/ADR-0004-RUNTIME-AND-DAEMON-MODEL.md
+      - docs/ADR-0005-STORAGE-MODEL.md
+  - id: adr-0001
+    path: docs/ADR-0001-CANONICAL-COORDINATION-MODEL.md
+    class: normative
+    status: accepted
+    purpose:
+      - canonical coordination model
+      - implementation order
+      - Discussion Graph
+      - role and identity invariants
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - ISSUE_PLANNING
+      - IMPLEMENTATION
+      - REVIEW
+      - AUDIT
+    updateWhen:
+      - PRODUCT_NORM_CHANGED
+    currentNormativeAuthority: true
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: true
+    normativeAuthority: product
+    ownership:
+      creates: COORDINATOR
+      updates: EXECUTOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: required
+  - id: adr-0002
+    path: docs/ADR-0002-PROJECT-DEPENDENCY-GRAPH.md
+    class: normative
+    status: accepted
+    purpose:
+      - Project Dependency Graph
+      - graph revision and dependency eligibility
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - ISSUE_PLANNING
+      - IMPLEMENTATION
+      - REVIEW
+      - AUDIT
+    updateWhen:
+      - PRODUCT_NORM_CHANGED
+    currentNormativeAuthority: true
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: true
+    normativeAuthority: product
+    ownership:
+      creates: COORDINATOR
+      updates: EXECUTOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: required
+  - id: adr-0003
+    path: docs/ADR-0003-EXTERNAL-REFERENCE-MODEL.md
+    class: normative
+    status: accepted
+    purpose:
+      - canonical TaskID
+      - External Reference identity and lifecycle
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - ISSUE_PLANNING
+      - IMPLEMENTATION
+      - REVIEW
+      - AUDIT
+    updateWhen:
+      - PRODUCT_NORM_CHANGED
+    currentNormativeAuthority: true
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: true
+    normativeAuthority: product
+    ownership:
+      creates: COORDINATOR
+      updates: EXECUTOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: required
+  - id: adr-0004
+    path: docs/ADR-0004-RUNTIME-AND-DAEMON-MODEL.md
+    class: normative
+    status: accepted
+    purpose:
+      - daemon ownership
+      - production write path
+      - readiness and recovery
+      - Task-wide fencing
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+      - OPERATOR
+    readWhen:
+      - ISSUE_PLANNING
+      - IMPLEMENTATION
+      - REVIEW
+      - AUDIT
+      - RUNTIME_START
+      - INCIDENT
+    updateWhen:
+      - PRODUCT_NORM_CHANGED
+    currentNormativeAuthority: true
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: true
+    normativeAuthority: product
+    ownership:
+      creates: COORDINATOR
+      updates: EXECUTOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: required_for_TD_R2
+      owner: required
+  - id: adr-0005
+    path: docs/ADR-0005-STORAGE-MODEL.md
+    class: normative
+    status: accepted
+    purpose:
+      - canonical storage model
+      - atomic durable commit
+      - commit-or-reopen
+      - locking and migration requirements
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+      - OPERATOR
+    readWhen:
+      - ISSUE_PLANNING
+      - IMPLEMENTATION
+      - REVIEW
+      - AUDIT
+      - INCIDENT
+      - MIGRATION
+    updateWhen:
+      - PRODUCT_NORM_CHANGED
+    currentNormativeAuthority: true
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: true
+    normativeAuthority: product
+    ownership:
+      creates: COORDINATOR
+      updates: EXECUTOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: required_for_TD_R2
+      owner: required
+  - id: adr-0007
+    path: docs/ADR-0007-PROJECT-BRIEF.md
+    class: normative
+    status: proposed
+    purpose:
+      - proposed Task Brief projection
+      - proposed Project Brief direction
+    usedBy:
+      - COORDINATOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - ISSUE_PLANNING
+      - REVIEW
+      - AUDIT
+    updateWhen:
+      - PRODUCT_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: EXECUTOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: required_to_accept
+  - id: adr-0008
+    path: docs/ADR-0008-AUTONOMOUS-COMMIT.md
+    class: normative
+    status: proposed
+    purpose:
+      - proposed runtime local commit protocol
+      - proposed commit readiness projection
+    usedBy:
+      - COORDINATOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - ISSUE_PLANNING
+      - REVIEW
+      - AUDIT
+    updateWhen:
+      - PRODUCT_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: EXECUTOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: required
+      owner: required_to_accept
+  - id: component-status
+    path: docs/architecture/COMPONENT-STATUS.yaml
+    class: architecture_status
+    status: active
+    purpose:
+      - single machine-readable component status registry
+      - implemented and missing guarantees
+      - symbols, tests and issues evidence
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - ISSUE_PLANNING
+      - ARCHITECTURE_IMPACT
+      - REVIEW
+      - AUDIT
+      - COMMIT_READINESS
+    updateWhen:
+      - COMPONENT_IMPLEMENTATION_CHANGED
+      - COMPONENT_MATURITY_CHANGED
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: none
+    ownership:
+      creates: EXECUTOR
+      updates: EXECUTOR
+      accountable: COORDINATOR
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: false
+    projections:
+      - docs/ARCHITECTURE.md
+      - docs/TARGET-ARCHITECTURE.md
+  - id: architecture-current
+    path: docs/ARCHITECTURE.md
+    class: architecture_status
+    status: active
+    purpose:
+      - current code architecture
+      - legacy versus canonical versus production boundaries
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+      - OPERATOR
+    readWhen:
+      - SESSION_START
+      - ISSUE_PLANNING
+      - ARCHITECTURE_IMPACT
+      - REVIEW
+      - RUNTIME_START
+    updateWhen:
+      - COMPONENT_IMPLEMENTATION_CHANGED
+      - RUNTIME_BEHAVIOR_CHANGED
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: none
+    ownership:
+      creates: EXECUTOR
+      updates: EXECUTOR
+      accountable: COORDINATOR
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: false
+    sourceOfStatus: docs/architecture/COMPONENT-STATUS.yaml
+  - id: architecture-target
+    path: docs/TARGET-ARCHITECTURE.md
+    class: architecture_status
+    status: active
+    purpose:
+      - target architecture map
+      - maturity relative to accepted norms
+      - reserved ADR numbers
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - ISSUE_PLANNING
+      - ARCHITECTURE_IMPACT
+      - REVIEW
+      - AUDIT
+    updateWhen:
+      - COMPONENT_MATURITY_CHANGED
+      - PRODUCT_NORM_CHANGED
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: none
+    ownership:
+      creates: EXECUTOR
+      updates: EXECUTOR
+      accountable: COORDINATOR
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: false
+    sourceOfStatus: docs/architecture/COMPONENT-STATUS.yaml
+  - id: roadmap
+    path: docs/ROADMAP.md
+    class: process
+    status: active
+    purpose:
+      - milestone order
+      - entry and exit criteria
+      - work dependencies
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+    readWhen:
+      - SESSION_START
+      - ISSUE_PLANNING
+      - OWNER_BOUNDARY_CHECK
+    updateWhen:
+      - ISSUE_STATE_CHANGED
+      - PROCESS_NORM_CHANGED
+      - PRODUCT_NORM_CHANGED
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: ordering_only
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: false
+      owner: required_if_order_or_criteria_change
+  - id: development
+    path: docs/DEVELOPMENT.md
+    class: process
+    status: active
+    purpose:
+      - development lifecycle
+      - worktree, Review, Audit, commit and integration guidance
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+    readWhen:
+      - ASSIGNMENT_START
+      - IMPLEMENTATION
+      - COMMIT_READINESS
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+      - WORKSPACE_POLICY_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    normativeAuthority: process_projection
+    ownership:
+      creates: COORDINATOR
+      updates: EXECUTOR
+      accountable: COORDINATOR
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: only_for_class_R
+  - id: verification
+    path: docs/VERIFICATION.md
+    class: process
+    status: active
+    purpose:
+      - verification profiles
+      - proof boundaries
+      - PASS/FAIL/NOT_EVALUATED/N/A semantics
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - ASSIGNMENT_START
+      - IMPLEMENTATION
+      - REVIEW
+      - AUDIT
+      - COMMIT_READINESS
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+      - COMPONENT_IMPLEMENTATION_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    normativeAuthority: process_projection
+    ownership:
+      creates: EXECUTOR
+      updates: EXECUTOR
+      accountable: COORDINATOR
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: false
+  - id: defect-patterns
+    path: docs/DEFECT_PATTERNS.md
+    class: process
+    status: active
+    purpose:
+      - recurring defect taxonomy
+      - required negative controls
+      - automation status
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - ISSUE_PLANNING
+      - IMPLEMENTATION
+      - REVIEW
+      - AUDIT
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+      - INCIDENT_RECORDED
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: review_guidance
+    ownership:
+      creates: AUDITOR
+      updates: COORDINATOR
+      accountable: COORDINATOR
+    acceptance:
+      reviewer: required
+      auditor: conditional
+      owner: false
+  - id: role-prompts
+    path: docs/ROLE_PROMPTS.md
+    class: process
+    status: active
+    purpose:
+      - role-specific prompts
+      - structured verdict vocabulary
+      - Coordinator autonomy behavior
+      - Admission Card and Action Card formats
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - ASSIGNMENT_START
+      - REVIEW
+      - AUDIT
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+      - ASSIGNMENT_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    normativeAuthority: process_projection
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: COORDINATOR
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_authority_changes
+      owner: only_for_class_R
+  - id: architecture-sync-process
+    path: docs/operations/ARCHITECTURE-SYNC-PROCESS.md
+    class: process
+    status: active
+    purpose:
+      - architecture impact workflow
+      - component registry update rules
+      - CI blocking conditions
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+    readWhen:
+      - ISSUE_PLANNING
+      - ARCHITECTURE_IMPACT
+      - REVIEW
+      - COMMIT_READINESS
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    normativeAuthority: process_projection
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: COORDINATOR
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_gate_security_changes
+      owner: only_for_class_R
+  - id: coordinator-state-machine
+    path: docs/operations/COORDINATOR-STATE-MACHINE.md
+    class: process
+    status: active
+    optional: true
+    purpose:
+      - Coordinator state transitions
+      - question suppression
+      - human action and owner decision separation
+    usedBy:
+      - COORDINATOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - CONTEXT_RECOVERY
+      - OWNER_BOUNDARY_CHECK
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    normativeAuthority: process
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_authority_changes
+      owner: only_for_class_R
+  - id: operations
+    path: docs/OPERATIONS.md
+    class: operations
+    status: active
+    purpose:
+      - runtime startup and diagnostics
+      - state ownership
+      - backup and recovery procedures
+    usedBy:
+      - COORDINATOR
+      - OPERATOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - RUNTIME_START
+      - INCIDENT
+      - MIGRATION
+    updateWhen:
+      - CLI_CHANGED
+      - RUNTIME_BEHAVIOR_CHANGED
+      - PROTOCOL_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    normativeAuthority: operational_projection
+    ownership:
+      creates: OPERATOR
+      updates: EXECUTOR
+      accountable: COORDINATOR
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: false
+    appliesTo:
+      - embedded legacy Run runtime
+      - standalone coordd skeleton
+      - legacy watchdog recovery
+    notApplicableTo:
+      - canonical production Task write path
+      - production Session Supervisor
+  - id: quickstart
+    path: docs/QUICKSTART.md
+    class: operations
+    status: legacy
+    purpose:
+      - beginner entry to supported demos
+      - basic repository verification
+    usedBy:
+      - EXECUTOR
+      - OPERATOR
+    readWhen:
+      - RUNTIME_START
+    updateWhen:
+      - CLI_CHANGED
+      - WORKSPACE_POLICY_CHANGED
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: none
+    ownership:
+      creates: EXECUTOR
+      updates: EXECUTOR
+      accountable: COORDINATOR
+    acceptance:
+      reviewer: required
+      auditor: false
+      owner: false
+    appliesTo:
+      - legacy Run demos
+      - reference integrations
+    notApplicableTo:
+      - canonical Task workflow
+      - production AgentSession bootstrap
+  - id: agent-instructions
+    path: docs/AGENT_INSTRUCTIONS.md
+    class: operations
+    status: legacy
+    purpose:
+      - legacy Run agent reference host instructions
+      - standalone integration guidance
+    usedBy:
+      - EXECUTOR
+      - REVIEWER
+    readWhen:
+      - HISTORICAL_INVESTIGATION
+      - IMPLEMENTATION
+    updateWhen:
+      - CLI_CHANGED
+      - PROTOCOL_CHANGED
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: legacy_only
+    ownership:
+      creates: EXECUTOR
+      updates: EXECUTOR
+      accountable: COORDINATOR
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_transport_or_identity_changes
+      owner: false
+    appliesTo:
+      - legacy/reference agent instructions
+    notApplicableTo:
+      - canonical session bootstrap
+      - production Task command path
+  - id: transport
+    path: docs/TRANSPORT.md
+    class: operations
+    status: active
+    purpose:
+      - transport-neutral architecture guidance
+      - legacy and canonical transport boundary distinctions
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - ISSUE_PLANNING
+      - IMPLEMENTATION
+      - REVIEW
+      - AUDIT
+    updateWhen:
+      - PROTOCOL_CHANGED
+      - RUNTIME_BEHAVIOR_CHANGED
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: operational_projection
+    ownership:
+      creates: EXECUTOR
+      updates: EXECUTOR
+      accountable: COORDINATOR
+    acceptance:
+      reviewer: required
+      auditor: required_if_signing_identity_or_replay_changes
+      owner: false
+    appliesTo:
+      - transport abstraction
+      - legacy Run integration profile
+      - canonical adapter requirements
+    notApplicableTo:
+      - production canonical transport caller (not implemented)
+  - id: telepathy-host
+    path: docs/TELEPATHY_HOST.md
+    class: operations
+    status: legacy
+    purpose:
+      - standalone Telepathy 0.8 baseline host and worker
+      - legacy one-run integration contract
+    usedBy:
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+      - OPERATOR
+    readWhen:
+      - IMPLEMENTATION
+      - REVIEW
+      - AUDIT
+      - HISTORICAL_INVESTIGATION
+    updateWhen:
+      - PROTOCOL_CHANGED
+      - CLI_CHANGED
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: legacy_only
+    ownership:
+      creates: EXECUTOR
+      updates: EXECUTOR
+      accountable: COORDINATOR
+    acceptance:
+      reviewer: required
+      auditor: required_if_security_semantics_change
+      owner: false
+    appliesTo:
+      - standalone Telepathy 0.8 legacy host/worker profile
+    notApplicableTo:
+      - canonical Task command path
+      - production Session Supervisor
+  - id: legacy-role-sessions
+    path: docs/ROLE_SESSIONS.md
+    class: operations
+    status: legacy
+    purpose:
+      - legacy internal/rooms RoleSession model
+      - migration and historical reference
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - HISTORICAL_INVESTIGATION
+      - IMPLEMENTATION
+    updateWhen:
+      - CLI_CHANGED
+      - PROTOCOL_CHANGED
+      - RESOLUTION_REFERENCE_ADDED
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: legacy_only
+    ownership:
+      creates: EXECUTOR
+      updates: EXECUTOR
+      accountable: COORDINATOR
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_legacy_security_changes
+      owner: false
+    appliesTo:
+      - internal/rooms legacy Role Sessions
+    notApplicableTo:
+      - canonical AgentSession
+      - WorkspaceBinding
+      - Task assignment
+  - id: legacy-role-sessions-cli
+    path: docs/SESSION_CLI.md
+    class: operations
+    status: legacy
+    purpose:
+      - legacy internal/rooms CLI operations
+      - legacy checkpoints and history export
+    usedBy:
+      - EXECUTOR
+      - REVIEWER
+      - OPERATOR
+    readWhen:
+      - HISTORICAL_INVESTIGATION
+      - IMPLEMENTATION
+    updateWhen:
+      - CLI_CHANGED
+      - PROTOCOL_CHANGED
+      - RESOLUTION_REFERENCE_ADDED
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: legacy_only
+    ownership:
+      creates: EXECUTOR
+      updates: EXECUTOR
+      accountable: COORDINATOR
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_credentials_or_identity_change
+      owner: false
+    appliesTo:
+      - internal/rooms legacy Role Sessions CLI
+    notApplicableTo:
+      - canonical Task command API
+      - Operations Ledger
+  - id: project-config
+    path: .coord/project.yaml
+    class: active_context
+    status: active
+    purpose:
+      - stable ProjectID
+      - repository and operations metadata
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - ASSIGNMENT_START
+    updateWhen:
+      - WORKSPACE_POLICY_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    normativeAuthority: local_configuration
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: COORDINATOR
+    acceptance:
+      reviewer: required_if_semantics_change
+      auditor: false
+      owner: only_for_class_R
+  - id: context-index
+    path: .coord/CONTEXT-INDEX.yaml
+    class: active_context
+    status: active
+    optional: true
+    purpose:
+      - minimal context navigation
+      - stable links to project state
+    usedBy:
+      - COORDINATOR
+    readWhen:
+      - SESSION_START
+      - CONTEXT_RECOVERY
+    updateWhen:
+      - STATE_MACHINE_TRANSITION
+      - ISSUE_STATE_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    normativeAuthority: none
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: COORDINATOR
+    acceptance:
+      reviewer: false
+      auditor: false
+      owner: false
+  - id: project-current
+    path: operations/project/CURRENT.yaml
+    class: active_context
+    status: active
+    optional: true
+    purpose:
+      - current integration HEAD
+      - active task
+      - next safe action
+      - context readiness
+    usedBy:
+      - COORDINATOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - CONTEXT_RECOVERY
+      - OWNER_BOUNDARY_CHECK
+    updateWhen:
+      - STATE_MACHINE_TRANSITION
+      - INTEGRATION_COMPLETED
+      - ISSUE_STATE_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    normativeAuthority: operational_state
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: COORDINATOR
+    acceptance:
+      reviewer: false
+      auditor: false
+      owner: false
+  - id: project-open-work
+    path: operations/project/OPEN-WORK.yaml
+    class: active_context
+    status: active
+    optional: true
+    purpose:
+      - open work and blockers
+      - owner-reserved decisions
+      - milestone readiness
+    usedBy:
+      - COORDINATOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - CONTEXT_RECOVERY
+      - ISSUE_PLANNING
+      - OWNER_BOUNDARY_CHECK
+    updateWhen:
+      - ISSUE_STATE_CHANGED
+      - STATE_MACHINE_TRANSITION
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    normativeAuthority: operational_state
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: COORDINATOR
+    acceptance:
+      reviewer: false
+      auditor: false
+      owner: false
+  - id: current-version-history
+    path: docs/CURRENT_VERSION.md
+    class: historical
+    status: historical
+    purpose:
+      - historical legacy runtime snapshot
+      - historical Telepathy baseline evidence
+    usedBy:
+      - COORDINATOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - HISTORICAL_INVESTIGATION
+    updateWhen:
+      - RESOLUTION_REFERENCE_ADDED
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: none
+    ownership:
+      creates: EXECUTOR
+      updates: COORDINATOR
+      accountable: COORDINATOR
+    acceptance:
+      reviewer: required_for_new_annotations
+      auditor: false
+      owner: false
+    immutableHistoricalClaims: true
+  - id: ux-audit-history
+    path: docs/UX_AUDIT.md
+    class: historical
+    status: historical
+    purpose:
+      - historical UX audit
+      - legacy RoleSession and TUI findings
+    usedBy:
+      - COORDINATOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - HISTORICAL_INVESTIGATION
+    updateWhen:
+      - RESOLUTION_REFERENCE_ADDED
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: none
+    ownership:
+      creates: AUDITOR
+      updates: COORDINATOR
+      accountable: COORDINATOR
+    acceptance:
+      reviewer: required_for_new_annotations
+      auditor: false
+      owner: false
+    immutableHistoricalClaims: true
+  - id: experiments-history
+    path: docs/EXPERIMENTS.md
+    class: historical
+    status: historical
+    purpose:
+      - reproducible legacy transport experiment descriptions
+      - evidence boundaries
+    usedBy:
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - HISTORICAL_INVESTIGATION
+      - INCIDENT
+    updateWhen:
+      - RESOLUTION_REFERENCE_ADDED
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: none
+    ownership:
+      creates: EXECUTOR
+      updates: EXECUTOR
+      accountable: COORDINATOR
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_security_claims_change
+      owner: false
+    immutableHistoricalClaims: true
+  - id: document-map
+    path: docs/DOCUMENT-MAP.md
+    class: process
+    status: active
+    purpose:
+      - role and event navigation to the minimum relevant document set
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - ISSUE_PLANNING
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+      - ISSUE_STATE_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    normativeAuthority: process
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: only_for_class_R
+  - id: document-registry
+    path: docs/DOCUMENT-REGISTRY.yaml
+    class: process
+    status: active
+    purpose:
+      - machine-readable document inventory and lifecycle registry
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - ISSUE_PLANNING
+      - ARCHITECTURE_IMPACT
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+      - ISSUE_STATE_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    normativeAuthority: process
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: only_for_class_R
+  - id: action-map
+    path: docs/operations/ACTION-MAP.md
+    class: process
+    status: active
+    purpose:
+      - event-driven read/action/write/gate sequence
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - ISSUE_PLANNING
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+      - ISSUE_STATE_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    normativeAuthority: process
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: only_for_class_R
+  - id: gitlab-ci-integration-guide
+    path: GITLAB-CI-INTEGRATION.md
+    class: process
+    status: active
+    purpose:
+      - integration of Action Map checks into an existing GitLab pipeline
+      - final merged pipeline lint requirements
+    usedBy: [COORDINATOR, OPERATOR]
+    readWhen: [ISSUE_PLANNING, ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED, CLI_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_guidance
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: gitlab-ci-example
+    path: .gitlab-ci.example.yml
+    class: process
+    status: active
+    purpose:
+      - example root GitLab pipeline showing the Action Map include
+      - not an active pipeline configuration
+    usedBy: [COORDINATOR, OPERATOR]
+    readWhen: [ISSUE_PLANNING, ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED, CLI_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: example_only
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-ci-gates-metrics
+    path: docs/operations/CI-GATES-AND-METRICS.md
+    class: process
+    status: active
+    purpose: [implemented and proposed Action Map gates and evaluation metrics]
+    usedBy: [COORDINATOR, REVIEWER]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION, COMMIT_READINESS]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_guidance
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-evaluation-suite
+    path: docs/operations/evaluation/action-map/EVALUATION-SUITE.md
+    class: process
+    status: active
+    purpose: [scope and limitations of Action Map behavioral evaluation]
+    usedBy: [COORDINATOR, REVIEWER]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_test_guidance
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-evaluation-manifest
+    path: docs/operations/evaluation/action-map/evaluation-manifest.yaml
+    class: process
+    status: active
+    purpose: [machine-readable Action Map agent evaluation suite metadata]
+    usedBy: [COORDINATOR, REVIEWER]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_test_contract
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-evaluation-profiles
+    path: docs/operations/evaluation/action-map/profiles.yaml
+    class: process
+    status: active
+    purpose: [candidate profiles for comparative agent evaluation]
+    usedBy: [COORDINATOR, REVIEWER]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_test_design
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-evaluation-pipeline
+    path: docs/operations/evaluation/action-map/PIPELINE.md
+    class: process
+    status: active
+    purpose: [evaluation and baseline pipeline stages, status, and limitations]
+    usedBy: [COORDINATOR, REVIEWER, OPERATOR]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_guidance
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-threshold-policy
+    path: docs/operations/evaluation/action-map/threshold-policy.yaml
+    class: process
+    status: active
+    purpose: [immutable hard gates and baseline-relative comparison tolerances]
+    usedBy: [COORDINATOR, REVIEWER, OPERATOR]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_gate_policy
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-baseline-store-readme
+    path: ci/baselines/action-map/README.md
+    class: process
+    status: active
+    purpose: [baseline run storage, candidate review, and activation instructions]
+    usedBy: [COORDINATOR, REVIEWER, OPERATOR]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_guidance
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-baseline-store-manifest
+    path: ci/baselines/action-map/manifest.yaml
+    class: process
+    status: active
+    purpose: [baseline-store compatibility and promotion contract]
+    usedBy: [COORDINATOR, REVIEWER]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_gate_policy
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: gitlab-action-map-metrics-pipeline
+    path: .gitlab/ci/action-map-metrics.yml
+    class: process
+    status: active
+    purpose: [optional adapter-backed Action Map behavioral evaluation and reports]
+    usedBy: [COORDINATOR, OPERATOR]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED, CLI_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_automation
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: run-action-map-behavior
+    path: scripts/run-action-map-behavior
+    class: process
+    status: active
+    purpose: [invoke an explicitly configured evaluation adapter per scenario]
+    usedBy: [COORDINATOR, OPERATOR]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_tooling
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: check-action-map-results
+    path: scripts/check-action-map-results
+    class: process
+    status: active
+    purpose: [independently compare agent output with Action Map expectations]
+    usedBy: [COORDINATOR, REVIEWER]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_test_tooling
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: check-action-map-results-test
+    path: scripts/check-action-map-results-test
+    class: process
+    status: active
+    purpose: [self-tests for deterministic behavioral result comparison]
+    usedBy: [COORDINATOR, REVIEWER]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_test_tooling
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: collect-action-map-metrics
+    path: scripts/collect-action-map-metrics
+    class: process
+    status: active
+    purpose: [collect evaluation verdicts into GitLab report formats]
+    usedBy: [COORDINATOR, OPERATOR]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_tooling
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: check-action-map-metrics
+    path: scripts/check-action-map-metrics
+    class: process
+    status: active
+    purpose: [gate measured hard violations without treating missing evaluation as pass]
+    usedBy: [COORDINATOR, OPERATOR]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_tooling
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-baseline-compare
+    path: scripts/compare-action-map-baseline
+    class: process
+    status: active
+    purpose: [fail-closed comparison against compatible accepted baseline]
+    usedBy: [COORDINATOR, REVIEWER, OPERATOR]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_gate_tooling
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-baseline-store-check
+    path: scripts/check-action-map-baseline-store
+    class: process
+    status: active
+    purpose: [validate baseline paths, run provenance, review status, and current pointer]
+    usedBy: [COORDINATOR, REVIEWER, OPERATOR]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_gate_tooling
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-threshold-policy-check
+    path: scripts/check-action-map-threshold-policy
+    class: process
+    status: active
+    purpose: [prevent changes that relax hard gates or compatibility requirements]
+    usedBy: [COORDINATOR, REVIEWER, OPERATOR]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_gate_tooling
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-baseline-run-store
+    path: scripts/store-action-map-run
+    class: process
+    status: active
+    purpose: [append aggregate metrics only for fully evaluated compatible runs]
+    usedBy: [COORDINATOR, OPERATOR]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_gate_tooling
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-baseline-candidate
+    path: scripts/promote-action-map-baseline
+    class: process
+    status: active
+    purpose: [generate review-required median candidate from compatible runs]
+    usedBy: [COORDINATOR, REVIEWER]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_gate_tooling
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-baseline-activate
+    path: scripts/activate-action-map-baseline
+    class: process
+    status: active
+    purpose: [activate only a reviewed candidate with resolvable source runs]
+    usedBy: [COORDINATOR, REVIEWER]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_gate_tooling
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-baseline-test
+    path: scripts/check-action-map-baseline-test
+    class: process
+    status: active
+    purpose: [self-tests for missing and incompatible baseline handling]
+    usedBy: [COORDINATOR, REVIEWER]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_test_tooling
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-scenario-readme
+    path: docs/operations/scenarios/action-map/README.md
+    class: process
+    status: active
+    purpose: [scenario suite usage and coverage]
+    usedBy: [COORDINATOR, REVIEWER]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_test_guidance
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-scenario-suite
+    path: docs/operations/scenarios/action-map/suite.yaml
+    class: process
+    status: active
+    purpose: [machine-readable Action Map scenario suite manifest]
+    usedBy: [COORDINATOR, REVIEWER]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_test_contract
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-scenario-result-schema
+    path: docs/operations/scenarios/action-map/scenario-result.schema.yaml
+    class: process
+    status: active
+    purpose: [structured response contract for Action Map scenario evaluation]
+    usedBy: [COORDINATOR, REVIEWER]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_test_contract
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-scenario-session-start
+    path: docs/operations/scenarios/action-map/01-session-start.yaml
+    class: process
+    status: active
+    purpose: [Coordinator session-start admission scenario]
+    usedBy: [COORDINATOR, REVIEWER]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_test_contract
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-scenario-context-stale
+    path: docs/operations/scenarios/action-map/02-context-stale.yaml
+    class: process
+    status: active
+    purpose: [stale context recovery scenario]
+    usedBy: [COORDINATOR, REVIEWER]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_test_contract
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-scenario-issue-created
+    path: docs/operations/scenarios/action-map/03-issue-created.yaml
+    class: process
+    status: active
+    purpose: [Issue planning and assignment scenario]
+    usedBy: [COORDINATOR, REVIEWER]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_test_contract
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-scenario-review-changes
+    path: docs/operations/scenarios/action-map/04-review-changes-required.yaml
+    class: process
+    status: active
+    purpose: [autonomous review correction scenario]
+    usedBy: [COORDINATOR, REVIEWER]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_test_contract
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-scenario-human-action
+    path: docs/operations/scenarios/action-map/05-human-action-required.yaml
+    class: process
+    status: active
+    purpose: [HUMAN_ACTION_REQUIRED and OWNER boundary scenario]
+    usedBy: [COORDINATOR, REVIEWER]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_test_contract
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-scenario-owner-boundary
+    path: docs/operations/scenarios/action-map/06-owner-required.yaml
+    class: process
+    status: active
+    purpose: [confirmed OWNER boundary scenario]
+    usedBy: [COORDINATOR, REVIEWER]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_test_contract
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-scenario-migration
+    path: docs/operations/scenarios/action-map/07-migration-completed.yaml
+    class: process
+    status: active
+    purpose: [workspace migration synchronization scenario]
+    usedBy: [COORDINATOR, REVIEWER]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_test_contract
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-scenario-commit-readiness
+    path: docs/operations/scenarios/action-map/08-commit-readiness.yaml
+    class: process
+    status: active
+    purpose: [exact-subject Commit Readiness scenario]
+    usedBy: [COORDINATOR, REVIEWER]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_test_contract
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-scenario-ci-failed
+    path: docs/operations/scenarios/action-map/09-ci-failed.yaml
+    class: process
+    status: active
+    purpose: [autonomous CI correction scenario]
+    usedBy: [COORDINATOR, REVIEWER]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_test_contract
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-scenario-historical
+    path: docs/operations/scenarios/action-map/10-historical-document.yaml
+    class: process
+    status: active
+    purpose: [historical document authority exclusion scenario]
+    usedBy: [COORDINATOR, REVIEWER]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_test_contract
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-scenario-proposed-adr
+    path: docs/operations/scenarios/action-map/11-proposed-adr.yaml
+    class: process
+    status: active
+    purpose: [Proposed ADR authority exclusion scenario]
+    usedBy: [COORDINATOR, REVIEWER]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_test_contract
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-scenario-legacy-guide
+    path: docs/operations/scenarios/action-map/12-legacy-guide.yaml
+    class: process
+    status: active
+    purpose: [legacy guide authority exclusion scenario]
+    usedBy: [COORDINATOR, REVIEWER]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_test_contract
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-scenario-architecture-impact
+    path: docs/operations/scenarios/action-map/13-architecture-impact.yaml
+    class: process
+    status: active
+    purpose: [Architecture Sync transaction scenario]
+    usedBy: [COORDINATOR, REVIEWER]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_test_contract
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-scenario-integration
+    path: docs/operations/scenarios/action-map/14-integration-completed.yaml
+    class: process
+    status: active
+    purpose: [Issue completion and context compaction scenario]
+    usedBy: [COORDINATOR, REVIEWER]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_test_contract
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: action-map-scenario-unknown-event
+    path: docs/operations/scenarios/action-map/15-unknown-event.yaml
+    class: process
+    status: active
+    purpose: [unknown Action Map event fail-closed scenario]
+    usedBy: [COORDINATOR, REVIEWER]
+    readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process_test_contract
+    ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
+  - id: operations-ledger
+    path: docs/operations/OPERATIONS-LEDGER.md
+    class: active_context
+    status: active
+    purpose:
+      - append-only project operations records and role branches
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - ISSUE_PLANNING
+    updateWhen:
+      - STATE_MACHINE_TRANSITION
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    normativeAuthority: operational_state
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: false
+      auditor: false
+      owner: false
+  - id: td-issue-35
+    path: docs/decisions/TD-issue-35.yaml
+    class: process
+    status: accepted
+    purpose:
+      - recorded delegated technical decision for Issue 35
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - ISSUE_PLANNING
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+      - ISSUE_STATE_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    normativeAuthority: process
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: only_for_class_R
+  - id: td-issue-36
+    path: docs/decisions/TD-issue-36.yaml
+    class: process
+    status: accepted
+    purpose:
+      - recorded TD-R2 decision for Issue 36
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - ISSUE_PLANNING
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+      - ISSUE_STATE_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    normativeAuthority: process
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: only_for_class_R
+  - id: assignment-schema
+    path: docs/operations/schemas/assignment.schema.yaml
+    class: process
+    status: active
+    purpose:
+      - schema for task assignment records
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - ISSUE_PLANNING
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+      - ISSUE_STATE_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    normativeAuthority: process
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: only_for_class_R
+  - id: context-check-schema
+    path: docs/operations/schemas/context-check.schema.yaml
+    class: process
+    status: active
+    purpose:
+      - schema for context admission checks
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - ISSUE_PLANNING
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+      - ISSUE_STATE_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    normativeAuthority: process
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: only_for_class_R
+  - id: state-machine-schema
+    path: docs/operations/schemas/coordinator-state-machine.yaml
+    class: process
+    status: active
+    purpose:
+      - machine-readable Coordinator State Machine
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - ISSUE_PLANNING
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+      - ISSUE_STATE_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    normativeAuthority: process
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: only_for_class_R
+  - id: project-state-schema
+    path: docs/operations/schemas/project-state.schema.yaml
+    class: active_context
+    status: active
+    purpose:
+      - schema for project CURRENT state
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - ISSUE_PLANNING
+    updateWhen:
+      - STATE_MACHINE_TRANSITION
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    normativeAuthority: operational_state
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: false
+      auditor: false
+      owner: false
+  - id: role-work-schema
+    path: docs/operations/schemas/role-work.schema.yaml
+    class: process
+    status: active
+    purpose:
+      - schema for per-role operations records
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - ISSUE_PLANNING
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+      - ISSUE_STATE_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    normativeAuthority: process
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: only_for_class_R
+  - id: workspace-binding-schema
+    path: docs/operations/schemas/workspace-binding.schema.yaml
+    class: process
+    status: active
+    purpose:
+      - schema for project/worktree binding
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - ISSUE_PLANNING
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+      - ISSUE_STATE_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    normativeAuthority: process
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: only_for_class_R
+  - id: crewflow-integration-task
+    path: docs/plans/crewflow/INTEGRATION_TASK.md
+    class: design
+    status: proposed
+    purpose:
+      - proposed Crewflow integration task
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - IMPLEMENTATION
+      - REVIEW
+    updateWhen:
+      - COMPONENT_IMPLEMENTATION_CHANGED
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: false
+    currentNormativeAuthority: false
+  - id: owner-console-analysis
+    path: docs/plans/owner-console/ANALYSIS.md
+    class: design
+    status: active
+    purpose:
+      - analysis of Owner Console against norms and code
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - IMPLEMENTATION
+      - REVIEW
+    updateWhen:
+      - COMPONENT_IMPLEMENTATION_CHANGED
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: design_only
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: false
+  - id: agent-command-boundary-design
+    path: docs/plans/p0-2-task/AGENT-COMMAND-BOUNDARY.md
+    class: design
+    status: accepted
+    purpose:
+      - accepted agent command boundary design
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - IMPLEMENTATION
+      - REVIEW
+    updateWhen:
+      - COMPONENT_IMPLEMENTATION_CHANGED
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: design_only
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: required
+  - id: owner-command-boundary-design
+    path: docs/plans/p0-2-task/COMMAND-BOUNDARY.md
+    class: design
+    status: accepted
+    purpose:
+      - accepted owner command boundary design
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - IMPLEMENTATION
+      - REVIEW
+    updateWhen:
+      - COMPONENT_IMPLEMENTATION_CHANGED
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: design_only
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: required
+  - id: task-design
+    path: docs/plans/p0-2-task/DESIGN.md
+    class: design
+    status: accepted
+    purpose:
+      - accepted canonical Task state design
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - IMPLEMENTATION
+      - REVIEW
+    updateWhen:
+      - COMPONENT_IMPLEMENTATION_CHANGED
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: design_only
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: required
+  - id: daemon-design
+    path: docs/plans/p0-daemon/DESIGN.md
+    class: design
+    status: accepted
+    purpose:
+      - accepted standalone daemon design
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - IMPLEMENTATION
+      - REVIEW
+    updateWhen:
+      - COMPONENT_IMPLEMENTATION_CHANGED
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: design_only
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: required
+  - id: review-audit-design
+    path: docs/plans/p0-review-audit/DESIGN.md
+    class: design
+    status: proposed
+    purpose:
+      - proposed Review/Audit and Discussion Graph design
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - IMPLEMENTATION
+      - REVIEW
+    updateWhen:
+      - COMPONENT_IMPLEMENTATION_CHANGED
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: false
+    currentNormativeAuthority: false
+  - id: review-audit-ra1
+    path: docs/plans/p0-review-audit/RA-1.md
+    class: design
+    status: historical
+    purpose:
+      - implementation slice record for typed Review/Audit result core
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - IMPLEMENTATION
+      - REVIEW
+    updateWhen:
+      - RESOLUTION_REFERENCE_ADDED
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: none
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: false
+  - id: review-audit-ra2
+    path: docs/plans/p0-review-audit/RA-2.md
+    class: historical
+    status: historical
+    purpose:
+      - implementation slice record for role independence
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - IMPLEMENTATION
+      - REVIEW
+    updateWhen:
+      - RESOLUTION_REFERENCE_ADDED
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: none
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: false
+      owner: false
+  - id: aligned-ux-design
+    path: docs/plans/ux-first-scenario/ALIGNED_UX.md
+    class: design
+    status: historical
+    purpose:
+      - historical UX alignment proposal
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - IMPLEMENTATION
+      - REVIEW
+    updateWhen:
+      - RESOLUTION_REFERENCE_ADDED
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: none
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: false
+  - id: ux-plan
+    path: docs/plans/ux-first-scenario/PLAN.md
+    class: design
+    status: historical
+    purpose:
+      - historical UX implementation plan
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - IMPLEMENTATION
+      - REVIEW
+    updateWhen:
+      - RESOLUTION_REFERENCE_ADDED
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: none
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: false
+  - id: ux-task
+    path: docs/plans/ux-first-scenario/UX_TASK.md
+    class: design
+    status: historical
+    purpose:
+      - historical UX task definition
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - IMPLEMENTATION
+      - REVIEW
+    updateWhen:
+      - RESOLUTION_REFERENCE_ADDED
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: none
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: false
+  - id: rfc-0002-agent-governance
+    path: docs/rfc/RFC-0002-AI-AGENT-ENGINEERING-GOVERNANCE.md
+    class: process
+    status: proposed
+    purpose:
+      - proposed process norm for context selection, evidence, agent admission, review and behavioral evaluation
+      - design rationale, metrics, rollout and acceptance criteria for governed AI-agent engineering
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - ISSUE_PLANNING
+      - REVIEW
+      - AUDIT
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: required_for_authority_evidence_and_exact_version_gates
+      owner: required_to_accept
+  - id: agent-bootstrap-template
+    path: docs/templates/AGENT-BOOTSTRAP-TEMPLATE.md
+    class: design
+    status: proposed
+    purpose:
+      - proposed template for assignment-bound agent admission, ActionContext, evidence, role output and handoff
+      - implementation aid for RFC-0002 evaluation; not an active launcher contract
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - ISSUE_PLANNING
+      - REVIEW
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+      - ASSIGNMENT_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: false_until_rfc_accepted
+  - id: rfc-0001
+    path: docs/rfc/RFC-0001-LOCAL-PROJECT-OPERATIONS.md
+    class: process
+    status: accepted
+    purpose:
+      - local project operations and context-management policy
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - ISSUE_PLANNING
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+      - ISSUE_STATE_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    normativeAuthority: process
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: only_for_class_R
+  - id: workspace-policy
+    path: docs/workspace/coord-workspace-policy.yaml
+    class: process
+    status: active
+    purpose:
+      - R143 local workspace root and filesystem policy
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - ISSUE_PLANNING
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+      - ISSUE_STATE_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    normativeAuthority: process
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: only_for_class_R
+  - id: project-bootstrap
+    path: cmd/coord/bootstrap.md
+    class: operations
+    status: legacy
+    purpose:
+      - legacy CLI bootstrap and usage guide
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - IMPLEMENTATION
+      - REVIEW
+    updateWhen:
+      - COMPONENT_IMPLEMENTATION_CHANGED
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: profile_specific
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: false
+      owner: false
+    appliesTo:
+      - legacy coord CLI bootstrap
+    notApplicableTo:
+      - canonical agent-session bootstrap
+  - id: readme
+    path: README.md
+    class: operations
+    status: active
+    purpose:
+      - project overview and entry point
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - IMPLEMENTATION
+      - REVIEW
+    updateWhen:
+      - COMPONENT_IMPLEMENTATION_CHANGED
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: profile_specific
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: false
+      owner: false
+    appliesTo:
+      - Coord repository overview and navigation
+    notApplicableTo:
+      - runtime command contract
+      - current assignment or project state
+  - id: authors
+    path: AUTHORS.md
+    class: active_context
+    status: active
+    purpose:
+      - project contribution and author attribution records
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - ISSUE_PLANNING
+    updateWhen:
+      - STATE_MACHINE_TRANSITION
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    normativeAuthority: operational_state
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: false
+      auditor: false
+      owner: false
+  - id: changelog
+    path: CHANGELOG.md
+    class: historical
+    status: active
+    purpose:
+      - append-only repository change history
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - IMPLEMENTATION
+      - REVIEW
+    updateWhen:
+      - COMPONENT_IMPLEMENTATION_CHANGED
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: none
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: false
+      owner: false
+  - id: architecture-impact-example
+    path: .coord/architecture-impact.example.yaml
+    class: process
+    status: active
+    purpose:
+      - example manifest for architecture impact decisions
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - ISSUE_PLANNING
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+      - ISSUE_STATE_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    normativeAuthority: process
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: only_for_class_R
+  - id: model-adapter-registry
+    path: docs/ai-agents/adapter-registry.yaml
+    class: process
+    status: proposed
+    purpose:
+      - approved model adapter list, interface version, fail-closed selection policy
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - ISSUE_PLANNING
+      - REVIEW
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: false_until_rfc_accepted
+  - id: artifact-store-decision
+    path: docs/ai-agents/ARTIFACT-STORE-DECISION.md
+    class: design
+    status: proposed
+    purpose:
+      - decision criteria and escalation path for external write-once artifact store adoption
+    usedBy:
+      - COORDINATOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - ISSUE_PLANNING
+      - REVIEW
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: false_until_rfc_accepted
+  - id: baseline-acceptance-policy
+    path: docs/ai-agents/BASELINE-ACCEPTANCE.md
+    class: process
+    status: proposed
+    purpose:
+      - criteria for promoting an action-map behavioral baseline from runs to accepted state
+    usedBy:
+      - COORDINATOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - ISSUE_PLANNING
+      - REVIEW
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: false_until_rfc_accepted
+  - id: context-budgets
+    path: docs/ai-agents/CONTEXT-BUDGETS.yaml
+    class: process
+    status: proposed
+    purpose:
+      - initial token and document budget policy for evaluation profiles
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+    readWhen:
+      - ISSUE_PLANNING
+      - REVIEW
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: false
+      owner: false_until_rfc_accepted
+  - id: evaluation-cost-model
+    path: docs/ai-agents/EVALUATION-COST-MODEL.yaml
+    class: design
+    status: proposed
+    purpose:
+      - cost model formulas for evaluation runs; actual costs require provider-specific prices
+    usedBy:
+      - COORDINATOR
+      - REVIEWER
+    readWhen:
+      - ISSUE_PLANNING
+      - REVIEW
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: false
+      owner: false_until_rfc_accepted
+  - id: evaluation-profiles
+    path: docs/ai-agents/EVALUATION-PROFILES.yaml
+    class: process
+    status: proposed
+    purpose:
+      - MR, nightly and release evaluation profile definitions for action-map behavioral runner
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+    readWhen:
+      - ISSUE_PLANNING
+      - REVIEW
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: false
+      owner: false_until_rfc_accepted
+  - id: hidden-case-policy
+    path: docs/ai-agents/HIDDEN-CASE-POLICY.md
+    class: process
+    status: proposed
+    purpose:
+      - policy for hidden evaluation cases; actual store requires protected external source
+    usedBy:
+      - COORDINATOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - ISSUE_PLANNING
+      - REVIEW
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: false_until_rfc_accepted
+  - id: ai-governance-implementation-status
+    path: docs/ai-agents/IMPLEMENTATION-STATUS.yaml
+    class: architecture_status
+    status: active
+    purpose:
+      - machine-readable implementation status of RFC-0002 governance components; tracks what is and is not yet implemented
+    usedBy:
+      - COORDINATOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - ISSUE_PLANNING
+      - REVIEW
+      - AUDIT
+    updateWhen:
+      - COMPONENT_IMPLEMENTATION_CHANGED
+      - PROCESS_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: none
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: false
+      owner: false
+  - id: model-adapter-standard
+    path: docs/ai-agents/MODEL-ADAPTER-STANDARD.md
+    class: design
+    status: proposed
+    purpose:
+      - interface contract, approval lifecycle and conformance requirements for model adapters
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - ISSUE_PLANNING
+      - REVIEW
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: false_until_rfc_accepted
+  - id: retention-policy
+    path: docs/ai-agents/RETENTION-POLICY.yaml
+    class: process
+    status: proposed
+    purpose:
+      - raw result and baseline retention durations for action-map evaluation runs
+    usedBy:
+      - COORDINATOR
+      - REVIEWER
+    readWhen:
+      - ISSUE_PLANNING
+      - REVIEW
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: false
+      owner: false_until_rfc_accepted
+  - id: action-context-schema
+    path: docs/schemas/action-context.schema.yaml
+    class: design
+    status: proposed
+    purpose:
+      - JSON Schema for ActionContext; describes event, subject, selected documents, transition and admission fields
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - ISSUE_PLANNING
+      - REVIEW
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: false_until_rfc_accepted
+  - id: evidence-record-schema
+    path: docs/schemas/evidence-record.schema.yaml
+    class: design
+    status: proposed
+    purpose:
+      - JSON Schema for EvidenceRecord; describes evidence class, source, observation, binding and gate eligibility
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - ISSUE_PLANNING
+      - REVIEW
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: false_until_rfc_accepted
+unregisteredDocumentPolicy:
+  action: fail
+  code: DOCUMENT_NOT_REGISTERED
+  exceptions:
+    - generated temporary outputs under project-local .scratch
+    - private evidence excluded from Git
+    - vendored third-party documentation
+changeMatrix:
+  PRODUCT_NORM_CHANGED:
+    mustConsider:
+      - owning ADR or TASK-MODEL
+      - docs/architecture/COMPONENT-STATUS.yaml
+      - docs/TARGET-ARCHITECTURE.md
+      - docs/ROADMAP.md
+      - CHANGELOG.md
+    ownerBoundaryCheck: required
+  COMPONENT_IMPLEMENTATION_CHANGED:
+    mustConsider:
+      - docs/architecture/COMPONENT-STATUS.yaml
+      - docs/ARCHITECTURE.md
+      - docs/TARGET-ARCHITECTURE.md
+      - docs/VERIFICATION.md
+      - CHANGELOG.md
+    ownerBoundaryCheck: false
+  PROCESS_NORM_CHANGED:
+    mustConsider:
+      - AGENTS.md
+      - docs/ROLE_PROMPTS.md
+      - docs/DEVELOPMENT.md
+      - docs/VERIFICATION.md
+      - docs/operations/COORDINATOR-STATE-MACHINE.md
+      - docs/operations/ACTION-MAP.md
+      - CHANGELOG.md
+    ownerBoundaryCheck: conditional
+  CLI_CHANGED:
+    mustConsider:
+      - docs/OPERATIONS.md
+      - docs/QUICKSTART.md
+      - matching legacy or current CLI guide
+      - CHANGELOG.md
+    ownerBoundaryCheck: false
+  INTEGRATION_COMPLETED:
+    mustUpdate:
+      - operations/project/CURRENT.yaml
+      - operations/project/OPEN-WORK.yaml
+      - Operations Ledger
+      - Completion Report
+      - Issue status
+    ownerBoundaryCheck: false

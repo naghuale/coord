@@ -1,0 +1,73 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$title: ActionContext
+type: object
+additionalProperties: false
+required: [apiVersion, kind, event, subject, registry, actionMap, documents, transition, contextBudget, admission]
+properties:
+  apiVersion: {const: coord.dev/v1alpha1}
+  kind: {const: ActionContext}
+  event: {type: string, pattern: '^[A-Z][A-Z0-9_]*$'}
+  subject:
+    type: object
+    additionalProperties: false
+    required: [projectId, assignmentId, baseSha]
+    properties:
+      projectId: {type: string, minLength: 1}
+      assignmentId: {type: string, minLength: 1}
+      baseSha: {type: string, pattern: '^[0-9a-f]{40,64}$'}
+      subjectHash: {type: [string, 'null']}
+  registry:
+    $ref: '#/$defs/boundDocument'
+  actionMap:
+    $ref: '#/$defs/boundDocument'
+  documents:
+    type: object
+    additionalProperties: false
+    required: [required, conditional, rejectedAsAuthority, missing]
+    properties:
+      required: {type: array, items: {$ref: '#/$defs/boundDocument'}, uniqueItems: true}
+      conditional: {type: array, items: {$ref: '#/$defs/boundDocument'}}
+      rejectedAsAuthority: {type: array, items: {$ref: '#/$defs/rejection'}}
+      missing: {type: array, items: {type: string}}
+  transition:
+    type: object
+    additionalProperties: false
+    required: [allowedActions, forbiddenActions, expectedResults]
+    properties:
+      allowedActions: {type: array, items: {type: string}, minItems: 1, uniqueItems: true}
+      forbiddenActions: {type: array, items: {type: string}, uniqueItems: true}
+      expectedResults: {type: array, items: {type: string}, minItems: 1, uniqueItems: true}
+  contextBudget:
+    type: object
+    additionalProperties: false
+    required: [maxDocuments, maxHistoricalDocuments]
+    properties:
+      maxDocuments: {type: integer, minimum: 1}
+      maxHistoricalDocuments: {type: integer, minimum: 0}
+      maxInputTokens: {type: [integer, string], minimum: 1}
+  admission:
+    type: object
+    additionalProperties: false
+    required: [result, authorityViolations]
+    properties:
+      result: {enum: [ADMITTED, INVALID_ADMISSION]}
+      authorityViolations: {type: integer, minimum: 0}
+      reason: {type: [string, 'null']}
+$defs:
+  boundDocument:
+    type: object
+    additionalProperties: false
+    required: [id, path, digest]
+    properties:
+      id: {type: string, minLength: 1}
+      path: {type: string, minLength: 1}
+      digest: {type: string, pattern: '^sha256:[0-9a-f]{64}$'}
+      sections: {type: array, items: {type: string}}
+      reason: {type: string}
+  rejection:
+    type: object
+    additionalProperties: false
+    required: [path, reason]
+    properties:
+      path: {type: string}
+      reason: {enum: [historical_not_current, legacy_not_canonical, proposed_not_accepted, not_required, authority_conflict]}

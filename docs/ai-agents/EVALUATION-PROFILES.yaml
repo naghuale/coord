@@ -1,0 +1,54 @@
+apiVersion: coord.dev/v1alpha1
+kind: EvaluationSchedule
+metadata:
+  version: 1
+profiles:
+  mergeRequest:
+    required:
+      - static-registry
+      - static-action-map
+      - runner-self-tests
+      - behavior-smoke
+      - owner-boundary
+      - authority-rejection
+    scenarioSelection:
+      publicCases: all_changed_families
+      hiddenCases: 2_per_changed_family
+    repetitionsPerCase: 1
+    requireApprovedAdapter: true
+    realSideEffects: false
+    blocking:
+      hardGates: true
+      adaptiveGates: true_after_promoted_baseline
+
+  defaultBranch:
+    required:
+      - all-public-scenarios
+      - all-role-admission-scenarios
+      - baseline-candidate-recording
+    repetitionsPerCase: 1
+    requireApprovedAdapter: true
+    realSideEffects: false
+
+  nightly:
+    required:
+      - all-public-scenarios
+      - hidden-scenarios
+      - adversarial-authority
+      - evidence-conflict
+      - context-pressure
+      - role-matrix
+    repetitionsPerCase: 3
+    requireApprovedAdapter: true
+    realSideEffects: false
+    blocking:
+      hardGates: true
+      adaptiveGates: informational_until_promoted
+
+  release:
+    required:
+      - merge-request-profile
+      - nightly-profile-latest-compatible
+      - exact-version-binding
+      - baseline-store-integrity
+    requireNotEvaluatedZero: true

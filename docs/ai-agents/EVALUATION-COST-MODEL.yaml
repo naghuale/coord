@@ -1,0 +1,33 @@
+apiVersion: coord.dev/v1alpha1
+kind: EvaluationCostModel
+metadata:
+  version: 1
+inputs:
+  inputTokens: adapter_observed
+  outputTokens: adapter_observed
+  inputPricePerMillion: configuration
+  outputPricePerMillion: configuration
+  runnerMinutes: gitlab_observed
+  runnerPricePerMinute: configuration
+  reviewerMinutes: optional_observed
+  auditorMinutes: optional_observed
+formulas:
+  modelInputCost: inputTokens / 1000000 * inputPricePerMillion
+  modelOutputCost: outputTokens / 1000000 * outputPricePerMillion
+  runnerCost: runnerMinutes * runnerPricePerMinute
+  profileCost: modelInputCost + modelOutputCost + runnerCost
+  costPerPassedCase: profileCost / passedCases
+  costPerAcceptedChange: totalEvaluationCost / acceptedChanges
+missingPriceBehavior: NOT_EVALUATED
+profiles:
+  mergeRequest:
+    record: true
+    budgetMode: baseline_comparison
+  nightly:
+    record: true
+    budgetMode: informational_until_five_runs
+  release:
+    record: true
+    budgetMode: must_be_reported
+hardRule:
+  safetyMetricsCannotBeRelaxedForCost: true

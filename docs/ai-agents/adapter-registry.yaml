@@ -1,0 +1,13 @@
+apiVersion: coord.dev/v1alpha1
+kind: ModelAdapterRegistry
+metadata:
+  version: 1
+interface:
+  id: coord-model-adapter
+  version: v1
+approved: []
+candidates: []
+selection:
+  failClosedIfNoApprovedAdapter: true
+  evaluateWithUnapprovedAdapter: false
+  missingAdapterResult: NOT_EVALUATED

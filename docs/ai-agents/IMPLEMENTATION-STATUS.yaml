@@ -1,0 +1,42 @@
+apiVersion: coord.dev/v1alpha1
+kind: AIAgentGovernanceImplementationStatus
+items:
+  approvedModelAdapter:
+    status: NOT_EVALUATED
+    implemented:
+      - interface contract
+      - adapter registry
+      - approval lifecycle
+    blockedBy:
+      - provider-specific executable or container
+      - immutable digest
+      - credentials boundary
+      - conformance evidence
+  adapterVersionAndDigest:
+    status: IMPLEMENTED_AS_CONTRACT
+  mrAndNightlyProfiles:
+    status: IMPLEMENTED
+  contextBudgets:
+    status: IMPLEMENTED_AS_INITIAL_POLICY
+    note: token limits require adapter measurement and burn-in recalibration
+  rawResultRetention:
+    status: IMPLEMENTED
+  hiddenCases:
+    status: PARTIAL
+    blockedBy:
+      - protected external hidden-case source
+  evaluationCost:
+    status: IMPLEMENTED_AS_MODEL
+    blockedBy:
+      - provider prices
+      - runner price
+      - actual token telemetry
+  actionContextSchema:
+    status: IMPLEMENTED
+  evidenceRecordSchema:
+    status: IMPLEMENTED
+  externalImmutableStore:
+    status: NOT_REQUIRED_FOR_INITIAL_ADOPTION
+    escalationCriteriaDefined: true
+  behavioralBaselineAcceptance:
+    status: IMPLEMENTED

@@ -1,0 +1,43 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$title: EvidenceRecord
+type: object
+additionalProperties: false
+required: [apiVersion, kind, claimId, claim, evidenceClass, source, observation, binding, result]
+properties:
+  apiVersion: {const: coord.dev/v1alpha1}
+  kind: {const: EvidenceRecord}
+  claimId: {type: string, minLength: 1}
+  claim: {type: string, minLength: 1}
+  evidenceClass: {enum: [OBSERVED, DERIVED, REPORTED, UNKNOWN]}
+  source:
+    type: object
+    additionalProperties: false
+    required: [type]
+    properties:
+      type: {enum: [command, git, gitlab_pipeline, file, derived, human_report, agent_report]}
+      tool: {type: [string, 'null']}
+      commandClass: {type: [string, 'null']}
+      sourceRefs: {type: array, items: {type: string}}
+  observation:
+    type: object
+    required: [observedAt]
+    properties:
+      value: {}
+      exitCode: {type: [integer, 'null']}
+      observedAt: {type: string, format: date-time}
+    additionalProperties: false
+  binding:
+    type: object
+    additionalProperties: false
+    required: [projectId, subjectSha]
+    properties:
+      projectId: {type: string, minLength: 1}
+      subjectSha: {type: string, pattern: '^[0-9a-f]{40,64}$'}
+      worktree: {type: [string, 'null']}
+  result: {enum: [CONFIRMED, REFUTED, INSUFFICIENT_EVIDENCE, NOT_EVALUATED]}
+  gateEligible: {type: boolean}
+allOf:
+  - if:
+      properties: {evidenceClass: {enum: [REPORTED, UNKNOWN]}}
+    then:
+      properties: {gateEligible: {const: false}}

@@ -1,0 +1,39 @@
+apiVersion: coord.dev/v1alpha1
+kind: AgentEvaluationRetentionPolicy
+metadata:
+  version: 1
+classes:
+  rawAgentResponse:
+    git: prohibited
+    ciArtifactRetentionDays: 7
+    baselineStore: prohibited
+  normalizedScenarioResult:
+    git: prohibited
+    ciArtifactRetentionDays: 30
+    baselineStore: aggregate_only
+  junitAndMetrics:
+    git: prohibited
+    ciArtifactRetentionDays: 30
+    baselineStore: promoted_summary_only
+  baselineRawRun:
+    git: allowed_if_redacted
+    retention: keep
+    appendOnly: true
+  promotedBaseline:
+    git: required
+    retention: keep_in_history
+  hiddenCaseDefinition:
+    gitPublicRepository: prohibited
+    retention: until_rotation_plus_90_days
+  incidentEvidence:
+    policy: project_local_restricted
+prohibitedContent:
+  - credentials
+  - providerTokens
+  - privateKeys
+  - rawPromptsContainingSecrets
+  - rawToolTranscriptsContainingSecrets
+  - personalDataNotRequiredForEvaluation
+redaction:
+  requiredBeforeArtifactUpload: true
+  failureResult: ARTIFACT_REDACTION_FAILED

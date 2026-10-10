@@ -1,5 +1,9 @@
 # История изменений
 
+## 2026-10-10 — AI Agent Governance full kit: docs/ai-agents и docs/schemas
+
+- Добавлены 10 файлов политики `docs/ai-agents/` (adapter-registry, ARTIFACT-STORE-DECISION, BASELINE-ACCEPTANCE, CONTEXT-BUDGETS, EVALUATION-COST-MODEL, EVALUATION-PROFILES, HIDDEN-CASE-POLICY, IMPLEMENTATION-STATUS, MODEL-ADAPTER-STANDARD, RETENTION-POLICY) и 2 JSON Schema файла `docs/schemas/` (action-context.schema.yaml, evidence-record.schema.yaml); все 12 зарегистрированы в DOCUMENT-REGISTRY.yaml (119 документов); статус `proposed`, кроме IMPLEMENTATION-STATUS — `architecture_status/active`; нормативные только после принятия RFC-0002. (`TestCurrentChangelogEntriesHaveEvidence`)
+
 ## 2026-10-10 — baseline calibration and reviewed Action Map store
 
 - Добавлены immutable hard-zero threshold checks, сравнение с совместимым promoted baseline, append-only run storage, median candidate, fail-closed Reviewer activation и GitLab jobs. Текущий измеритель оставляет четыре evidence hard metrics как `NOT_EVALUATED`; поэтому baseline run/promotion пока блокируются, а sample baseline из архивов не используется. (`TestCurrentChangelogEntriesHaveEvidence`)
@@ -1996,4 +2000,4 @@ production write path и import не подключены; приёмка гра
 ## 2026-10-10 — Proposed AI-agent engineering governance RFC
 
 - Added RFC-0002 and its proposed Agent Bootstrap Template to the document registry and navigation map.
-- Both remain non-normative until OWNER acceptance; no launcher, session-admission, or authority behavior is enabled by this documentation change.
+- Both remain non-normative until OWNER acceptance; no launcher, session-admission, or authority behavior is enabled by this documentation change. Clarified that Registry/Action Map selection is currently manual, Action Cards are recommended process control, and static validation does not prove model behavior. (`TestCurrentChangelogEntriesHaveEvidence`)
