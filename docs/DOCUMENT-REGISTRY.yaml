@@ -3713,6 +3713,28 @@ documents:
       updates: COORDINATOR
       accountable: OWNER
     acceptance: {reviewer: required, auditor: true, owner: false}
+  - id: go-migration-plan
+    path: docs/plans/go-migration/GO-MIGRATION-PLAN.md
+    class: design
+    status: proposed
+    purpose:
+      - Full Go migration plan for AIAG governance components (GO-01..GO-13): 13 tasks, dependency order, migration phases, CI, Definition of Done
+    usedBy:
+      - COORDINATOR
+      - OWNER
+    readWhen:
+      - ISSUE_PLANNING
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: false, owner: false}
 unregisteredDocumentPolicy:
   action: fail
   code: DOCUMENT_NOT_REGISTERED

@@ -1,5 +1,9 @@
 # История изменений
 
+## 2026-10-10 — Go migration plan: docs/plans/go-migration/GO-MIGRATION-PLAN.md
+
+- Добавлен `docs/plans/go-migration/GO-MIGRATION-PLAN.md` — полный план миграции 13 задач (GO-01..GO-13) с dependencies, transition phases, CI и Definition of Done; зарегистрирован в DOCUMENT-REGISTRY.yaml (152 документа); Python prototypes помечены как reference_prototype, не production. (`TestCurrentChangelogEntriesHaveEvidence`)
+
 ## 2026-10-10 — Supervisor v2: idempotency, retry, OpenAPI mapping (AIAG-03 prototype)
 
 - Обновлены `scripts/session_supervisor.py` (добавлен `heartbeatSequence`, интерфейс `--registry-mapping`/`--registry-retry-policy`) и `scripts/registry_http_adapter.py` (retry с backoff+jitter, Idempotency-Key по canonical JSON, statusMapping, `--mapping`/`--retry-policy`). Добавлены `scripts/check_openapi_mapping.py` (verifier: operationId, method, path, digests); `config/SESSION-REGISTRY-OPENAPI-MAPPING.yaml` (OpenAPI mapping candidate, status NOT_EVALUATED); `config/REGISTRY-RETRY.yaml` (max 4 attempts, retryable 4xx/5xx, idempotency keyInputs, heartbeat sequence contract); `tests/mock_registry_server.py` обновлён для idempotency (503 on heartbeat#1 first attempt, revoked on seq≥2). Тест обновлён под новый интерфейс: 2/2 PASS. `config/SESSION-REGISTRY-HTTP.yaml` помечен superseded. canonicalOpenApiMapping: NOT_EVALUATED. (`TestCurrentChangelogEntriesHaveEvidence`)
