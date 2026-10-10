@@ -1,5 +1,27 @@
 # История изменений
 
+## 2026-10-10 — AGENTS.md sync: RFC-0001, R142, R145 and Completion Report ([#40](https://github.com/naghuale/coord/issues/40))
+
+- (документация) `AGENTS.md`: убран абсолютный путь `COORD_GLOBAL_ROOT` из
+  переносимой нормы R143; переменная пути приведена к
+  `${COORD_GLOBAL_ROOT}/${COORD_PROJECT_NAMESPACE}`; AgentID derivation уточнён
+  через AgentSession, generation и verified key (ADR-0004).
+- (документация) `AGENTS.md`: добавлен guard в раздел Telepathy — раздел не
+  разрешает `update-all.mjs` без отдельной задачи.
+- (документация) `AGENTS.md`: добавлена полная классификация R142 (FD / TD /
+  TD-R2 / R) и условия OWNER_REQUIRED в раздел «Автономия координатора».
+- (документация) `AGENTS.md`: добавлен раздел `Project Operations Ledger (R145)` —
+  обязательные ops-ветки, append-only записи, запрет secrets в Git.
+- (документация) `AGENTS.md`: добавлен раздел «Активный контекст координатора» —
+  три слоя (permanent core, current project, task-specific), проверка 6/6 перед
+  началом работы.
+- (документация) `AGENTS.md`: условие закрытия Issue обновлено — требуется
+  независимая приёмка, CI, интеграция и Completion Report; добавлено описание
+  формата Completion Report.
+- (документация) `AGENTS.md`: правило gate-файлов уточнено — OWNER требуется
+  только при изменении нормы класса R, trust boundary или fail-closed; обычные
+  правки проходят ревью без OWNER (R127 + R142).
+
 ## 2026-10-10 — Workspace Root (R143): wrapper v1, policy и AGENTS.md ([#37](https://github.com/naghuale/coord/issues/37))
 
 - (документация) `AGENTS.md`: добавлен раздел `Workspace Root (R143)` — норма запуска
