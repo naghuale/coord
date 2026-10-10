@@ -1,5 +1,9 @@
 # История изменений
 
+## 2026-10-10 — GO-01+GO-02+GO-03+GO-04+GO-06: Go ActionContext resolver, admission, Registry client, Supervisor loop
+
+- Добавлены Go пакеты `internal/actioncontext/` (model, resolver, authority, digest — читает ACTION-MAP.yaml, DOCUMENT-REGISTRY.yaml, CONTEXT-BUDGETS.yaml; authority checks: historical/legacy/proposed/inactive; SHA-256 file digest binding; 4 тестa PASS), `internal/admission/` (bootstrap types, Validate() — containment, baseSHA, executable allowlist, side-effect gate, digest drift; 3 теста PASS), `internal/agentsession/` (Registry interface, IdempotencyKey, OpenAPIClient с retry/backoff/jitter; 1 тест PASS), `internal/supervisor/` (Loop.Run() — heartbeat ticker, generation/lease/status fencing, TerminateGroup, Registry Fence+Complete; 1 тест PASS), `internal/governanceio/` (DecodeStrict, Encode), `cmd/coord-governance/` (CLI: resolve). go.mod добавлен `gopkg.in/yaml.v3 v3.0.1`. make check PASS. (`TestCurrentChangelogEntriesHaveEvidence`)
+
 ## 2026-10-10 — Go migration plan: docs/plans/go-migration/GO-MIGRATION-PLAN.md
 
 - Добавлен `docs/plans/go-migration/GO-MIGRATION-PLAN.md` — полный план миграции 13 задач (GO-01..GO-13) с dependencies, transition phases, CI и Definition of Done; зарегистрирован в DOCUMENT-REGISTRY.yaml (152 документа); Python prototypes помечены как reference_prototype, не production. (`TestCurrentChangelogEntriesHaveEvidence`)
