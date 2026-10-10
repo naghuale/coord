@@ -1,5 +1,29 @@
 # История изменений
 
+## 2026-10-10 — ADR-0005 normative cleanup: CanonicalState composition, ST-02/ST-07 status, migration manifest (документация)
+
+- (документация) ADR-0005-STORAGE-MODEL.md: редакционная пометка добавлена;
+  все правки FD — принятые нормы ST-01–ST-07 не затронуты.
+  - Заменён стale вводный блок (canonical model «пока не реализована»); теперь:
+    «canonical snapshot и validation реализованы частично, остаются открытыми
+    production integration, migrations, backup/restore, TaskID collision».
+  - Уточнён состав CanonicalState: добавлены AgentSession/AgentSessionEvents/
+    Inbox receipts; явно отделено canonical state от ephemeral session presence.
+  - `store.CanonicalPersistence`: уточнено, что это отдельный контракт рядом с
+    legacy Run-only, а не надстройка над ним.
+  - ST-01: добавлено «durable storage commit, не Git commit»; уточнено, что state
+    и Events — части одного document, несогласованность — логическая, не файловая.
+  - ST-02: исправлен статус — «один активный writer Run на Task» убран из
+    «не реализовано» (уже реализовано); не реализовано: единый production write path.
+  - ST-03: уточнена классификация неопределённой ошибки commit.
+  - ST-04: укорочен список тестов → 2 ключевых + ссылка на component registry.
+  - ST-05: добавлен migration manifest с обязательными полями.
+  - ST-06: явно разделены daemon command serialization и store mutex.
+  - ST-07: исправлен статус — «не реализовано» → «частично»; генератор реализован,
+    transaction-boundary uniqueness отсутствует.
+  - Ограничения: исправлено противоречие «монотонно растут / очищаются при recovery»;
+    Run.Seen и canonical Inbox receipts разделены по lifecycle.
+
 ## 2026-10-10 — ADR-0004 normative cleanup: stale implementation status, readiness clarification, ADR-0009 boundary (документация)
 
 - (документация) ADR-0004-RUNTIME-AND-DAEMON-MODEL.md: редакционная пометка

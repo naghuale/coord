@@ -2,6 +2,7 @@
 
 - **Статус:** Accepted
 - **Дата:** 2026-10-07
+- **Редакционная пометка:** 2026-10-10: заменён устаревший вводный блок, уточнён состав CanonicalState, исправлены статусы ST-02 и ST-07, добавлен migration manifest, уточнены ST-01/ST-03/ST-06/ограничения, перенесены длинные test-списки ST-04 в реестр, исправлены пробелы перед ссылками — FD, принятые нормы ST-01–ST-07 не затронуты
 - **Область:** durable storage канонического runtime Coord
 - **Связанные решения:** ADR-0001 Canonical Coordination Model; ADR-0004 Runtime and Daemon Model
 
@@ -11,26 +12,24 @@ ADR-0004 требует одного владельца runtime state, атом�
 Domain Event и Outbox, exclusive ownership, fail-closed recovery и публикации
 нового состояния только после durable commit.
 
-Состояние реализации этого ADR приведено в
-[TARGET-ARCHITECTURE.md](TARGET-ARCHITECTURE.md): Run-only слой, канонический
-transaction unit, production composition `coordd` и платформы snapshot lock.
-Здесь они не дублируются.
+Canonical snapshot и значительная часть его startup/transition validation реализованы.
+
+Текущее состояние реализации, перечень доказательств и незакрытые части компонентов
+ведутся в:
+
+- `docs/architecture/COMPONENT-STATUS.yaml`;
+- `docs/ARCHITECTURE.md`;
+- `docs/TARGET-ARCHITECTURE.md`.
+
+`checkpoint.validateRuns` относится только к legacy Run-only snapshot и не заменяет
+canonical validation. Остаются открытыми production command integration, полный
+readiness/recovery контур, schema migrations, backup/restore и TaskID collision handling.
 
 Текущие Runs, role registry и executor checkpoints — разные области состояния.
 Их существование не означает, что будущая Task-модель должна продолжать
 раздельную запись. Исполнительский checkpoint и транспортные данные остаются
 вне канонической транзакции Coord, если только они не являются Coord-owned
 outbox/inbox записями.
-
-Текущая загрузка snapshot не выполняет целевые readiness-проверки ADR-0004.
-`checkpoint.validateRuns` проверяет соответствие map key полю `RunID`, ненулевые
-`Attempt` и `Fence`, а также непустой `OwnerSession`; coordinator дополнительно
-проверяет часть полей при создании. Проверки Task-level fencing, единственного
-активного writer на Task, ссылочной целостности и Event/Outbox ещё не существуют,
-поскольку соответствующая каноническая модель пока не реализована.
-
-Актуальный статус реализации зафиксирован в строках «Проверка:» этого ADR и
-в [TARGET-ARCHITECTURE.md](TARGET-ARCHITECTURE.md).
 
 ## Рассмотренные варианты
 
@@ -59,24 +58,32 @@ runtime. Multi-host/active-active этим ADR не вводится.
 Для первого production daemon использовать **один версионированный atomic
 snapshot** как backend полной канонической модели Coord. Ввести backend-neutral
 Persistence boundary, принимающую и возвращающую полную canonical State, чтобы
-позднее добавить SQLite без изменения доменных переходов. Run-only
-`store.Persistence` принимает только `map[string]fsm.Run` и остаётся недостаточным
-контрактом для этого state boundary; требуемый контракт реализован отдельно как
-`store.CanonicalPersistence` (интерфейс в `store/canonical.go`) поверх Run-only слоя.
+позднее добавить SQLite без изменения доменных переходов. Run-only `store.Persistence` принимает только `map[string]fsm.Run` и остаётся
+недостаточным контрактом для этого state boundary. `store.CanonicalPersistence`
+(интерфейс в `store/canonical.go`) является отдельным контрактом рядом с legacy
+Run-only `store.Persistence`; Run-only контракт не является canonical transaction
+boundary.
 
-Это решение не означает, что текущий Run-only `checkpoint.File` уже является
-реализацией будущего хранилища. До Task API требуется новый state document и
-transaction boundary, охватывающий как минимум:
+Требуемый state document и backend-neutral transaction boundary реализованы как
+`CanonicalState`, `store.CanonicalPersistence` и canonical snapshot backend.
+Canonical schema уже охватывает реализованные Tasks, Runs, Fence, Domain Events,
+Inbox, Outbox, AgentSession, Review/Audit и Discussion Graph data. Canonical state
+включает как минимум:
 
 - Tasks, Runs, Task.Fence и ownership/recovery records;
+- AgentSession projections и append-only AgentSessionEvents;
 - Domain Events и структурированные Results;
-- Discussion Graph, Review и Audit;
-- External References и Project Relations;
-- durable Inbox/Outbox, необходимые для идемпотентного write path.
+- ReviewResult и AuditResult;
+- Discussion Graph;
+- durable Inbox receipts и Outbox.
 
-Session presence и transport reachability остаются отдельными runtime-наблюдениями
-с определённым сроком жизни; их нельзя считать Task lifecycle или включать в
-канонический Event Log без доменного основания.
+Project Relations, External References и отдельные ещё не реализованные canonical
+slices добавляются в тот же versioned document без создания второй commit boundary.
+
+`AgentSession` registration и history — это canonical state. Session presence и
+transport reachability остаются отдельными runtime-наблюдениями с определённым
+сроком жизни; их нельзя считать Task lifecycle или включать в канонический Event
+Log без доменного основания.
 
 ## Инварианты хранения
 
@@ -90,11 +97,16 @@ Domain Event и необходимые Outbox records, затем фиксиру
 Canonical State + Domain Event + Outbox [+ Inbox receipt when required] = One Durable Commit
 ```
 
+Здесь и далее «durable commit» означает storage commit, а не Git commit.
 События не записываются отдельным JSONL append и не могут коммититься независимо
-от состояния, к которому относятся. Materialized canonical State является
-источником recovery; Event Log служит append-only журналом аудита. При
-несогласованности snapshot и журнала daemon fail-closed до readiness и не
-пересобирает одну сторону из другой. Входящий Inbox receipt включается в тот же
+от состояния, к которому относятся. В snapshot backend materialized state и
+append-only Domain Events являются частями одного canonical document и одной durable
+commit boundary. «Несогласованность state и event history» означает логическое
+нарушение инвариантов внутри загруженного document, а не рассогласование независимых
+storage-файлов. Materialized canonical State является источником recovery; Event Log
+служит append-only журналом аудита. Если daemon обнаруживает нарушение инвариантов
+при загрузке, он остаётся fail-closed до readiness и не пересобирает одну сторону
+из другой. Входящий Inbox receipt включается в тот же
 commit, если он нужен для durable deduplication обработанной команды/сообщения.
 
 Проверка: частично — `TestCanonicalStoreRejectsTaskMutationWithoutEvent`, `TestCanonicalTaskOutboxRequiresEventFromSameCommit`, `TestCanonicalCommitFailureDoesNotPublishOrContinue`; не реализовано: production daemon command boundary.
@@ -119,14 +131,17 @@ loop daemon. Правило единственного активного writer
 этого правила не обеспечивает. После падения daemon новый процесс может получить
 lock и продолжить только после проверки durable state.
 
-Проверка: частично — `TestCoorddSecondProcessCannotOpenOwnedNamespace`, `TestRefusedOwnershipFailsBeforeLoadingState`, `TestLockExclusivityOrFailClosed`; не реализовано: все изменения только через daemon command path (localchat host пишет runs.json напрямую), совместное владение namespace при переходе на canonical snapshot, один активный writer Run на Task
+Проверка: частично — `TestCoorddSecondProcessCannotOpenOwnedNamespace`, `TestRefusedOwnershipFailsBeforeLoadingState`, `TestLockExclusivityOrFailClosed`; не реализовано: единый production write path (legacy writers не переведены на daemon command path), производственная topology при переходе canonical ↔ legacy snapshot.
 
 ### ST-03 — Commit-or-reopen
 
-Состояние в памяти публикуется только после успешного durable commit. Если запись,
-rename или sync вернули ошибку с неопределённым результатом, store прекращает
-изменяющие операции. Daemon должен reopen и заново проверить snapshot до
-возобновления записи.
+Состояние в памяти публикуется только после успешного durable storage commit. Если
+storage не может доказать, что прежний snapshot остаётся авторитетным и новый
+snapshot не опубликован, результат считается неопределённым. После неопределённого
+результата store блокирует следующие mutations до reopen и повторной validation.
+Оптимизация, позволяющая продолжить после доказанно безопасной pre-publication ошибки,
+требует отдельного проверенного error-classification contract. Daemon должен reopen
+и заново проверить snapshot до возобновления записи.
 
 Проверка: частично — `TestFailedCommitRequiresReopenBeforeFurtherWrites`; не реализовано: reopen и повторная проверка snapshot daemon'ом
 
@@ -143,7 +158,7 @@ command path и полный readiness lifecycle остаются целевым
 Существующий `checkpoint.validateRuns` относится только к legacy Run snapshot и
 не является canonical validator.
 
-Проверка: частично — загрузчик проверяет schema version, EventSeq/TaskRevision, единственный начальный `TASK_CREATED`, `TaskFence` по revision, непрерывность transfer chain, итоговый `Task.Fence`, связь `Run.Fence` с последним transfer marker Run и принадлежность Event.RunID своей Task (`TestCanonicalStartupRejectsWrongFenceInEarlyRevision`, `TestCanonicalStartupRejectsWrongFenceInLatestRevision`, `TestCanonicalStartupRejectsMissingFenceBumpOnTransfer`, `TestCanonicalStartupRejectsExtraFenceBumpWithoutTransfer`, `TestCanonicalStartupRejectsTwoTransferMarkersInOneRevision`, `TestCanonicalStartupRejectsSecondEventInCreationRevision`, `TestCanonicalStartupRejectsTransferMarkerWithoutRunID`, `TestCanonicalStartupRejectsFenceOverflow`, `TestCanonicalStartupRejectsFinalFenceDifferentFromTask`, `TestCanonicalStartupRejectsSecondTaskCreated`, `TestCanonicalStartupRejectsLateTaskCreated`, `TestCanonicalStartupRejectsEventRunIDOwnedByAnotherTask`, `TestCanonicalStartupRejectsRunFenceDifferentFromLatestTransfer`, `TestCanonicalStartupRejectsTaskScopedRunWithoutTransferMarker`, `TestCanonicalStartupAcceptsFenceSnapshotsAcrossTransferAndRecovery`, `TestCanonicalFileRejectsTransferredV1WithoutFenceAndPreservesSource`). Остальные проверки формата, FSM и ссылок покрыты перечисленными выше тестами; не реализовано: полная readiness integration и production command path.
+Проверка: частично — `TestCanonicalStartupRejectsMissingFenceBumpOnTransfer`, `TestCanonicalStartupAcceptsFenceSnapshotsAcrossTransferAndRecovery`; полный список evidence — component `canonical-persistence` в `docs/architecture/COMPONENT-STATUS.yaml`; не реализовано: полная readiness integration и production command path.
 
 ### ST-05 — Миграции
 
@@ -161,6 +176,12 @@ Task требуется явная проверенная mapping table; есл�
 неоднозначна, импорт не создаёт каноническую Task и daemon остаётся not-ready
 для этого набора данных.
 
+Каждая миграция создаёт migration manifest, содержащий минимум: исходный canonical
+path; backup path; исходную и целевую schema version; digest и размер backup; время
+создания; migration identifier; результат sync и verification. Существующий backup
+другой миграции не перезаписывается. Точный формат manifest определяется migration
+design.
+
 Проверка: не реализовано
 
 ### ST-06 — Fencing и concurrency
@@ -172,7 +193,11 @@ boundary. Проверка актуального `Task.Fence` и запись �
 snapshot storage. При добавлении SQLite fencing/CAS переносится в транзакционное
 conditional update; он не вычисляется из `max(Run.Fence)`.
 
-Проверка: частично — storage transition сериализован store mutex и ownership lock; change-time transfer/recovery проверяется `TestCanonicalTransitionFirstAssignmentIncrementsTaskFence`, `TestCanonicalTransitionRecoveryPreservesAttemptAndIncrementsTaskFence`, `TestCanonicalTransitionRoleHandoffPreservesWorkflowAttempt`, `TestCanonicalTransitionReworkIncrementsAttemptAndFence`, `TestCanonicalTransitionRetryPreservesAttemptAndTaskFence`; startup проверяет цепочку event fence и снимок каждого Run; не реализовано: production command path и supervisor stop proof до передачи.
+Daemon command boundary сериализует canonical mutations внутри единственного runtime
+owner. Canonical store mutex является защитой реализации persistence boundary, но не
+заменяет command authorization, scheduling или workflow ownership. Snapshot storage
+обеспечивает durable commit, а daemon обеспечивает логический CAS и порядок команд.
+Проверка: частично — `TestCanonicalTransitionFirstAssignmentIncrementsTaskFence`, `TestCanonicalTransitionReworkIncrementsAttemptAndFence`; полный список evidence — component `task-wide-fencing` в `docs/architecture/COMPONENT-STATUS.yaml`; не реализовано: production command path, supervisor stop proof до передачи.
 
 ### ST-07 — Уникальность TaskID
 
@@ -182,7 +207,7 @@ backend дополнительно задаёт native unique constraint. Есл
 коллизию ULID, Coord генерирует другой ID и повторяет транзакцию; запись события
 и Outbox для неуспешной попытки не сохраняется.
 
-Проверка: не реализовано
+Проверка: частично — `TestGeneratorConcurrentCallsAreUnique`, `TestGeneratorProducesCanonicalRoundTrippableID`; не реализовано: проверка коллизии TaskID при canonical Task creation под transaction boundary, повтор генерации при столкновении, отсутствие Event/Outbox от неуспешной попытки, propagation ошибки entropy exhaustion в Task creation.
 
 ## Ограничения и переход к БД
 
@@ -197,15 +222,16 @@ append-only event log из E событий последовательные п�
 транзакционный backend полный журнал переносится без усечения и остаётся в той
 же транзакционной границе с State и Outbox. Компакция допустима только по
 отдельному ADR, который сохраняет проверяемую полную историю и атомарность.
-Durable Inbox receipts и `Run.Seen` также участвуют в дедупликации и могут
-расти вместе с числом принятых сообщений. Их нельзя удалять или ограничивать
-простым TTL/окном без доказательства, что replay старого сообщения не повторит
-переход или внешний результат. До отдельной политики дедупликации рост Inbox и
-`Run.Seen` остаётся измеряемым ограничением snapshot; перенос на SQLite сам по
-себе не разрешает их pruning. Обе карты растут монотонно вместе с числом принятых
-сообщений и очищаются только при recovery, поэтому это то же самое известное
-ограничение P2 «Рост дедупликации `Run.Seen`» из ROADMAP, а не отдельная проблема
-хранилища: изменение snapshot backend его не снимает.
+Durable Inbox receipts и `Run.Seen` также участвуют в дедупликации и могут расти
+вместе с числом принятых сообщений. Их нельзя удалять или ограничивать простым
+TTL/окном без доказательства, что replay старого сообщения не повторит переход или
+внешний результат. `Run.Seen` растёт монотонно в пределах одного Run; canonical
+Inbox receipts могут жить дольше Run и имеют отдельный lifecycle и retention policy.
+Рост `Run.Seen` связан с известным P2-ограничением «Рост дедупликации `Run.Seen`»
+из ROADMAP. Canonical Inbox receipts создают сходное ограничение, но их scope,
+retention и recovery semantics должны оцениваться отдельно. До принятия отдельной
+политики дедупликации рост обоих остаётся измеряемым ограничением snapshot; перенос
+на SQLite сам по себе не разрешает pruning ни одной структуры.
 
 До production rollout должны быть заданы и измерены пределы размера state,
 commit latency и времени восстановления; транзакционный backend требуется до
