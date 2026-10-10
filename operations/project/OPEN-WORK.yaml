@@ -28,11 +28,11 @@ completedThisSession:
     note: "10-point normative update: autonomy presumption, priority order, false-choice ban, OWNER_NOTIFICATION, Decision Trace, prohibited OWNER reasons, new SM states, behavioral scenarios, metrics"
 
   - issue: 42
-    state: COMPLETE
-    commits: [cd7aa5b, a261fc3]
+    state: REVIEW_ROUND_2
+    commits: [cd7aa5b, a261fc3, c8c1416]
     mergedTo: p0-2-task
     ci: PENDING
-    note: "Shadow Validation (ADR-0001 step 10): shadowval package, 12 tests, false equality rejection; review pending"
+    note: "Shadow Validation: CHANGES_REQUIRED from Codex addressed (deep-snapshot mutation detection); round 2 sent"
     completionReport: "https://github.com/naghuale/coord/issues/42#issuecomment-6095308291"
 
   - issue: 41
