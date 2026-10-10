@@ -52,7 +52,7 @@ properties:
 
   workspace:
     type: object
-    required: [projectId, localNamespace, sessionCwd, assignedWorktree]
+    required: [projectId, localNamespace, launchCwd, assignedWorktree]
     properties:
       projectId:
         type: string
@@ -60,27 +60,30 @@ properties:
       localNamespace:
         type: string
         example: workspace-01
-      sessionCwd:
+      launchCwd:
         type: string
-        description: Launch cwd for ALL sessions of this project
-        example: /Users/andreybabenko/Downloads/workspace/workspace-01
+        description: >
+          Session launch cwd — equals globalRoot, same for ALL roles and ALL projects.
+          macOS: /Users/<user>/Downloads/workspace
+          Linux: /home/<user>/workspace
+        example: /Users/andreybabenko/Downloads/workspace
       assignedWorktree:
         type: string
-        description: Absolute path to the worktree for this task
-        example: /Users/andreybabenko/Downloads/workspace/worktrees/workspace-01/issue-35
+        description: Absolute path under projectRoot/worktrees/
+        example: /Users/andreybabenko/Downloads/workspace/workspace-01/worktrees/issue-35
       operationsWorktree:
         type: string
-        description: Absolute path to the role's ops ledger worktree
-        example: /Users/andreybabenko/Downloads/workspace/worktrees/workspace-01/operations-executor
+        description: Absolute path to the role's ledger worktree
+        example: /Users/andreybabenko/Downloads/workspace/workspace-01/worktrees/operations-executor
       tempRoot:
         type: string
         example: /Users/andreybabenko/Downloads/workspace/workspace-01/.scratch/tmp
     note: >
-      sessionCwd != assignedWorktree.
-      The agent launches from sessionCwd (project root) and accesses
+      launchCwd != assignedWorktree != projectRoot.
+      The agent launches from launchCwd (globalRoot) and accesses
       assignedWorktree via absolute paths and git -C.
-      The concept of "agent slot" (workspace-01/codex, workspace-01/opencode)
-      as launch directory is DEPRECATED. All roles launch from sessionCwd.
+      The concept of per-role launch subdirectories (workspace-01/codex,
+      workspace-01/opencode) is REMOVED. All roles use launchCwd = globalRoot.
 
   allowedFiles:
     type: array

@@ -4,7 +4,6 @@ kind: ProjectIdentity
 metadata:
   projectId: coord
   displayName: Coord
-  recordedAt: 2026-10-10
 
 repository:
   canonicalUrl: https://github.com/naghuale/coord.git
@@ -22,13 +21,19 @@ operations:
   ledger: docs/operations/OPERATIONS-LEDGER.md
 
 workspacePolicy:
-  allSessionsLaunchFromProjectRoot: true
+  allAgentsLaunchFromGlobalRoot: true
+  projectFilesStayUnderProjectRoot: true
+  worktreesStayUnderProjectRoot: true
+  tasksStayUnderProjectRoot: true
   systemTmp: deny
-  directWorktreeLaunch: deny
   note: >
-    All agent sessions for this project launch from {globalRoot}/{localNamespace}.
-    The assigned worktree is passed via WorkspaceBinding, not via session cwd.
-    Agents use absolute paths and `git -C <worktree>` to interact with assigned trees.
+    Policy is platform-agnostic. The globalRoot path is machine-specific
+    and stored only in the local projects.yaml, never in this file.
+    On any machine: all agent sessions launch from globalRoot
+    (e.g., /Users/user/Downloads/workspace on macOS,
+    /home/user/workspace on Linux, C:\Users\user\workspace on Windows).
+    ProjectID + canonicalUrl + Git object identity define the project;
+    workspace-NN is a local binding.
 
 documents:
   agents: AGENTS.md
@@ -37,9 +42,3 @@ documents:
   targetArchitecture: docs/TARGET-ARCHITECTURE.md
   changelog: CHANGELOG.md
   decisions: docs/decisions/
-
-localBinding:
-  note: >
-    Local namespace (workspace-NN) is stored only in projects.yaml on the local machine.
-    It is NOT part of project identity. ProjectID + canonicalUrl + Git object identity
-    define the project. A different machine uses a different namespace; projectId stays stable.
