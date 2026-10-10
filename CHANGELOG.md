@@ -1,5 +1,16 @@
 # История изменений
 
+## 2026-10-10 — Reject whitespace AgentID in ApplyAgentCommand ([#36](https://github.com/naghuale/coord/issues/36))
+
+- (код) Два fail-closed `strings.TrimSpace` check для `session.AgentID` и
+  `run.RoleSelection.AgentID`; отклонение с `ErrAgentCommandMissingAgentID` до
+  replay, handler и durable write
+  (`TestAgentCommandRejectsWhitespaceAgentIDWithoutWriting`, subtests:
+  `session_AgentID`, `run_role_selection_AgentID`).
+- (документация) TD решение R142/R116 для #36 записано в
+  `docs/plans/p0-2-task/AGENT-COMMAND-BOUNDARY.md`; `TrimSpace` используется
+  только для проверки пустоты, не для нормализации AgentID.
+
 ## 2026-10-10 — Remove unreachable RoleSelection nil guard ([#35](https://github.com/naghuale/coord/issues/35))
 
 - (код) Удалён недостижимый nil `RoleSelection` guard из `validateAgentCommandRoleStage`;

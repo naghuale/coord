@@ -99,7 +99,7 @@ func (s *CanonicalStore) ApplyAgentCommand(frame AgentCommandFrame, id taskid.ID
 	if !verifiedPublicKey.Equal(ed25519.PublicKey(session.PublicKey)) {
 		return InboxReceipt{}, false, ErrAgentCommandUntrustedSignature
 	}
-	if session.AgentID == "" {
+	if strings.TrimSpace(session.AgentID) == "" {
 		return InboxReceipt{}, false, ErrAgentCommandMissingAgentID
 	}
 
@@ -140,7 +140,7 @@ func (s *CanonicalStore) ApplyAgentCommand(frame AgentCommandFrame, id taskid.ID
 	if e.Attempt != run.Attempt {
 		return InboxReceipt{}, false, ErrAgentCommandAttemptMismatch
 	}
-	if run.RoleSelection.AgentID == "" {
+	if strings.TrimSpace(run.RoleSelection.AgentID) == "" {
 		return InboxReceipt{}, false, ErrAgentCommandMissingAgentID
 	}
 	if run.RoleSelection.AgentID != session.AgentID {

@@ -958,6 +958,63 @@ func TestAgentCommandRejectsMissingRoleSelectionBeforeRoleStage(t *testing.T) {
 	assertAgentCommandRejectionUnchanged(t, s, p, id, clock, before, diskBefore, graphBefore, 0)
 }
 
+func TestAgentCommandRejectsWhitespaceAgentIDWithoutWriting(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		mutate func(*CanonicalState)
+	}{
+		{"session_AgentID", func(state *CanonicalState) {
+			for address, session := range state.AgentSessions {
+				if session.AgentID == "agent-executor" {
+					session.AgentID = " \t"
+					state.AgentSessions[address] = session
+				}
+			}
+		}},
+		{"run_role_selection_AgentID", func(state *CanonicalState) {
+			run := state.Runs["run-1"]
+			run.RoleSelection.AgentID = " \t"
+			state.Runs[run.RunID] = run
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			state := taskStateWithRun()
+			clock := &canonicalTestClock{now: time.Unix(5000, 0).UTC()}
+			p := &canonicalMemory{state: state}
+			s := newCanonicalWithTestClock(t, p, clock)
+			detached, err := copyCanonicalState(s.state)
+			if err != nil {
+				t.Fatal(err)
+			}
+			s.state = detached
+			tc.mutate(&s.state)
+			before, err := copyCanonicalState(s.state)
+			if err != nil {
+				t.Fatal(err)
+			}
+			diskBefore, err := copyCanonicalState(p.state)
+			if err != nil {
+				t.Fatal(err)
+			}
+			id := taskid.ID("task_01ARZ3NDEKTSV4RRFFQ69G5FAV")
+			graphBefore, err := s.DiscussionGraph(id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			frame := validAgentCommandFrame(state, "whitespace-agent-id-"+tc.name)
+			called := false
+			_, replayed, err := s.ApplyAgentCommand(frame, id, state.Tasks[id].Revision, func(*CanonicalState, fsm.Run) (InboxReceipt, error) {
+				called = true
+				return InboxReceipt{}, nil
+			})
+			if !errors.Is(err, ErrAgentCommandMissingAgentID) || replayed || called {
+				t.Fatalf("whitespace AgentID err=%v replayed=%v handler=%v; want MissingAgentID before replay/handler", err, replayed, called)
+			}
+			assertAgentCommandRejectionUnchanged(t, s, p, id, clock, before, diskBefore, graphBefore, 0)
+		})
+	}
+}
+
 func assertAgentCommandRejectionUnchanged(t *testing.T, s *CanonicalStore, p *canonicalMemory, id taskid.ID, clock *canonicalTestClock, before, diskBefore CanonicalState, graphBefore task.DiscussionGraph, saves int) {
 	t.Helper()
 	after, err := s.CanonicalSnapshot()
