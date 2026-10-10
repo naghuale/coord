@@ -214,7 +214,7 @@ Stage и принадлежность Run (см. §1.1 и итог под таб
 остаётся предметом P0-3 вместе с RT-06 в ADR-0004 и разделом «Task-wide Fence и
 ownership» TASK-MODEL.
 
-#### Журнал TD по R142: #35
+#### Журнал TD по R142: #35 и #36
 
 - **TD #35 (вариант a):** удалить мёртвую проверку `RoleSelection == nil` из
   `validateAgentCommandRoleStage`. Единственный production call site —
@@ -225,6 +225,17 @@ ownership» TASK-MODEL.
   `TestAgentCommandRejectsMissingRoleSelectionBeforeRoleStage` закрепляет точную
   ошибку и отсутствие побочных эффектов. Восстановление guard внутри helper —
   эквивалентная мутация, поскольку helper недостижим с nil selection.
+
+- **TD #36 (вариант a):** добавить `strings.TrimSpace` к двум проверкам `AgentID`
+  (в `session.AgentID` и `run.RoleSelection.AgentID`) до replay, handler и durable
+  write. `TrimSpace` используется только для проверки пустоты — исходный AgentID
+  в state не нормализуется и не заменяется (R116, TM-28). Возвращается
+  `ErrAgentCommandMissingAgentID`, новая ошибка не вводится. Тест
+  `TestAgentCommandRejectsWhitespaceAgentIDWithoutWriting` закрепляет оба checkpoint
+  двумя независимыми подтестами (`session_AgentID`, `run_role_selection_AgentID`);
+  каждый подтест использует `assertAgentCommandRejectionUnchanged` для доказательства
+  отсутствия побочных эффектов на Task, Events, Inbox, Outbox, durable state и
+  Discussion Graph. Мутация: возврат к `== ""` вместо `TrimSpace` убивается тестом.
 
 ### 2.1. Как fencing отсекает старого writer
 
@@ -508,8 +519,10 @@ replay в начале `ApplyInboxCommand`),
 | 7 | `TestAgentCommandRejectsStaleSessionGeneration` (вместе с R114) | сравнение поколения сессии отключено |
 | 8 | `TestAgentCommandIgnoresActorIDFromBody` | actor берётся из тела команды |
 | 8 | `TestAgentCommandRejectsRoleStageMismatch` | проверка соответствия роли Stage отключена |
-| 8 | `TestAgentCommandRejectsMissingAgentIDForEveryRole` (R116) | непустой `AgentID` требуется только для Reviewer/Auditor |
+| 8 | `TestAgentCommandRejectsMissingAgentIDForEveryRole` (R116) и `TestAgentCommandRejectsWhitespaceAgentIDWithoutWriting` (TD #36, оба подтеста) | непустой `AgentID` требуется только для Reviewer/Auditor; пробельный AgentID принимается как непустой |
 | порядок | `TestAgentCommandRejectsMissingRoleSelectionBeforeRoleStage` (TD #35) | nil RoleSelection доходит до role-stage helper (эквивалентное восстановление удалённого helper guard не меняет поведение; тест фиксирует отказ `WrongSession` до helper) |
+| 8 мутация (TD #36) | `TestAgentCommandRejectsWhitespaceAgentIDWithoutWriting/session_AgentID` | возврат к `session.AgentID == ""` вместо TrimSpace пропускает пробельный AgentID сессии |
+| 8 мутация (TD #36) | `TestAgentCommandRejectsWhitespaceAgentIDWithoutWriting/run_role_selection_AgentID` | возврат к `run.RoleSelection.AgentID == ""` вместо TrimSpace пропускает пробельный AgentID роли |
 | 8 | `TestAgentCommandAppliesRoleIndependenceFromCommittedRun` | сверка `AgentID` с назначенной ролью отключена |
 | 9 | `TestAgentCommandReplayReturnsPriorReceiptWithoutWriting` | повторная доставка создаёт новый commit или второй event |
 | 9 | `TestAgentCommandReplayAfterRevisionGrowthReturnsPriorReceipt` | повтор уже применённой команды после роста `Task.Revision` отклоняется как устаревший вместо возврата прежнего receipt |

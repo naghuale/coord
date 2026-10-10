@@ -1,0 +1,49 @@
+decision: TD-issue-36
+class: TD-R2
+issue: 36
+status: accepted
+authority: R142
+norms: [R116, TM-28]
+
+context: >
+  ApplyAgentCommand checks session.AgentID == "" and run.RoleSelection.AgentID == ""
+  before replay, handler, and durable write. An AgentID consisting only of whitespace
+  (e.g., " \t") passes these checks while being semantically empty. R116 requires a
+  non-empty AgentID for any Task-scoped Run accepting an agent command. TM-28 records
+  this as requirement for the canonical command boundary.
+
+selectedOption: >
+  Use strings.TrimSpace to test emptiness at both checkpoint locations.
+  TrimSpace is used ONLY as a predicate: the original AgentID is never
+  normalized, stored, or replaced. The existing error ErrAgentCommandMissingAgentID
+  is returned; no new error type is introduced.
+
+securityImpact: >
+  Both checks are fail-closed and execute before replay, handler invocation,
+  and any durable write. A whitespace AgentID now produces the same
+  ErrAgentCommandMissingAgentID as a fully empty one.
+  No state, events, inbox, outbox, or Discussion Graph changes occur on rejection.
+  TrimSpace is a pure predicate and does not affect the stored AgentID value.
+
+mutation:
+  removeSessionTrimSpace:
+    description: Revert strings.TrimSpace(session.AgentID) back to session.AgentID == ""
+    result: killed
+    killedBy: TestAgentCommandRejectsWhitespaceAgentIDWithoutWriting/session_AgentID
+  removeRoleSelectionTrimSpace:
+    description: Revert strings.TrimSpace(run.RoleSelection.AgentID) back to run.RoleSelection.AgentID == ""
+    result: killed
+    killedBy: TestAgentCommandRejectsWhitespaceAgentIDWithoutWriting/run_role_selection_AgentID
+
+review:
+  class: R2
+  requirements:
+    - independent Reviewer (different agent_id from any Executor of this Task)
+    - independent Auditor (different agent_id from any Executor and from Reviewer)
+    - two negative subtests confirming each checkpoint independently
+    - mutation per checkpoint (both killed)
+    - proof of no side effects via assertAgentCommandRejectionUnchanged
+
+rollback: >
+  Revert TrimSpace to == "" at both locations.
+  No schema changes, no new error types; rollback is a 2-line diff.
