@@ -115,15 +115,23 @@ _safe_mkdir() {
 
 SCRATCH_ROOT="$PROJECT_REAL/.scratch"
 TMP_ROOT="$SCRATCH_ROOT/tmp"
-SESSION_ROOT="$TMP_ROOT/sessions/$BINDING/$GENERATION"
+SESSIONS_DIR="$TMP_ROOT/sessions"
+BINDING_DIR="$SESSIONS_DIR/$BINDING"
+SESSION_ROOT="$BINDING_DIR/$GENERATION"
 RUNS_ROOT="$SESSION_ROOT/runs"
 SOCKET_ROOT="$TMP_ROOT/s"
 
+# Each directory component is verified independently: symlink check → mkdir →
+# pwd -P containment → chmod.  Calling _safe_mkdir with a multi-level path
+# would let mkdir -p traverse a pre-planted symlink in an intermediate
+# component before the containment check fires.
 _safe_mkdir "$SCRATCH_ROOT" ".scratch"
 _safe_mkdir "$TMP_ROOT"     ".scratch/tmp"
 _safe_mkdir "$SOCKET_ROOT"  ".scratch/tmp/s"
-_safe_mkdir "$SESSION_ROOT" "sessions/$BINDING/$GENERATION"
-_safe_mkdir "$RUNS_ROOT"    "sessions/$BINDING/$GENERATION/runs"
+_safe_mkdir "$SESSIONS_DIR" ".scratch/tmp/sessions"
+_safe_mkdir "$BINDING_DIR"  ".scratch/tmp/sessions/$BINDING"
+_safe_mkdir "$SESSION_ROOT" ".scratch/tmp/sessions/$BINDING/$GENERATION"
+_safe_mkdir "$RUNS_ROOT"    ".scratch/tmp/sessions/$BINDING/$GENERATION/runs"
 
 # mktemp receives an approved explicit template; does not consult /tmp.
 RUN_TMP="$(mktemp -d "$RUNS_ROOT/XXXXXXXX")"

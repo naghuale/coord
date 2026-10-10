@@ -121,9 +121,16 @@ symlink_escape_test() {
   rm -rf "$link_path"
   mkdir -p "$(dirname "$link_path")"
   ln -s "$OUTSIDE" "$link_path"
+  local escaped=false
   if "$SHIM" --project workspace-01 --binding b1 --generation g1 -- true 2>/dev/null; then
     fail "$label (symlink escape not detected)"
-  else
+    escaped=true
+  fi
+  # Verify that nothing was created in $OUTSIDE (no out-of-project write).
+  if [[ -n "$(ls -A "$OUTSIDE" 2>/dev/null)" ]]; then
+    fail "$label (out-of-project write detected in OUTSIDE: $(ls -A "$OUTSIDE"))"
+    rm -rf "$OUTSIDE"/*  2>/dev/null || true
+  elif [[ "$escaped" == "false" ]]; then
     pass "$label"
   fi
   # Clean up for the next test.
