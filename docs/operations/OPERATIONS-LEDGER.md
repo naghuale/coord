@@ -161,44 +161,69 @@ If CURRENT.yaml diverges from GitHub, HEAD, or CI, a `RECOVERY_CONFLICT` record 
 
 ## Completion Report
 
-After every completed task the coordinator sends the OWNER one brief Completion Report.
+After every completed task the coordinator:
+
+1. Updates the Operations Ledger (CURRENT.yaml, OPEN-WORK.yaml).
+2. Posts the Completion Report as a comment to the corresponding GitHub Issue.
+3. Closes the GitHub Issue once all close conditions are met (see below).
+
 Detailed evidence (diffs, mutation outputs, review discussion) is stored in the Operations
-Ledger and is not duplicated in the report. If OWNER action is not required, the report
-does not end with a question or a confirmation request.
+Ledger and is not duplicated in the report. The report does not end with a question or a
+confirmation request.
 
 ### Format
 
 ```
 #<issue> завершён.
 
-| Поле              | Результат                                |
+| Поле             | Результат                               |
 |---|---|
-| Integration HEAD  | `<sha>`                                  |
-| Executor          | `<session>`                              |
-| Reviewer          | `ACCEPTED`                               |
-| Auditor           | `ACCEPTED` или `N/A — <основание>`       |
-| Проверки          | `make check PASS; diff-check PASS`       |
-| CI                | `PASS`                                   |
-| Интеграция        | `fast-forward в <branch>`                |
-| Нормативный факт  | `<краткий подтверждённый результат>`     |
+| Integration HEAD | `<sha>`                                 |
+| Executor         | `<session>`                             |
+| Reviewer         | `ACCEPTED`                              |
+| Auditor          | `ACCEPTED` или `N/A — <основание>`      |
+| Проверки         | `make check PASS; diff-check PASS`      |
+| CI               | `PASS`                                  |
+| Интеграция       | `fast-forward в <branch>`               |
+| Нормативный факт | `<краткий подтверждённый результат>`    |
 
 Что изменилось: <одно предложение>.
 Что теперь работает: <одно предложение>.
 Что осталось открытым: <список или «ничего»>.
-Требуется OWNER: <да/нет и основание>.
+Требуется OWNER: <да — <основание>> или <нет>.
 
 Следующий безопасный шаг: <одно действие>.
 ```
 
+All five text fields are always present. When nothing is open, write «ничего»; when OWNER
+is not required, write «нет»; the next-action field names the next task, not a question.
+
 ### Rules
 
-- One report per completed task, sent to OWNER immediately after integration.
-- Table rows map to verifiable ledger records — do not include rows with no backing evidence.
-- `Auditor: N/A` is valid for non-TD-R2 tasks; include the basis (e.g. `N/A — not TD-R2`).
+- One report per completed task, posted to the corresponding GitHub Issue.
+- Each issue receives only its own report — do not consolidate multiple tasks into one comment.
+- Table rows map to verifiable ledger records; omit rows with no backing evidence.
+- `Auditor: N/A` is valid for non-TD-R2 tasks; state the basis (e.g. `N/A — not TD-R2`).
+  TD-R2 always requires a separate Auditor with `AUDIT_ACCEPTED`.
 - `Нормативный факт` states the confirmed behavioural change, not the intent.
-- If nothing remains open and OWNER is not required, end the report after the table.
-- The Completion Report replaces ad-hoc summary prose; do not repeat the same facts in
-  surrounding text.
+- Never duplicate: full diff, mutation logs, shell output, agent chat history, or private
+  local paths. All details are available via Operations Ledger links.
+- The report replaces ad-hoc summary prose; do not repeat the same facts in surrounding text.
+
+### Close Conditions
+
+A GitHub Issue is closed only when all of the following are true:
+
+- implementation complete
+- independent review accepted
+- required audit accepted (or N/A with reason for non-TD-R2)
+- commit published
+- CI green
+- integration completed
+- Completion Report posted as Issue comment
+
+If the task is complete but not yet integrated, set status `READY_FOR_INTEGRATION`
+and do not close the Issue yet.
 
 ## Coordinator Autonomy Under R145
 
