@@ -1,5 +1,25 @@
 # История изменений
 
+## 2026-10-10 — AGENT_INSTRUCTIONS cleanup: COORD_GLOBAL_ROOT bootstrap, legacy/canonical separation, identity (документация)
+
+- (документация) docs/AGENT_INSTRUCTIONS.md: редакционная пометка добавлена; FD.
+  - Добавлен статус-раздел: examples/agent и legacy Run protocol явно отделены от
+    canonical ApplyAgentCommand command path.
+  - Добавлен раздел «Запуск из COORD_GLOBAL_ROOT»: все сессии из COORD_GLOBAL_ROOT,
+    WorkspaceBinding отдельно; обязательные env vars; pre-assignment checklist.
+  - Agent bootstrap text: агент MUST использовать transport из assignment, не выбирать
+    самостоятельно; убрана формулировка "выбери доступный канал".
+  - Registry/supervisor: "настраивает владелец" → "уполномоченный оператор или
+    automated deployment; HUMAN_ACTION_REQUIRED, а не OWNER_REQUIRED".
+  - CLI section: переименован в "Legacy CLI"; state path исправлен на
+    COORD_PROJECT_ROOT/runtime (не внутри checkout); .coord-writer.lock помечен
+    как legacy limitation; exit-0/SUCCESS clarification поднята в начало.
+  - Telepathy section: помечен как "Legacy 0.8.0 baseline"; note об update-all.mjs.
+  - Bridge identity: убрана ambiguous "либо"; transport formirует AuthenticatedFrame;
+    coordinator.Handle не является production admission.
+  - Добавлен раздел «Process evidence и остановка»: NO_RESPONSE ≠ process exited;
+    ADR-0009 process states не текущая capability.
+
 ## 2026-10-10 — ADR-0008 normative cleanup: AC-09, CommitIntent gaps marked, Executor/Supervisor, Commit Readiness (документация)
 
 - (документация) ADR-0008-AUTONOMOUS-COMMIT.md: редакционная пометка добавлена;
