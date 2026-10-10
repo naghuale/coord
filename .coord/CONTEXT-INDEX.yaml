@@ -1,0 +1,73 @@
+apiVersion: coord.dev/v1alpha1
+kind: ContextIndex
+
+metadata:
+  projectId: coord
+  purpose: >
+    Map of authoritative sources by topic.
+    Load only the source needed for the current question — not the full index.
+
+index:
+  projectState:
+    question: "Какой HEAD, этап, активная задача, блокеры?"
+    source: ops/coord/project/operations/project/CURRENT.yaml
+
+  openWork:
+    question: "Что активно, что заблокировано, что дальше?"
+    source: ops/coord/project/operations/project/OPEN-WORK.yaml
+
+  contextCheck:
+    question: "Результат проверки полноты контекста текущей сессии"
+    source: ops/coord/project/operations/context/current.yaml
+
+  sessionManifest:
+    question: "Что конкретная сессия загрузила / что compacted?"
+    source: ops/coord/coordinator/operations/sessions/<sessionId>/CONTEXT-MANIFEST.yaml
+
+  agentRules:
+    question: "Правила работы агентов, источники истины, autonomy, commit readiness"
+    source: AGENTS.md
+
+  projectIdentity:
+    question: "ProjectID, repo URL, workspacePolicy, contextModel, ops branches"
+    source: .coord/project.yaml
+
+  taskModel:
+    question: "Task, Stage, Status, переходы, поля"
+    source: docs/TASK-MODEL.md
+
+  architecture:
+    question: "Что реализовано, номера ADR, статус компонентов"
+    source: docs/TARGET-ARCHITECTURE.md
+
+  roadmap:
+    question: "Порядок и план работ"
+    source: docs/ROADMAP.md
+
+  adrs:
+    question: "Архитектурные решения, нормы (только Accepted = норма)"
+    source: docs/adr/
+
+  defectPatterns:
+    question: "Классы дефектов, как проверять"
+    source: docs/DEFECT_PATTERNS.md
+
+  operationsLedger:
+    question: "Структура ops-веток, append-only политика, recovery"
+    source: docs/operations/OPERATIONS-LEDGER.md
+
+  workspaceBinding:
+    question: "Инвариант launchCwd==globalRoot, admission checks"
+    source: docs/operations/schemas/workspace-binding.schema.yaml
+
+  contextCheckSchema:
+    question: "Схема проверки полноты контекста (ContextCheck)"
+    source: docs/operations/schemas/context-check.schema.yaml
+
+  taskAssignment:
+    question: "Полная история задачи N, решения, SHA"
+    source: ops/coord/coordinator/operations/assignments/<issue>.yaml
+
+  changelog:
+    question: "Что изменилось и в каком issue"
+    source: CHANGELOG.md

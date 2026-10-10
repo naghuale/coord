@@ -1,0 +1,130 @@
+apiVersion: coord.dev/v1alpha1
+kind: Schema
+schemaFor: ContextCheck
+
+description: >
+  Minimal context quality check for a coordinator session.
+  Verifies required facts are present and authoritative sources are current.
+  Does not require token counting — qualitative check only.
+  Performed at: session_start, after_compaction, stage_transition, recovery, context_error.
+
+passConditions:
+  - probes: 6/6
+  - all requiredFacts.present = true
+  - missedOwnerBoundaries: 0
+  - crossProjectContextDetected: false
+  - staleAuthoritativeSourceDetected: false
+
+note: >
+  Token reduction is not a gate. A smaller context that lost a security
+  norm or missed an OWNER boundary is FAIL regardless of size.
+
+fields:
+  metadata:
+    projectId: string
+    sessionId: string
+    checkedAt: datetime
+    phase:
+      enum: [session_start, after_compaction, stage_transition, recovery, context_error]
+
+  source:
+    branch: string
+    commit: git-sha
+
+  requiredFacts:
+    projectId:
+      present: bool
+      value: string
+    sourceCommit:
+      present: bool
+      value: git-sha
+    currentStage:
+      present: bool
+      value: string
+    activeTask:
+      present: bool
+      value: string
+    blockers:
+      present: bool
+      value: list
+    nextSafeAction:
+      present: bool
+      value: string
+    ownerDecisions:
+      present: bool
+      open: list
+    knownDeviations:
+      present: bool
+      value: list
+
+  sources:
+    current:
+      path: string
+      verified: bool
+    openWork:
+      path: string
+      verified: bool
+    contextIndex:
+      path: string
+      verified: bool
+    assignment:
+      path: string
+      verified: bool
+
+  behavior:
+    unnecessaryOwnerQuestions: int
+    missedOwnerBoundaries: int
+    decisionsReversedDueToStaleContext: int
+    crossProjectContextDetected: bool
+    staleAuthoritativeSourceDetected: bool
+
+  probes:
+    items:
+      - id: project-and-head
+        question: "Какой ProjectID и исходный commit?"
+      - id: active-task
+        question: "Какая задача активна сейчас?"
+      - id: blockers
+        question: "Что блокирует следующий переход?"
+      - id: next-safe-action
+        question: "Какой следующий безопасный шаг?"
+      - id: owner-boundary
+        question: "Требуется ли сейчас решение OWNER?"
+      - id: evidence-recovery
+        question: "Можно ли восстановить доказательства последней завершённой задачи по устойчивым ссылкам?"
+    passed: int
+    total: int (always 6)
+
+  result:
+    status:
+      enum: [PASS, FAIL]
+    reason: string
+
+  recovery:
+    requiredTopic: string
+    lookup:
+      index: .coord/CONTEXT-INDEX.yaml
+      source: string
+    note: >
+      On FAIL: load only the missing source via CONTEXT-INDEX.
+      Do not reload the full project history.
+
+compactionRecord:
+  description: >
+    After task completion, remove from active context:
+    - full diff
+    - detailed logs
+    - old session addresses
+    - interim reviewer comments
+    - individual mutation results
+    - transient file SHAs
+    - rejected alternatives
+  keep:
+    completed:
+      issue: int
+      commit: git-sha
+      review: PASS | ACCEPTED
+      audit: PASS | AUDIT_ACCEPTED | "N/A"
+      ci: PASS
+      evidence:
+        - stable-reference

@@ -1,5 +1,15 @@
 # История изменений
 
+## 2026-10-10 — Project context portability: CONTEXT-INDEX and four-layer model
+
+- (документация) Добавлена `.coord/CONTEXT-INDEX.yaml` — карта авторитетных источников
+  по темам: project state, open work, task model, ADR, workspace binding и др.
+- (документация) `.coord/project.yaml`: `sessionCwdVariable: COORD_GLOBAL_ROOT` вместо
+  примеров конкретных путей; добавлена секция `contextModel` с четырьмя слоями
+  (permanentCore, currentProjectContext, currentTaskContext, archive) и правилом compaction.
+- (документация) `docs/operations/schemas/context-check.schema.yaml` — минимальная
+  схема проверки полноты контекста координатора (6 probes, requiredFacts, PASS/FAIL).
+
 ## 2026-10-10 — Reject whitespace AgentID in ApplyAgentCommand ([#36](https://github.com/naghuale/coord/issues/36))
 
 - (код) Два fail-closed `strings.TrimSpace` check для `session.AgentID` и

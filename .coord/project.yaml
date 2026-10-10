@@ -22,18 +22,46 @@ operations:
 
 workspacePolicy:
   allAgentsLaunchFromGlobalRoot: true
+  sessionCwdVariable: COORD_GLOBAL_ROOT
   projectFilesStayUnderProjectRoot: true
   worktreesStayUnderProjectRoot: true
   tasksStayUnderProjectRoot: true
   systemTmp: deny
   note: >
     Policy is platform-agnostic. The globalRoot path is machine-specific
-    and stored only in the local projects.yaml, never in this file.
-    On any machine: all agent sessions launch from globalRoot
-    (e.g., /Users/user/Downloads/workspace on macOS,
-    /home/user/workspace on Linux, C:\Users\user\workspace on Windows).
-    ProjectID + canonicalUrl + Git object identity define the project;
-    workspace-NN is a local binding.
+    and set via the COORD_GLOBAL_ROOT environment variable — never stored
+    in this file. ProjectID + canonicalUrl + Git object identity define
+    the project; workspace-NN is a local placement binding.
+
+contextModel:
+  layers:
+    - layer: 1
+      name: permanentCore
+      always: true
+      files:
+        - .coord/project.yaml
+        - AGENTS.md
+        - .coord/CONTEXT-INDEX.yaml
+    - layer: 2
+      name: currentProjectContext
+      always: true
+      files:
+        - ops/coord/project/operations/project/CURRENT.yaml
+        - ops/coord/project/operations/project/OPEN-WORK.yaml
+        - ops/coord/project/operations/context/current.yaml
+    - layer: 3
+      name: currentTaskContext
+      loadOnDemand: true
+      files:
+        - ops/coord/coordinator/operations/assignments/<task>.yaml
+    - layer: 4
+      name: archive
+      loadOnDemand: true
+      note: "Load only on explicit recovery or cross-reference request"
+  index: .coord/CONTEXT-INDEX.yaml
+  compactionRule: >
+    If information is not needed for the next safe action and is
+    accessible via a stable reference, it does not remain in the active context.
 
 documents:
   agents: AGENTS.md
