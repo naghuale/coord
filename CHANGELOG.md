@@ -1,5 +1,9 @@
 # История изменений
 
+## 2026-10-10 — OS-level sandbox и AgentSession Registry admission (AIAG-03 prototype)
+
+- Добавлены `scripts/sandbox_exec.py` (Bubblewrap fail-closed execution), `scripts/session_registry_client.py` (adapter interface), `scripts/launch_sandboxed_session.py` (combined launcher), `scripts/mock_session_registry.py` (test-only); `config/SANDBOX-PROFILES.yaml` (evaluation-linux, production-linux), `config/SESSION-REGISTRY-CONTRACT.yaml` (admit/heartbeat/complete/fence contract); `docs/SECURITY-BOUNDARY.md`; `tests/test_sandbox_session_registry.py` (2 тестa); `.gitlab/ci/sandbox-session-registry.yml`; зарегистрированы sandbox-profiles, session-registry-contract, security-boundary в DOCUMENT-REGISTRY.yaml (144 документа); Makefile target `check-sandbox-session-registry` добавлен в `check`. Статус proposed; production Registry adapter и supervisor loop не реализованы. (`TestCurrentChangelogEntriesHaveEvidence`)
+
 ## 2026-10-10 — ActionContext resolver и fail-closed launcher (AIAG-03 prototype)
 
 - Добавлены `scripts/governance_lib.py`, `scripts/resolve-action-context`, `scripts/check-action-context`, `scripts/build-agent-bootstrap`, `scripts/launch-agent` — рабочий прототип resolver и fail-closed launcher из coord-resolver-launcher-kit; `config/CONTEXT-BUDGETS.yaml` (operational budgets); `docs/operations/ACTION-MAP.yaml` (машиночитаемая YAML-проекция ACTION-MAP.md, proposed); `tests/test_resolver_launcher.py` (5 тестов); `examples/project/` (test fixtures); `examples/*.yaml`; `.gitlab/ci/resolver-launcher.yml`; `action-map-yaml` зарегистрирован в DOCUMENT-REGISTRY.yaml (141 документ); Makefile target `check-resolver-launcher` добавлен в `check`; launcher enforcement не реализован до AIAG-04. (`TestCurrentChangelogEntriesHaveEvidence`)

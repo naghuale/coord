@@ -1,0 +1,31 @@
+apiVersion: coord.dev/v1alpha1
+kind: AgentSessionRegistryAdapterContract
+interfaceVersion: v1
+commands:
+  admit:
+    requestKind: AgentSessionAdmissionRequest
+    responseKind: AgentSessionAdmissionResponse
+  heartbeat:
+    requestKind: AgentSessionHeartbeatRequest
+    responseKind: AgentSessionHeartbeatResponse
+  complete:
+    requestKind: AgentSessionCompleteRequest
+    responseKind: AgentSessionCompleteResponse
+  fence:
+    requestKind: AgentSessionFenceRequest
+    responseKind: AgentSessionFenceResponse
+requiredAdmissionResponse:
+  status: [ADMITTED, REJECTED, FENCED, NOT_EVALUATED]
+  fields: [sessionId, generation, leaseTokenDigest, registryRevision, status]
+launcherPolicy:
+  acceptedStatus: ADMITTED
+  requireExactProjectId: true
+  requireExactAssignmentId: true
+  requireGeneration: true
+  requireLeaseTokenDigest: true
+  requireRegistryRevision: true
+  rejectNotEvaluated: true
+security:
+  rawLeaseTokenInArtifacts: prohibited
+  credentialsInRequestFiles: prohibited
+  adapterDigestRequired: true

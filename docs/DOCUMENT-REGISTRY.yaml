@@ -3477,6 +3477,77 @@ documents:
       updates: COORDINATOR
       accountable: OWNER
     acceptance: {reviewer: required, auditor: false, owner: false}
+  - id: sandbox-profiles
+    path: config/SANDBOX-PROFILES.yaml
+    class: process
+    status: proposed
+    purpose:
+      - OS-level sandbox profile definitions (evaluation-linux, production-linux) for agent execution via Bubblewrap
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+    readWhen:
+      - SESSION_START
+      - ISSUE_PLANNING
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: true, owner: false}
+  - id: session-registry-contract
+    path: config/SESSION-REGISTRY-CONTRACT.yaml
+    class: process
+    status: proposed
+    purpose:
+      - AgentSession Registry adapter contract: operations (admit/heartbeat/complete/fence), required response fields, launcher policy, security constraints
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+    readWhen:
+      - SESSION_START
+      - ISSUE_PLANNING
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: true, owner: false}
+  - id: security-boundary
+    path: docs/SECURITY-BOUNDARY.md
+    class: process
+    status: proposed
+    purpose:
+      - Describes OS sandbox and AgentSession Registry boundary; Linux Bubblewrap backend details, macOS/Windows status, remaining limitations
+    usedBy:
+      - COORDINATOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - REVIEW
+      - AUDIT
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: true, owner: false}
 unregisteredDocumentPolicy:
   action: fail
   code: DOCUMENT_NOT_REGISTERED

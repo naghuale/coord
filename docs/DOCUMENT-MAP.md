@@ -119,6 +119,9 @@ State Machine и принятыми процессными нормами.
 - [AI Agent Governance Work Plan](plans/ai-agent-governance/GITLAB-WORK-PLAN.md) — initiative, milestones, AIAG-01..AIAG-18, dependency graph, board columns (`proposed`); issues в `docs/plans/ai-agent-governance/issues/`
 - [Priority and Estimation](plans/ai-agent-governance/PRIORITY-AND-ESTIMATION.md) — priority rules and relative complexity estimates for AIAG issues (`proposed`)
 - [ActionContext Resolver + Launcher](operations/ACTION-MAP.yaml) — машиночитаемая YAML-проекция ACTION-MAP.md (`proposed`); используется `scripts/resolve-action-context` и `scripts/launch-agent`
+- [OS Sandbox Profiles](../config/SANDBOX-PROFILES.yaml) — профили Bubblewrap sandbox (evaluation-linux, production-linux) для `scripts/sandbox_exec.py` (`proposed`)
+- [AgentSession Registry Contract](../config/SESSION-REGISTRY-CONTRACT.yaml) — контракт адаптера registry: операции, поля ответа, политика launcher (`proposed`)
+- [Security Boundary](SECURITY-BOUNDARY.md) — граница OS sandbox и AgentSession Registry; Linux backend, статус macOS/Windows, ограничения (`proposed`)
 
 ## Приоритет источников
 

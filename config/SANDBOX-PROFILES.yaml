@@ -1,0 +1,49 @@
+apiVersion: coord.dev/v1alpha1
+kind: SandboxProfiles
+profiles:
+  evaluation-linux:
+    os: linux
+    backend: bubblewrap
+    network: deny
+    writableRoots:
+      - ${COORD_ASSIGNED_WORKTREE}
+      - ${COORD_PROJECT_ROOT}/.scratch/tmp
+    readOnlyRoots:
+      - ${COORD_REPOSITORY_ROOT}
+    environmentAllowlist:
+      - PATH
+      - LANG
+      - LC_ALL
+      - TZ
+      - HOME
+      - COORD_PROJECT_ROOT
+      - COORD_REPOSITORY_ROOT
+      - COORD_ASSIGNED_WORKTREE
+      - COORD_ACTION_CONTEXT
+      - COORD_AGENT_SESSION_ID
+      - COORD_AGENT_GENERATION
+    limits:
+      cpuSeconds: 900
+      addressSpaceBytes: 4294967296
+      openFiles: 256
+      processes: 128
+    require:
+      userNamespace: true
+      networkNamespace: true
+      pidNamespace: true
+      noNewPrivileges: true
+    failIfBackendUnavailable: true
+
+  production-linux:
+    os: linux
+    backend: bubblewrap
+    network: deny
+    writableRoots:
+      - ${COORD_ASSIGNED_WORKTREE}
+      - ${COORD_PROJECT_ROOT}/.scratch/tmp
+    readOnlyRoots:
+      - ${COORD_REPOSITORY_ROOT}
+    environmentAllowlist: [PATH, LANG, LC_ALL, TZ, HOME, COORD_PROJECT_ROOT, COORD_REPOSITORY_ROOT, COORD_ASSIGNED_WORKTREE, COORD_ACTION_CONTEXT, COORD_AGENT_SESSION_ID, COORD_AGENT_GENERATION]
+    limits: {cpuSeconds: 1800, addressSpaceBytes: 8589934592, openFiles: 512, processes: 256}
+    require: {userNamespace: true, networkNamespace: true, pidNamespace: true, noNewPrivileges: true}
+    failIfBackendUnavailable: true
