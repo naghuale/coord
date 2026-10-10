@@ -1,5 +1,9 @@
 # История изменений
 
+## 2026-10-10 — AI Agent Governance work plan: docs/plans/ai-agent-governance и .github/ISSUE_TEMPLATE
+
+- Добавлены 18 Issue-описаний AIAG-01..AIAG-18 (`docs/plans/ai-agent-governance/issues/`), work plan (`GITLAB-WORK-PLAN.md`), приоритеты и оценки (`PRIORITY-AND-ESTIMATION.md`), `README.md`, `labels.txt`, `issues.csv`; 6 GitHub Issue templates `.github/ISSUE_TEMPLATE/` (AI_Agent_Implementation, AI_Agent_Decision_R, AI_Agent_TD_R2, AI_Agent_External_Dependency, AI_Agent_Baseline_Promotion, AI_Agent_Incident); все 21 документ зарегистрированы в DOCUMENT-REGISTRY.yaml (140 документов); статус `proposed`; нормативные только после принятия RFC-0002. (`TestCurrentChangelogEntriesHaveEvidence`)
+
 ## 2026-10-10 — AI Agent Governance full kit: docs/ai-agents и docs/schemas
 
 - Добавлены 10 файлов политики `docs/ai-agents/` (adapter-registry, ARTIFACT-STORE-DECISION, BASELINE-ACCEPTANCE, CONTEXT-BUDGETS, EVALUATION-COST-MODEL, EVALUATION-PROFILES, HIDDEN-CASE-POLICY, IMPLEMENTATION-STATUS, MODEL-ADAPTER-STANDARD, RETENTION-POLICY) и 2 JSON Schema файла `docs/schemas/` (action-context.schema.yaml, evidence-record.schema.yaml); все 12 зарегистрированы в DOCUMENT-REGISTRY.yaml (119 документов); статус `proposed`, кроме IMPLEMENTATION-STATUS — `architecture_status/active`; нормативные только после принятия RFC-0002. (`TestCurrentChangelogEntriesHaveEvidence`)

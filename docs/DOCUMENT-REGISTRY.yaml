@@ -3066,6 +3066,389 @@ documents:
       reviewer: required
       auditor: conditional_if_TD_R2
       owner: false_until_rfc_accepted
+  - id: aiag-work-plan
+    path: docs/plans/ai-agent-governance/GITLAB-WORK-PLAN.md
+    class: design
+    status: proposed
+    purpose:
+      - initiative description, milestones, dependency graph and board structure for RFC-0002 implementation (AIAG-01 to AIAG-18)
+    usedBy:
+      - COORDINATOR
+      - OWNER
+    readWhen:
+      - ISSUE_PLANNING
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+      - ISSUE_STATE_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: false
+      owner: false
+  - id: aiag-priority-estimation
+    path: docs/plans/ai-agent-governance/PRIORITY-AND-ESTIMATION.md
+    class: design
+    status: proposed
+    purpose:
+      - priority rules, relative complexity estimates and estimation matrix for AIAG issues
+    usedBy:
+      - COORDINATOR
+      - OWNER
+    readWhen:
+      - ISSUE_PLANNING
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+      - ISSUE_STATE_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: false
+      owner: false
+  - id: aiag-plan-readme
+    path: docs/plans/ai-agent-governance/README.md
+    class: design
+    status: proposed
+    purpose:
+      - overview and usage guide for the ai-agent-governance work plan kit
+    usedBy:
+      - COORDINATOR
+      - OWNER
+    readWhen:
+      - ISSUE_PLANNING
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: false
+      auditor: false
+      owner: false
+  - id: aiag-01
+    path: docs/plans/ai-agent-governance/issues/AIAG-01.md
+    class: design
+    status: proposed
+    purpose: [AIAG-01 — accept RFC-0002 and record normative scope]
+    usedBy: [COORDINATOR, OWNER]
+    readWhen: [ISSUE_PLANNING]
+    updateWhen: [PROCESS_NORM_CHANGED, ISSUE_STATE_CHANGED]
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: false, owner: false}
+  - id: aiag-02
+    path: docs/plans/ai-agent-governance/issues/AIAG-02.md
+    class: design
+    status: proposed
+    purpose: [AIAG-02 — integrate static governance kit]
+    usedBy: [COORDINATOR, EXECUTOR]
+    readWhen: [ISSUE_PLANNING]
+    updateWhen: [PROCESS_NORM_CHANGED, ISSUE_STATE_CHANGED]
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: false, owner: false}
+  - id: aiag-03
+    path: docs/plans/ai-agent-governance/issues/AIAG-03.md
+    class: design
+    status: proposed
+    purpose: [AIAG-03 — implement ActionContext resolver]
+    usedBy: [COORDINATOR, EXECUTOR]
+    readWhen: [ISSUE_PLANNING]
+    updateWhen: [PROCESS_NORM_CHANGED, ISSUE_STATE_CHANGED]
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: false}
+  - id: aiag-04
+    path: docs/plans/ai-agent-governance/issues/AIAG-04.md
+    class: design
+    status: proposed
+    purpose: [AIAG-04 — implement launcher admission]
+    usedBy: [COORDINATOR, EXECUTOR]
+    readWhen: [ISSUE_PLANNING]
+    updateWhen: [PROCESS_NORM_CHANGED, ISSUE_STATE_CHANGED]
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: false}
+  - id: aiag-05
+    path: docs/plans/ai-agent-governance/issues/AIAG-05.md
+    class: design
+    status: proposed
+    purpose: [AIAG-05 — select provider/frontend and credentials boundary (OWNER decision)]
+    usedBy: [COORDINATOR, OWNER]
+    readWhen: [ISSUE_PLANNING]
+    updateWhen: [PROCESS_NORM_CHANGED, ISSUE_STATE_CHANGED]
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: false, owner: required}
+  - id: aiag-06
+    path: docs/plans/ai-agent-governance/issues/AIAG-06.md
+    class: design
+    status: proposed
+    purpose: [AIAG-06 — implement model adapter v1]
+    usedBy: [COORDINATOR, EXECUTOR]
+    readWhen: [ISSUE_PLANNING]
+    updateWhen: [PROCESS_NORM_CHANGED, ISSUE_STATE_CHANGED]
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: required, owner: false}
+  - id: aiag-07
+    path: docs/plans/ai-agent-governance/issues/AIAG-07.md
+    class: design
+    status: proposed
+    purpose: [AIAG-07 — adapter conformance, Review and Audit]
+    usedBy: [COORDINATOR, REVIEWER, AUDITOR]
+    readWhen: [ISSUE_PLANNING, REVIEW, AUDIT]
+    updateWhen: [PROCESS_NORM_CHANGED, ISSUE_STATE_CHANGED]
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: required, owner: false}
+  - id: aiag-08
+    path: docs/plans/ai-agent-governance/issues/AIAG-08.md
+    class: design
+    status: proposed
+    purpose: [AIAG-08 — enable behavioral MR evaluation profile]
+    usedBy: [COORDINATOR, EXECUTOR]
+    readWhen: [ISSUE_PLANNING]
+    updateWhen: [PROCESS_NORM_CHANGED, ISSUE_STATE_CHANGED]
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: false, owner: false}
+  - id: aiag-09
+    path: docs/plans/ai-agent-governance/issues/AIAG-09.md
+    class: design
+    status: proposed
+    purpose: [AIAG-09 — enable nightly evaluation profile]
+    usedBy: [COORDINATOR, EXECUTOR]
+    readWhen: [ISSUE_PLANNING]
+    updateWhen: [PROCESS_NORM_CHANGED, ISSUE_STATE_CHANGED]
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: false, owner: false}
+  - id: aiag-10
+    path: docs/plans/ai-agent-governance/issues/AIAG-10.md
+    class: design
+    status: proposed
+    purpose: [AIAG-10 — collect five compatible governed baseline runs]
+    usedBy: [COORDINATOR, EXECUTOR]
+    readWhen: [ISSUE_PLANNING]
+    updateWhen: [PROCESS_NORM_CHANGED, ISSUE_STATE_CHANGED]
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: false, owner: false}
+  - id: aiag-11
+    path: docs/plans/ai-agent-governance/issues/AIAG-11.md
+    class: design
+    status: proposed
+    purpose: [AIAG-11 — promote and accept behavioral baseline]
+    usedBy: [COORDINATOR, REVIEWER, AUDITOR]
+    readWhen: [ISSUE_PLANNING, REVIEW, AUDIT]
+    updateWhen: [PROCESS_NORM_CHANGED, ISSUE_STATE_CHANGED]
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: required, owner: false}
+  - id: aiag-12
+    path: docs/plans/ai-agent-governance/issues/AIAG-12.md
+    class: design
+    status: proposed
+    purpose: [AIAG-12 — enable adaptive blocking gates after baseline]
+    usedBy: [COORDINATOR, EXECUTOR]
+    readWhen: [ISSUE_PLANNING]
+    updateWhen: [PROCESS_NORM_CHANGED, ISSUE_STATE_CHANGED]
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: false, owner: false}
+  - id: aiag-13
+    path: docs/plans/ai-agent-governance/issues/AIAG-13.md
+    class: design
+    status: proposed
+    purpose: [AIAG-13 — configure protected hidden-case store]
+    usedBy: [COORDINATOR, REVIEWER, AUDITOR]
+    readWhen: [ISSUE_PLANNING]
+    updateWhen: [PROCESS_NORM_CHANGED, ISSUE_STATE_CHANGED]
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: required, owner: false}
+  - id: aiag-14
+    path: docs/plans/ai-agent-governance/issues/AIAG-14.md
+    class: design
+    status: proposed
+    purpose: [AIAG-14 — enable token and cost telemetry]
+    usedBy: [COORDINATOR, EXECUTOR]
+    readWhen: [ISSUE_PLANNING]
+    updateWhen: [PROCESS_NORM_CHANGED, ISSUE_STATE_CHANGED]
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: false, owner: false}
+  - id: aiag-15
+    path: docs/plans/ai-agent-governance/issues/AIAG-15.md
+    class: design
+    status: proposed
+    purpose: [AIAG-15 — external baseline artifact store decision (OWNER decision)]
+    usedBy: [COORDINATOR, OWNER]
+    readWhen: [ISSUE_PLANNING]
+    updateWhen: [PROCESS_NORM_CHANGED, ISSUE_STATE_CHANGED]
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: false, owner: required}
+  - id: aiag-16
+    path: docs/plans/ai-agent-governance/issues/AIAG-16.md
+    class: design
+    status: proposed
+    purpose: [AIAG-16 — add EvidenceRecord gate]
+    usedBy: [COORDINATOR, EXECUTOR]
+    readWhen: [ISSUE_PLANNING]
+    updateWhen: [PROCESS_NORM_CHANGED, ISSUE_STATE_CHANGED]
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: false}
+  - id: aiag-17
+    path: docs/plans/ai-agent-governance/issues/AIAG-17.md
+    class: design
+    status: proposed
+    purpose: [AIAG-17 — schema conformance CI]
+    usedBy: [COORDINATOR, EXECUTOR]
+    readWhen: [ISSUE_PLANNING]
+    updateWhen: [PROCESS_NORM_CHANGED, ISSUE_STATE_CHANGED]
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: false, owner: false}
+  - id: aiag-18
+    path: docs/plans/ai-agent-governance/issues/AIAG-18.md
+    class: design
+    status: proposed
+    purpose: [AIAG-18 — retention and redaction gate]
+    usedBy: [COORDINATOR, EXECUTOR]
+    readWhen: [ISSUE_PLANNING]
+    updateWhen: [PROCESS_NORM_CHANGED, ISSUE_STATE_CHANGED]
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: false, owner: false}
 unregisteredDocumentPolicy:
   action: fail
   code: DOCUMENT_NOT_REGISTERED

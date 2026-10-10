@@ -1,0 +1,19 @@
+ID,Title,Milestone,Decision Class,Priority,GitLab Weight,Complexity Range,Blocked By,Acceptance Summary
+AIAG-01,Принять RFC-0002 и зафиксировать нормативный scope,M0-governance,R,P0,3,3-5,,"OWNER decision, Review and Audit references recorded"
+AIAG-02,Интегрировать static governance kit,M1-static,FD,P0,5,5-8,AIAG-01,"Registry, Action Map, scenarios and static CI gates pass"
+AIAG-03,Реализовать ActionContext resolver,M2-admission,TD-R2,P0,8,8-13,AIAG-02,"Deterministic resolver, schema validation and negative tests pass"
+AIAG-04,Реализовать launcher admission,M2-admission,TD-R2,P0,8,8-13,AIAG-03,Invalid admission blocks agent launch fail-closed
+AIAG-05,Выбрать provider/frontend и credentials boundary,M3-adapter,R,P0,3,3-8,AIAG-01,Provider profile and data/credential boundary accepted
+AIAG-06,Реализовать model adapter v1,M3-adapter,TD-R2,P0,13,13-21,AIAG-05,Adapter request/response contract and bounded execution implemented
+AIAG-07,"Выполнить adapter conformance, Review и Audit",M3-adapter,TD-R2,P0,8,8-13,AIAG-06,Immutable digest recorded and adapter status APPROVED
+AIAG-08,Подключить behavioral MR profile,M4-behavior,TD-R2,P0,8,8-13,AIAG-04;AIAG-07,MR evaluation produces deterministic results and hard gates
+AIAG-09,Подключить nightly evaluation profile,M4-behavior,TD,P1,5,5-8,AIAG-08,Scheduled profile runs public/adversarial suites without side effects
+AIAG-10,Накопить пять совместимых baseline runs,M5-baseline,FD,P1,3,3-5,AIAG-09,"Five compatible runs, zero hard violations and zero NOT_EVALUATED"
+AIAG-11,Сформировать и принять behavioral baseline,M5-baseline,TD-R2,P1,5,5-8,AIAG-10,current.json accepted independently and store validation passes
+AIAG-12,Включить adaptive blocking gates,M5-baseline,TD,P1,5,5-8,AIAG-11,MR regressions block against compatible promoted baseline
+AIAG-13,Настроить защищённое hidden-case хранилище,M6-hardening,TD-R2,P1,8,8-13,AIAG-07,"Protected source, redacted failures and leakage rotation tested"
+AIAG-14,Включить token и cost telemetry,M6-hardening,TD,P2,5,5-8,AIAG-07;AIAG-09,"Observed token usage, prices and profile cost reports available"
+AIAG-15,Принять решение по внешнему artifact store,M6-hardening,R,P2,3,3-8,AIAG-11,Decision records retention/custody trigger and selected backend or deferral
+AIAG-16,Добавить EvidenceRecord gate,M2-admission,TD-R2,P0,8,8-13,AIAG-03,REPORTED/UNKNOWN cannot pass gates and subject SHA is enforced
+AIAG-17,Добавить schemas и conformance CI,M1-static,TD,P0,5,5-8,AIAG-02,ActionContext and EvidenceRecord examples validate in CI
+AIAG-18,Внедрить retention и redaction gate,M4-behavior,TD-R2,P1,8,8-13,AIAG-08,Artifacts respect retention and secret/redaction policy

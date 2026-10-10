@@ -116,6 +116,8 @@ State Machine и принятыми процессными нормами.
 - [Proposed Agent Bootstrap Template](templates/AGENT-BOOTSTRAP-TEMPLATE.md)
 - [AI Agent Governance: Implementation Status](ai-agents/IMPLEMENTATION-STATUS.yaml) — и другие политики в `docs/ai-agents/` (adapter-registry, evaluation-profiles, context-budgets, retention, hidden-case, baseline-acceptance, cost-model, model-adapter-standard; все `proposed`)
 - [ActionContext Schema](schemas/action-context.schema.yaml), [EvidenceRecord Schema](schemas/evidence-record.schema.yaml) — JSON Schema (proposed)
+- [AI Agent Governance Work Plan](plans/ai-agent-governance/GITLAB-WORK-PLAN.md) — initiative, milestones, AIAG-01..AIAG-18, dependency graph, board columns (`proposed`); issues в `docs/plans/ai-agent-governance/issues/`
+- [Priority and Estimation](plans/ai-agent-governance/PRIORITY-AND-ESTIMATION.md) — priority rules and relative complexity estimates for AIAG issues (`proposed`)
 
 ## Приоритет источников
 
