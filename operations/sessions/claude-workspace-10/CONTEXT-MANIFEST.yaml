@@ -1,0 +1,46 @@
+apiVersion: coord.dev/v1alpha1
+kind: CoordinatorContextManifest
+sessionId: claude-workspace-10
+createdAt: 2026-10-10
+
+project:
+  id: coord
+
+source:
+  branch: p0-2-task
+  commit: c8f2fda
+
+session:
+  cwd:
+    env: COORD_GLOBAL_ROOT
+  model: claude-sonnet-4-6
+
+loaded:
+  permanent:
+    - .coord/project.yaml
+    - AGENTS.md
+
+  current:
+    - operations/project/CURRENT.yaml
+    - operations/project/OPEN-WORK.yaml
+    - operations/context/current.yaml
+
+  sessionSpecific:
+    - operations/sessions/claude-workspace-10/CONTEXT-MANIFEST.yaml
+
+notLoaded:
+  - completed task history (archive)
+  - legacy-qwen workspace
+  - workspace-2-codex, workspace-2-opencode
+  - full mutation test outputs
+  - old session transcripts
+  - unrelated ADRs
+
+compacted:
+  - "#36 full diff (SHA: 2a9c8b0+c8f2fda)"
+  - "#36 review details (codex:workspace-c9d ACCEPTED)"
+  - "#36 audit details (opencode:workspace-o73 AUDIT_ACCEPTED)"
+  - ops/ledger-bootstrap spec content (merged @ ee71f2e)
+  - globalRoot invariant discussion
+
+nextSafeAction: commit portability-bootstrap (.coord/project.yaml env-vars + CONTEXT-INDEX.yaml)
