@@ -1,5 +1,24 @@
 # История изменений
 
+## 2026-10-10 — ADR-0002 normative cleanup: type matrix, EdgeID identity, DG-07 split, terminology (документация)
+
+- (документация) ADR-0002-PROJECT-DEPENDENCY-GRAPH.md: редакционная пометка
+  добавлена; все правки FD — принятые инварианты не затронуты.
+  - Добавлена MVP-матрица допустимых пар типов узлов/рёбер (TASK-only active,
+    остальные fail-closed до trusted resolver).
+  - Добавлены нормы EdgeID: устойчивый уникальный идентификатор, генерируется
+    Coord, повтор команды возвращает существующий EdgeID.
+  - Уточнена формулировка DG-04: семантика удаления отсутствующего ребра → EDGE_NOT_FOUND.
+  - DG-06a: добавлен явный порядок обработки команды (replay lookup → GraphRevision).
+  - DG-07 разбит на DG-07a–07e: eligibility первого Run, rework, позднее добавление,
+    FAILED prerequisite, atomic replacement.
+  - DG-07e: зависимости ADR/MILESTONE в canonical state → readiness blocked fail-closed.
+  - DG-08: добавлен маркер «открытый вопрос перед реализацией» для scope capability
+    при cross-Task edge — требует OWNER decision до реализации command boundary.
+  - API раздел: добавлен маркер «целевой API, не текущая capability до ADR-0006».
+  - «Conversation Graph» → «Discussion Graph» везде; UI-проекция явно обозначена.
+  - OWNER/Owner → OWNER, OWNER_DECISION унифицированы.
+
 ## 2026-10-10 — ADR-0001 normative cleanup: stale status, section split, OWNER escalation fix (документация)
 
 - (документация) ADR-0001-CANONICAL-COORDINATION-MODEL.md: редакционная пометка
