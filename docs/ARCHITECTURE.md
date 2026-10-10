@@ -6,12 +6,14 @@
 - реализованный canonical core;
 - ещё не подключённые production paths.
 
-Целевое направление и статус компонентов приведены в
-[TARGET-ARCHITECTURE.md](TARGET-ARCHITECTURE.md).
+Целевое направление и статус компонентов приведены в [TARGET-ARCHITECTURE.md](TARGET-ARCHITECTURE.md).
 
 Нормы задают Accepted ADR и TASK-MODEL. Этот документ не создаёт новых норм.
 При расхождении документа с принятым и покрытым тестами кодом документ
 исправляется по R101.
+
+В legacy-разделах `Coordinator` означает текущий Run coordinator.
+`coordd` означает standalone daemon, владеющий canonical state.
 
 `coord` разделяет подтверждение транспорта, подтверждение принятия задачи
 и подтверждение результата. Сообщение доставлено — это ещё не задача принята.
@@ -60,10 +62,11 @@ AUDITOR использует agent_id и историю владельцев, а
 Events; Inbox receipts и Outbox; AgentSession projections и append-only
 AgentSessionEvents; типизированные ReviewResult и AuditResult; canonical
 Discussion Graph. Startup валидирует schema version, внутренние инварианты и
-связи между объектами. Изменение canonical состояния, Domain Event, Inbox
-receipt и необходимого Outbox фиксируется одной durable mutation. Наличие
-компонента в `CanonicalState` не означает, что для него уже подключён
-production command path.
+связи между объектами. Canonical transition и связанные с ним Domain Event,
+обязательный Inbox receipt и необходимый Outbox фиксируются одной durable
+mutation, когда эти элементы предусмотрены конкретной canonical операцией.
+Store-level atomic boundary реализована; наличие production caller path
+указывается отдельно для каждого компонента.
 
 `coordd` также открывает `roles.json` (role registry). Процесс удерживает
 `namespace.lock`, storage locks `canonical.json.lock` и `roles.json.lock` и
@@ -74,11 +77,12 @@ diagnostic-only `NOT_READY`, импорта нет.
 Основные canonical срезы P0-2 реализованы: Task aggregate и Task.Fence,
 AgentSession projection/history/binding, authenticated canonical agent command
 boundary (`CanonicalStore.ApplyAgentCommand`), ReviewResult и AuditResult,
-canonical Discussion Graph core, atomic canonical persistence. Это не означает
-закрытие границы этапа: production Task command path, операторские команды,
-Shadow Validation, приёмка границы этапа и P0-3 production integration
-остаются открытыми. `fsm.Run.TaskID` является отдельной связью и может быть
-пустым только у переходного legacy Run; `Run.Task` не переинтерпретируется.
+canonical Discussion Graph core, atomic canonical persistence. Согласно
+`docs/ROADMAP.md`, ограниченная Shadow Validation и приёмка границы этапа
+остаются открытыми. Production Task command path, операторские команды,
+P0-3 production integration остаются открытыми. `fsm.Run.TaskID` является
+отдельной связью и может быть пустым только у переходного legacy Run;
+`Run.Task` не переинтерпретируется.
 
 У проекта пока несколько отдельных runtime state owners. Локальный
 `cmd/coord`/localchat пишет legacy `runs.json`, `rooms.json`, `connection.json`,
@@ -117,8 +121,8 @@ stateDiagram-v2
     FAILED --> [*]
 ```
 
-Это схема типичного пути, а не исчерпывающий список переходов. Прямой RESULT
-до RESULT_READY запрещён. Внутренний `ResumeStatus` позволяет восстановить
+Это схема типичного пути, а не исчерпывающий список переходов. Прямой `RESULT`
+до `RESULT_READY` запрещён. Внутренний `ResumeStatus` позволяет восстановить
 состояние до STALLED. Deadline может завершить любой нетерминальный run как FAILED.
 Полную таблицу допустимых heartbeat переходов проверяет `fsm/fsm_test.go`.
 
@@ -144,11 +148,13 @@ Telepathy write paths остаются частью P0-3.
 edges. Canonical validation проверяет: допустимые типы узлов и связей;
 обязательные Actor и Role; принадлежность Task; ссылочную целостность;
 ограничения специальных типов и связей; согласованность startup snapshot и
-transition. Canonical core реализован. Production command path, read-only
-projection, Owner Console и продуктовый Decision Resolver не реализованы.
+transition. Для agent command Actor выводится из проверенной AgentSession и
+сохранённого назначения Run, а не принимается из тела команды.
+Canonical core реализован. Production command path, read-only projection,
+proposed Owner Console и proposed Decision Resolver не реализованы.
 
 <!-- canonical-review-audit-results -->
-## Canonical Review и Audit results
+## Canonical ReviewResult and AuditResult
 
 Canonical model содержит типизированные `ReviewResult` и `AuditResult`. Приём
 результата фиксирует одной durable mutation: typed result, переход Task,
@@ -186,12 +192,14 @@ coordinator; на остальных платформах checkpoint storage о�
 
 ## Legacy recovery и целевая Task-wide recovery
 
-ACK и HEARTBEAT сообщают next_update_by. По истечении срока coordinator записывает
-STALLED и запускает bounded retries. После исчерпания выставляет RecoveryNeeded.
+ACK и HEARTBEAT сообщают `next_update_by`. По истечении срока coordinator
+записывает STALLED и запускает bounded retries. После исчерпания выставляет
+`RecoveryNeeded`.
 
 Текущий watchdog реализует recovery legacy Run: durable claim, bounded retries,
-остановка writer, проверка worktree, запуск replacement и передача legacy
-ownership через CAS.
+запрос на остановку writer, проверка worktree, запуск replacement и передача
+legacy ownership через CAS. Фактическая остановка процесса требует supervisor
+evidence и не доказывается отправкой сигнала.
 
 Canonical model содержит Task.Fence, Run.Fence snapshots и проверки AgentSession
 binding. Но полная Task-wide передача writer ownership требует: supervisor stop
@@ -207,7 +215,7 @@ production-контур ещё не подключён.
 Проверка поколения выполняется до проверки owner и deduplication: fence меньше
 канонического отклоняется как stale, больше — как недопустимый future fence.
 Допускается только точное совпадение fence и остальных полей identity. Счётчик
-`uint64` не оборачивается при переполнении: recovery возвращает ErrFenceExhausted.
+`uint64` не оборачивается при переполнении: recovery возвращает `ErrFenceExhausted`.
 
 Fence не секретен. Старый процесс может узнать новое значение, но это не делает
 его canonical owner. Проверка сообщений coordinator не запрещает запись в файлы
@@ -242,26 +250,33 @@ boundary реализованы и проверены тестами. Production
 
 ## Подтверждение результата
 
-Canonical ReviewResult и AuditResult принимаются store model одной durable
-transaction с Domain Event, Inbox receipt и `RESULT_ACK` в Outbox.
+#### Canonical Review/Audit results
 
-Executor RESULT production command path (#6) ещё не подключён. В legacy
-executor path RESULT_READY, RESULT и local Outbox продолжают использовать
-старую Run FSM.
+Canonical `ReviewResult` и `AuditResult` принимаются store model одной durable
+canonical mutation с Domain Event, Inbox receipt и `RESULT_ACK` в Outbox.
+Production agent/CLI caller path для этих операций ещё не подключён.
 
-В legacy path RESULT и RESULT_ACK записываются одной canonical transaction:
-receipt коррелируется с message_id результата и содержит committed outcome.
-Терминальный run повторяет недоставленный receipt; повтор RESULT получает новое
-подтверждение без повторного выполнения. Executor хранит RESULT_READY и RESULT
-в outbox до проверки receipt через Receipt, затем атомарно фиксирует DONE/FAILED
-и очищает очередь. RESULT_ACK не разрешает coordinator закончить работу до
-durable commit.
+#### Canonical Executor result path
+
+`RecordExecutorResult` (canonical store) и fail-closed gate в `coordinator.go`
+(R117/R124) реализованы (#6). Task-scoped Run с `RESULT` envelope маршрутизируется
+только через `RecordExecutorResult`; при отсутствии `CanonicalStore` команда
+отклоняется без fallback. Canonical Executor result фиксируется одной durable
+mutation: `ExecutorResult`, переход Task в BLOCKED, terminal Executor Run, Domain
+Event и `RESULT_ACK` в Outbox. Production CLI caller path ещё не подключён.
+
+#### Legacy Executor result path
+
+В legacy executor path `RESULT_READY`, `RESULT`, legacy receipt и local Outbox
+продолжают использовать Run FSM и соответствующие legacy checkpoints для Runs
+без `TaskID`. Повторная доставка обрабатывается без повторного выполнения работы.
+Эта legacy фиксация не является canonical Task result transaction.
 
 Ни durable result commit, ни `RESULT_ACK`, ни transport delivery не являются
 stop proof ОС-процесса.
 
 Heartbeat с timestamp старше последнего принятого heartbeat либо с меньшим
-progress_pct отвергается без изменения run. Recovery очищает timestamp при новом
+`progress_pct` отвергается без изменения run. Recovery очищает timestamp при новом
 fence. Полный порядок при равных timestamps и clock skew требует sequence policy.
 
 <!-- project-dependency-graph -->
@@ -272,4 +287,4 @@ fence. Полный порядок при равных timestamps и clock skew 
 `cmd/coord-telepathy` связывает coordinator/executor через отдельные MCP subprocess
 и подписанный `coord/telepathy` byte Client. Host и worker имеют собственные
 checkpoints и session/worktree locks. Это one-run deployment без canonical
-Crewflow adapter и автоматического supervisor recovery. См. TELEPATHY_HOST.md.
+Crewflow adapter и автоматического supervisor recovery. См. [TELEPATHY_HOST.md](TELEPATHY_HOST.md).

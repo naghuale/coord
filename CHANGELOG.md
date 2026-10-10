@@ -1,5 +1,29 @@
 # История изменений
 
+## 2026-10-10 — ARCHITECTURE.md CHANGES_REQUIRED FD cleanup (документация)
+
+- (документация) docs/ARCHITECTURE.md: FD — Mermaid code fences и экранирование
+  уже были корректны; применены остальные блокирующие и редакционные замечания.
+  - Ссылка на TARGET-ARCHITECTURE.md: вынесена на одну строку.
+  - Atomic mutation statement: уточнён — "когда эти элементы предусмотрены
+    конкретной canonical операцией; store-level boundary реализована; production
+    caller path указывается отдельно".
+  - Shadow Validation: добавлена ссылка на `docs/ROADMAP.md` как источник порядка.
+  - Discussion Graph: добавлена Actor provenance — выводится из AgentSession и
+    назначения Run, не принимается из тела команды.
+  - Owner Console и Decision Resolver: помечены как "proposed".
+  - Секция результата: переписана (blocking #2) — legacy path больше не называется
+    "canonical transaction"; раздел разделён на "Canonical Review/Audit", "Canonical
+    Executor result path" (#6 реализован) и "Legacy Executor result path".
+  - Recovery "остановка writer": заменено на "запрос на остановку writer";
+    добавлено "фактическая остановка требует supervisor evidence".
+  - Telepathy host: ссылка оформлена как Markdown link.
+  - Раздел "Canonical Review и Audit results" → "Canonical ReviewResult and
+    AuditResult".
+  - Добавлено разграничение Coordinator (legacy Run coordinator) vs coordd (daemon).
+  - Backtick identifiers: `next_update_by`, `progress_pct`, `RecoveryNeeded`,
+    `ErrFenceExhausted` приведены к стандарту.
+
 ## 2026-10-10 — Issue #6 (P0-3): canonical Executor RESULT path (R117/R124)
 
 - (код) task/result.go: добавлены `ExecutorOutcome` (SUCCESS/FAILURE/PARTIAL),
