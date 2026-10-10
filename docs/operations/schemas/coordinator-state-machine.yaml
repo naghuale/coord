@@ -391,6 +391,16 @@ developmentProcess:
       requires: OWNER only
     OWNER_REQUIRED:
       usage: only at proven R142 boundary
+    QUESTION_SUPPRESSED:
+      meaning: OwnerBoundaryCheck found no confirmed R142 boundary
+      action: coordinator must not send question — execute next autonomous transition
+      ownerRequired: false
+    HUMAN_ACTION_REQUIRED:
+      meaning: requires human operator action (physical, MFA, credential, visual confirmation) but not OWNER product decision
+      note: HUMAN_ACTION_REQUIRED != OWNER_REQUIRED
+      action: prepare exact action for the authorized person
+      ownerRequired: false
+      ownerRequiredIf: the action is explicitly OWNER-reserved
     FORBIDDEN:
       meaning: action violates active norm, cannot be authorized by ordinary technical decision
     INSUFFICIENT_EVIDENCE:
@@ -399,6 +409,37 @@ developmentProcess:
       meaning: active norms give incompatible answers
       action: show conflict and options to OWNER
       ownerRequired: true
+
+  # ── OwnerBoundaryCheck gate ───────────────────────────────────────────────
+  ownerBoundaryCheck:
+    mandatory: true
+    when: before sending any question to OWNER
+    must:
+      - state the question
+      - list verified facts
+      - name applicable rules
+      - check each R142 boundary explicitly
+    boundaries:
+      - newOrChangedNorm: OWNER_REQUIRED
+      - normConflict: OWNER_REQUIRED
+      - trustBoundaryChange: OWNER_REQUIRED
+      - agentRightsChange: OWNER_REQUIRED
+      - failClosedWeakening: OWNER_REQUIRED
+      - irreversibleRiskAcceptance: OWNER_REQUIRED
+      - differentUserOrProductConsequences: OWNER_REQUIRED
+      - ownerReservedAction: OWNER_REQUIRED
+      - personalDecisionMFAPasswordPhysical: HUMAN_ACTION_REQUIRED
+      - noneConfirmed: QUESTION_SUPPRESSED
+    notR142Boundaries:
+      - missing Reviewer
+      - unfinished technical task
+      - CHANGES_REQUIRED
+      - CI_FAILED
+      - CONTEXT_STALE
+      - handoff needed
+      - installation of accepted local tool
+      - choosing next State Machine transition
+      - insufficient evidence
 
   # ── Coordinator autonomy table ────────────────────────────────────────────
   autonomyTable:

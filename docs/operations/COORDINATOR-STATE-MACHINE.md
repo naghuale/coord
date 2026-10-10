@@ -216,9 +216,39 @@ Infrastructure failure must not mask product failure.
 | `TD-R2` | Technical in identity/signing/authorization/AgentSession/fencing/replay/canonical storage/recovery/containment/process control/credentials/trust boundary | Reviewer + Auditor + negative tests + mutations |
 | `R` | New or changed norm | OWNER only |
 | `OWNER_REQUIRED` | Proven R142 boundary | — |
+| `QUESTION_SUPPRESSED` | OwnerBoundaryCheck found no confirmed R142 boundary | Coordinator must not send question; execute next autonomous transition |
+| `HUMAN_ACTION_REQUIRED` | Requires a human operator action (physical, MFA, credential, visual confirmation) but not necessarily OWNER product decision | Prepare exact action for the authorized person; `HUMAN_ACTION_REQUIRED ≠ OWNER_REQUIRED` |
 | `FORBIDDEN` | Violates active norm | Cannot authorize by ordinary TD |
 | `INSUFFICIENT_EVIDENCE` | Evidence missing | Gather facts first; not ask OWNER |
 | `NORM_CONFLICT` | Norms give incompatible answers | Show conflict and options to OWNER |
+
+### OwnerBoundaryCheck gate
+
+Before sending any question to OWNER the coordinator MUST perform an
+`OwnerBoundaryCheck`: state the question, list the verified facts, name the
+applicable rules, and check each R142 boundary explicitly.
+
+| Boundary | Confirmed | Result |
+|---|---|---|
+| New or changed norm (`R` class) | Yes | `OWNER_REQUIRED` |
+| Norm conflict (active norms give incompatible answers) | Yes | `OWNER_REQUIRED` |
+| Trust boundary change | Yes | `OWNER_REQUIRED` |
+| Agent rights change | Yes | `OWNER_REQUIRED` |
+| Fail-closed weakening | Yes | `OWNER_REQUIRED` |
+| Irreversible risk acceptance | Yes | `OWNER_REQUIRED` |
+| Different user / product consequences | Yes | `OWNER_REQUIRED` |
+| OWNER-reserved action | Yes | `OWNER_REQUIRED` |
+| Personal decision (MFA, password, physical confirmation) | Yes | `HUMAN_ACTION_REQUIRED` |
+| None of the above confirmed | — | `QUESTION_SUPPRESSED` |
+
+`QUESTION_SUPPRESSED` result: coordinator MUST NOT send the question and MUST
+execute the next unambiguous State Machine transition autonomously.
+
+Conditions that do NOT confirm an R142 boundary and therefore produce
+`QUESTION_SUPPRESSED`: missing Reviewer, unfinished technical task,
+`CHANGES_REQUIRED`, `CI_FAILED`, `CONTEXT_STALE`, handoff needed,
+installation of an accepted local tool, choosing the next State Machine
+transition, insufficient evidence.
 
 ### Coordinator autonomy table
 
