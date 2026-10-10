@@ -1,76 +1,92 @@
 apiVersion: coord.dev/v1alpha1
-kind: ProjectOperationsState
+kind: ProjectCheckpoint
+checkpointAt: 2026-10-10
 
-project:
-  id: coord
-  repository: naghuale/coord
-  integrationBranch: p0-2-task
+projectId: coord
+projectRoot: /Users/andreybabenko/Downloads/workspace/workspace-01
+globalRoot: /Users/andreybabenko/Downloads/workspace
+sessionLaunchCwd: /Users/andreybabenko/Downloads/workspace
 
 source:
-  commit: 92e6e94d8d7e5a3b1f2c4d9e6a8b0c2d4e6f8a0b
-  recordedAt: 2026-10-10T01:24:00+10:00
-  note: >
-    commit is issue-35 (fix unreachable role selection guard),
-    pushed to issue-35-unreachable-role-selection-guard,
-    CI PASS (run 38012913833).
+  repository: https://github.com/naghuale/coord.git
+  integrationBranch: p0-2-task
+  integrationHead: 3b9322eeccbd5006a8ed3b3ade7a94277efaf4ef
+  note: "#35 merged to issue-35-unreachable-role-selection-guard branch (CI PASS), not yet fast-forwarded to p0-2-task"
 
-stage:
-  current: review-audit-discussion
-  authority: R132
+issues:
+  completed:
+    - issue: 30
+      title: Discussion Graph implementation
+      commit: 3b9322eeccbd5006a8ed3b3ade7a94277efaf4ef
+      branch: p0-2-task
+      status: MERGED
 
-completed:
-  - issue: 30
-    result: typed Discussion Graph canonical core
-    commit: 3b9322eeccbd5006a8ed3b3ade7a94277efaf4ef
-  - issue: 35
-    result: remove unreachable role selection guard in validateAgentCommandRoleStage
-    commit: 92e6e94
-    branch: issue-35-unreachable-role-selection-guard
-    ciRun: 38012913833
-    ciStatus: PASS
+    - issue: 35
+      title: Remove unreachable RoleSelection nil guard in ApplyAgentCommand
+      class: TD
+      commit: 92e6e942d0f6953cefeb54d883b73aad60fb6b1f
+      branch: issue-35-unreachable-role-selection-guard
+      status: CI_PASS
+      reviewVerdict: ACCEPTED
+      reviewer: subagent-a638da65ff8f67c04
+      ciRunId: "38012913833"
+      note: Awaiting fast-forward merge to p0-2-task
 
-active:
-  - issue: 36
-    state: BLOCKED_BY_35
-    role: EXECUTOR
-    note: TD class R2; unblocked after #35 merge
-  - issue: 32
-    state: LEGACY_WORK_PRESERVED
-    note: R142 draft in workspace-2-opencode/AGENTS.md; requires OWNER acceptance of exact text
-  - issue: 37
-    state: MIGRATION_IN_PROGRESS
-    note: Legacy slots workspace-2/workspace-2-codex/workspace-2-opencode migrating to workspace-01/*
+  active:
+    - issue: 36
+      title: Add TrimSpace whitespace check for AgentID
+      class: TD-R2
+      status: READY_TO_START
+      prerequisite: "#35 fast-forward"
+      note: Create worktree at workspace-01/worktrees/issue-36; two negative subtests + mutation per checkpoint; TrimSpace for emptiness check only, must not normalize AgentID
 
-blocked:
-  - issue: 34
-    reason: WAITING_FOR_S0_DEPENDENCIES
-  - issue: 38
-    reason: PROJECT_LOCAL_TMP_WRAPPER_NOT_READY
+    - issue: 32
+      title: AGENTS.md R142 text (OpenCode draft)
+      status: PRESERVED
+      note: Draft in workspace-2-opencode/AGENTS.md; present exact text to OWNER for gate-file acceptance
 
-nextSafeActions:
-  - merge issue-35 branch into p0-2-task (or p0-2-agentsession) after CI
-  - unblock issue-36 (TD class R2: Reviewer + independent Auditor + mutations)
-  - complete #30 residual after #36
-  - accept R145 bootstrap ledger spec
-  - migrate Codex and OpenCode legacy slots to workspace-01
+    - issue: 37
+      title: Migration — close legacy slots
+      status: IN_PROGRESS
+      note: workspace-2-codex, workspace-2-opencode, workspace-00/legacy-qwen need formal closure
 
-knownDeviations:
-  - id: DEV-37-SYSTEM-TMP
-    status: OPEN
-    reason: issue 38 (coord-project-tmp wrapper) incomplete; system tmp R143 deviation persists
-  - id: DEV-TARGET-ARCH-DISCUSSION
-    status: OPEN
-    reason: TARGET-ARCHITECTURE.md shows Discussion Graph status as "нет" despite #30 implemented; needs R140 recording and doc update
+  blocked:
+    - issue: 34
+      title: TBD
+      status: BLOCKED
 
-recovery:
-  legacyCodexPatches:
-    attributed: true
-    location: workspace-01/.scratch/tmp/recovery/
-    patches:
-      - issue-35.patch
-      - issue-36.patch
-      - issue-30-residual-*.diff
-  legacyOpenCode:
-    preserved: true
-    location: workspace-2-opencode (unstaged)
-    content: AGENTS.md R142 draft + docs/decisions/README.md
+    - issue: 38
+      title: Fix system /tmp usage in cmd/coord/sessions_test.go
+      status: BLOCKED
+      note: Use workspace-01/.scratch/tmp/s for short unix sockets; enables system temp enforcement after fix
+
+operationsLedger:
+  ops_branches:
+    - ops/coord/project
+    - ops/coord/coordinator
+    - ops/coord/executor
+    - ops/coord/reviewer
+    - ops/coord/auditor
+  worktrees:
+    operations-project: /Users/andreybabenko/Downloads/workspace/workspace-01/worktrees/operations-project
+    operations-coordinator: /Users/andreybabenko/Downloads/workspace/workspace-01/worktrees/operations-coordinator
+    operations-executor: /Users/andreybabenko/Downloads/workspace/workspace-01/worktrees/operations-executor
+    operations-reviewer: /Users/andreybabenko/Downloads/workspace/workspace-01/worktrees/operations-reviewer
+    operations-auditor: /Users/andreybabenko/Downloads/workspace/workspace-01/worktrees/operations-auditor
+
+workspaceModel:
+  allAgentsLaunchFromGlobalRoot: true
+  systemTmp: deny
+  temporaryDeviation: "#38 open — system tmp enforcement not yet active"
+
+stage: post-35-pre-36
+
+security:
+  prohibitedActions:
+    - do not modify workspace-00/legacy-qwen
+    - do not reset or delete workspace-2-codex or workspace-2-opencode
+    - do not force-push or rewrite published history
+    - do not mix changes from different issues in one commit
+    - do not translate Proposed ADR to Accepted (OWNER only)
+    - do not weaken fail-closed behavior
+    - do not accept new product norms as OWNER
