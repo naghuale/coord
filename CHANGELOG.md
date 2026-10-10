@@ -1,5 +1,207 @@
 # История изменений
 
+## 2026-10-10 — baseline calibration and reviewed Action Map store
+
+- Добавлены immutable hard-zero threshold checks, сравнение с совместимым promoted baseline, append-only run storage, median candidate, fail-closed Reviewer activation и GitLab jobs. Текущий измеритель оставляет четыре evidence hard metrics как `NOT_EVALUATED`; поэтому baseline run/promotion пока блокируются, а sample baseline из архивов не используется. (`TestCurrentChangelogEntriesHaveEvidence`)
+
+## 2026-10-10 — Action Map behavior evaluation kit
+
+- Добавлены сценарные evaluation profiles, GitLab metrics job и сбор JSON/JUnit/OpenMetrics/dotenv artifacts. Agent verdict вычисляет отдельный comparator с self-tests; без model adapter результат остаётся `NOT_EVALUATED`. Разделены реализованные static/behavior checks и пока отсутствующие resolver/Evidence Gate; sample outputs из архива не добавлялись. (`TestCurrentChangelogEntriesHaveEvidence`)
+
+## 2026-10-10 — GitLab CI integration for Action Map
+
+- Added a reusable GitLab CI include fragment with blocking validation and self-test jobs, plus a root configuration example and integration guide.
+- Registered the guide and example in the Document Registry. No active root `.gitlab-ci.yml` exists, so the example is not enabled and GitLab CI Lint remains pending integration with the project's final pipeline. (`TestCurrentChangelogEntriesHaveEvidence`)
+
+## 2026-10-10 — обязательные Action Map admission и сценарные gates
+
+- `AGENTS.md` и role prompts требуют admission по Document Registry и Action
+  Map, а Coordinator записывает Action Card перед значимым переходом.
+- Добавлены 15 зарегистрированных Action Map scenarios, result schema и
+  checker со стабильными error codes для authority/transition правил и
+  структурированных ответов агента. Добавлен path-filtered workflow для PR и
+  push; adversarial self-tests используют project-local `.scratch/tmp`.
+  Registry, Action Map scenarios и Architecture Sync включены в `make check`.
+  (`TestCurrentChangelogEntriesHaveEvidence`)
+
+## 2026-10-10 — добавлены карта и реестр документов (процесс разработки)
+
+- Добавлены `docs/DOCUMENT-MAP.md`, `docs/DOCUMENT-REGISTRY.yaml` и
+  `docs/operations/ACTION-MAP.md`: минимальные role startup paths, шесть классов
+  документов, authority, владельцы, чтение/обновление и карты переходов событий.
+- Реестр охватывает 82 документа и записи состояния; operational guides получили
+  явные YAML headers с применимостью и authority. Добавлены
+  `scripts/check-document-registry` и отрицательные self-tests, включённые в
+  `make check` и CI.
+  (`TestCurrentChangelogEntriesHaveEvidence`)
+
+## 2026-10-10 — AGENTS.md: разделены решения OWNER и human actions (документация)
+
+- (документация) Уточнены `OwnerBoundaryCheck`, `QUESTION_SUPPRESSED`,
+  `HUMAN_ACTION_REQUIRED` и Review/Audit verdicts; Task artifacts размещены
+  внутри `COORD_PROJECT_ROOT`. Добавлены Architecture Sync, wrapper-based
+  Commit Readiness, admission fields для реальных сессий и branch/commit
+  semantics Operations Ledger.
+  (`TestCurrentChangelogEntriesHaveEvidence`)
+
+## 2026-10-10 — VERIFICATION.md: разделены активные и исторические evidence (документация)
+
+- (документация) Repository gate привязан к `Makefile` и запускается через
+  project-local wrapper; legacy Run, canonical model, runtime и reference
+  integrations разведены. Добавлены структурированные verification results,
+  актуальные component references и ограничения исторических live-прогонов,
+  включая неизвестные subject revisions и непереносимые local evidence.
+  (`TestCurrentChangelogEntriesHaveEvidence`)
+
+## 2026-10-10 — TRANSPORT.md: разделены legacy profiles и canonical boundary (документация)
+
+- (документация) Уточнены transport-neutral diagram, legacy Run compatibility
+  profiles, transport/executor capability axes, canonical `AuthenticatedFrame`
+  requirements, AgentSession and WorkspaceBinding boundaries. Telepathy 0.8.0
+  квалифицирована как baseline; `RESULT_ACK` ограничен legacy result path.
+  Component registry дополнен `transport-abstraction`.
+  (`TestCurrentChangelogEntriesHaveEvidence`)
+
+## 2026-10-10 — TELEPATHY_HOST.md: уточнена граница legacy host/worker (документация)
+
+- (документация) Standalone Telepathy host/worker явно обозначены как legacy
+  Run reference profile; добавлены project-local paths, WorkspaceBinding и
+  AgentSession границы, snapshot/CanonicalState distinction, wrapper command,
+  baseline qualification, delivery profile и ограничения stop proof. Component
+  registry синхронизирован; обнаружено, что test harness всё ещё пишет в
+  checkout `state/` и его запуск отложен до переноса output path.
+  (`TestCurrentChangelogEntriesHaveEvidence`)
+
+## 2026-10-10 — TASK-MODEL.md: актуализация переходов и implementation status (документация)
+
+- (документация) Цель документа отделена от maturity status; TM-06a и TM-26
+  приведены к текущим canonical slices; Attempt/RunID, independence reasons,
+  AgentSession readiness и replay semantics уточнены. Rework/SUPERSEDED
+  отмечен как открытый нормативный конфликт с ADR-0001 и текущей FSM;
+  меняющиеся test evidence вынесены в `COMPONENT-STATUS.yaml`.
+  (`TestCurrentChangelogEntriesHaveEvidence`)
+
+## 2026-10-10 — TARGET-ARCHITECTURE.md: status vocabulary и evidence registry (документация)
+
+- (документация) `docs/TARGET-ARCHITECTURE.md` синхронизирован с компонентным
+  словарём `implemented`/`partial`/`missing`/`proposed`/`legacy`; Run FSM/storage
+  и Telepathy baseline помечены `legacy`; production command path отделён от
+  store boundary. TaskID отражает test-only creation helper; Shadow Validation
+  отмечена `implemented` после `REVIEW_ACCEPTED` и закрытия #42. Сокращено
+  повторное Review/Audit evidence,
+  уточнены Discussion Graph, Project Dependency Graph и Startup Card. В реестр
+  добавлены legacy Run FSM/storage и `task-identity`, а для Shadow Validation
+  зафиксированы точные symbols, tests и закрытый Issue #42.
+  Mermaid диаграммы оставлены в отдельных Mermaid fences, ссылки исправлены.
+  (`TestCurrentChangelogEntriesHaveEvidence`)
+
+## 2026-10-10 — SESSION_CLI.md: legacy CLI и project-local paths (документация)
+
+- (документация) `docs/SESSION_CLI.md` оформлен как руководство по legacy
+  `internal/rooms`; примеры перенесены на `COORD_GLOBAL_ROOT`, назначенный
+  `COORD_PROJECT_ROOT` и `coord-project-tmp`. Разделены legacy RoleSession,
+  canonical AgentSession, WorkspaceBinding, Task assignment и process identity;
+  Git history отделён от Operations Ledger, content export ограничен до
+  принятия field policy, команды приведены к копируемым shell-блокам. В
+  `COMPONENT-STATUS.yaml` добавлен `legacy-role-sessions-cli` с source/test
+  evidence. (`TestCurrentChangelogEntriesHaveEvidence`)
+
+## 2026-10-10 — ROLE_SESSIONS.md: legacy boundary и canonical distinctions (документация)
+
+- (документация) `docs/ROLE_SESSIONS.md` и `docs/SESSION_CLI.md` явно
+  квалифицированы как legacy `internal/rooms`; разделены `RoleSessionID`,
+  canonical `AgentSession`, transport connection, `SessionBindingID` и process
+  identity. Уточнены WorkspaceBinding/R143, reassignment, Operations Ledger,
+  export allowlist и границы Git push policy. В `COMPONENT-STATUS.yaml`
+  добавлен `legacy-role-sessions` с недостающими canonical интеграциями.
+  (`TestCurrentChangelogEntriesHaveEvidence`)
+
+## 2026-10-10 — ROLE_PROMPTS.md: State Machine, R142 и WorkspaceBinding (документация)
+
+- (документация) `docs/ROLE_PROMPTS.md`: Coordinator получил явный автономный
+  цикл и `OwnerBoundaryCheck`; роли привязаны к WorkspaceBinding, assignment,
+  generation и project-local paths; Reviewer/Auditor используют структурированные
+  verdicts; handoff и checkpoint привязаны к source revision. Уточнён статус
+  legacy `coord prompt`. (`TestCurrentChangelogEntriesHaveEvidence`)
+
+## 2026-10-10 — ROADMAP.md: implementation status и P0-3 entry readiness (документация)
+
+- (документация) `docs/ROADMAP.md`: разведены canonical core, stage boundary и
+  production integration; Review/Audit и Discussion Graph разделены по порядку;
+  добавлен явный P0-3 readiness snapshot и следующий безопасный шаг. Исправлены
+  устаревшие workspace/temp, isolation, replay и legacy process-stop утверждения;
+  design prerequisites ADR-0002/ADR-0003 уточнены. (`TestCurrentChangelogEntriesHaveEvidence`)
+
+## 2026-10-10 — QUICKSTART.md: global root и legacy/canonical границы (документация)
+
+- (документация) `docs/QUICKSTART.md`: команды переведены на явный repository
+  path и project-local wrapper; примеры legacy Run runtime отделены от
+  production canonical workflow; добавлены проверка project handoff, project-local
+  agent state и зрелость watchdog/reference host. (`TestCurrentChangelogEntriesHaveEvidence`)
+
+## 2026-10-10 — OPERATIONS.md: workspace, runtime maturity и recovery boundaries (документация)
+
+- (документация) `docs/OPERATIONS.md`: добавлены R143 workspace paths и handoff
+  check; разделены canonical core, legacy Run runtime и `coordd` skeleton;
+  уточнены not-ready write endpoints, Telepathy 0.8.0 baseline, token modes,
+  state ownership и `/metrics`. Backup manifest/restore обозначены как целевой
+  contract, не существующая автоматизация. (`TestCurrentChangelogEntriesHaveEvidence`)
+
+## 2026-10-10 — EXPERIMENTS.md: Telepathy legacy baseline и evidence manifest (документация)
+
+- (документация) `docs/EXPERIMENTS.md`: запуск и границы эксперимента уточнены
+  для R143; Telepathy 0.8.0 отмечена как исторический baseline; сценарии
+  отделены от P0 milestone, результаты привязаны к commit и environment manifest,
+  legacy Run-контур отделён от canonical command path. В Architecture Component
+  Registry добавлен legacy harness с явно перечисленными ограничениями.
+  (`TestCurrentChangelogEntriesHaveEvidence`)
+
+## 2026-10-10 — DEVELOPMENT.md: рабочий процесс и workspace policy (документация)
+
+- (документация) `docs/DEVELOPMENT.md`: руководство синхронизировано с R127,
+  R143, Operations Ledger и Architecture Sync; описаны Issue/assignment,
+  назначенный worktree, независимые Review/Audit, readiness, commit/push/CI,
+  Completion Report и закрытие Issue. Уточнено, что push принятого commit не
+  требует отдельного решения OWNER. (`TestCurrentChangelogEntriesHaveEvidence`)
+
+## 2026-10-10 — Defect Patterns Ledger: validation ordering, historical status, and review gate (#43)
+
+- (документация) `docs/DEFECT_PATTERNS.md`: уточнена нормативность и роль
+  реестра; примеры помечены статусами; DP-002 разделён на aggregate state,
+  runtime resources и ownership scope; DP-003/DP-004 отражают Architecture Sync
+  gate как `PARTIAL`; DP-005 требует state-independent validation до чтения
+  mutable state, state-dependent checks под lock и `Validation Failure = No
+  Observable Mutation`. R104 получил активный evidence backlog в #43.
+- (проверки) `scripts/check-defect-patterns` и self-tests добавлены в `make
+  check`; тестируются уникальность pattern/check IDs, статус автоматизации,
+  наличие тестов и ADR, требования для `FULL`/`NONE` (`TestCurrentChangelogEntriesHaveEvidence`).
+- (документация) `docs/operations/ARCHITECTURE-SYNC-PROCESS.md`: добавлен
+  DP-001…DP-005 review checklist и defectPatternCheck пример с обязательной
+  причиной для N/A.
+- Evidence: `TestCurrentChangelogEntriesHaveEvidence`; `python3
+  scripts/check-defect-patterns`; `python3 scripts/check-defect-patterns-test`
+  (9 self-tests PASS).
+
+## 2026-10-10 — CURRENT_VERSION.md CHANGES_REQUIRED FD cleanup (документация)
+
+- (документация) docs/CURRENT_VERSION.md: FD — исторический документ отделён от
+  активного контекста, устаревшие формулировки и потенциальные operational misuse
+  устранены.
+  - Blocking: добавлен MUST NOT blockquote (нельзя использовать как текущую инструкцию
+    запуска, источник Telepathy версии, session config или readiness decision).
+  - Blocking: "после завершения P0-2 2026-10-08" заменено — добавлена секция
+    "Позднейшая пометка" с коммитами; явно указано "это не означает закрытие всей
+    границы P0-2"; из тела статуса убрано утверждение о полном завершении.
+  - Blocking: local runtime evidence path помечен как не переносимое доказательство.
+  - Significant: "Что запускать" → "Что запускалось"; добавлен preffix "На историческом
+    срезе выполнялись:" перед code block.
+  - Significant: cmd/coord описан как "legacy daemon/CLI ролевого и rooms-контура",
+    явно указано "не является текущим canonical coordd".
+  - Significant: Telepathy 0.8.0 помечена как только историческая baseline; добавлено
+    предупреждение о том, что текущая версия определяется проектной конфигурацией.
+  - Significant: "Real model: false" заменено на естественный язык.
+  - Significant: коммиты be7820a и др. вынесены в отдельную секцию "Позднейшая пометка".
+
 ## 2026-10-10 — ARCHITECTURE.md CHANGES_REQUIRED FD cleanup (документация)
 
 - (документация) docs/ARCHITECTURE.md: FD — Mermaid code fences и экранирование
@@ -1237,10 +1439,11 @@ production write path и import не подключены; приёмка гра
   не закрыта. Причина, по которой MVP Brief остаётся контрактом, теперь указана
   верно: отсутствует read interface, ADR-0006 не написан. Статус Proposed и
   зрелость не менялись.
-- (документация) UX_AUDIT помечен как исторический снимок с датой 2026-10-07 и
-  исходным commit `480df45`; отмечено, что этот commit не разрешается в текущей
-  истории репозитория и приведённые file:line относятся к тому срезу. Содержимое
-  аудита не переписывалось.
+- (документация) UX_AUDIT дополнен запретом использовать исторические команды
+  как текущую инструкцию, evidence manifest с ограничениями provenance,
+  квалификацией legacy Role Sessions и lifecycle-статусами F1–F4. Персональные
+  participant labels и полный отзыв вынесены из основного текста; отзыв
+  сохранён локально как private artifact с явно ограниченной provenance.
 - (документация) ROADMAP: удалён дубль строки P0-3, осталась строка, содержащая
   ссылку на решение OWNER R100. Статусы этапов не менялись, P0-1 остаётся OPEN.
 - (документация) TARGET-ARCHITECTURE: строка про `cmd/coordd` больше не помечена
@@ -1786,3 +1989,11 @@ production write path и import не подключены; приёмка гра
 отдельно. Приложение пока предоставляет ядро, демо и watchdog CLI; здесь нет
 готового production daemon, распределённого consensus или аттестации модели.
 Подробнее: [дорожная карта](docs/ROADMAP.md).
+## 2026-10-10 — GitLab CI integration for Action Map
+
+- Added a reusable GitLab CI include fragment with blocking validation and self-test jobs, plus a root configuration example and integration guide.
+- Registered the guide and example in the Document Registry. No active root `.gitlab-ci.yml` exists, so the example is not enabled and GitLab CI Lint remains pending integration with the project's final pipeline. (`TestCurrentChangelogEntriesHaveEvidence`)
+## 2026-10-10 — Proposed AI-agent engineering governance RFC
+
+- Added RFC-0002 and its proposed Agent Bootstrap Template to the document registry and navigation map.
+- Both remain non-normative until OWNER acceptance; no launcher, session-admission, or authority behavior is enabled by this documentation change.
