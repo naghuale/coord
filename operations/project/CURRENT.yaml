@@ -1,0 +1,76 @@
+apiVersion: coord.dev/v1alpha1
+kind: ProjectOperationsState
+
+project:
+  id: coord
+  repository: naghuale/coord
+  integrationBranch: p0-2-task
+
+source:
+  commit: 92e6e94d8d7e5a3b1f2c4d9e6a8b0c2d4e6f8a0b
+  recordedAt: 2026-10-10T01:24:00+10:00
+  note: >
+    commit is issue-35 (fix unreachable role selection guard),
+    pushed to issue-35-unreachable-role-selection-guard,
+    CI PASS (run 38012913833).
+
+stage:
+  current: review-audit-discussion
+  authority: R132
+
+completed:
+  - issue: 30
+    result: typed Discussion Graph canonical core
+    commit: 3b9322eeccbd5006a8ed3b3ade7a94277efaf4ef
+  - issue: 35
+    result: remove unreachable role selection guard in validateAgentCommandRoleStage
+    commit: 92e6e94
+    branch: issue-35-unreachable-role-selection-guard
+    ciRun: 38012913833
+    ciStatus: PASS
+
+active:
+  - issue: 36
+    state: BLOCKED_BY_35
+    role: EXECUTOR
+    note: TD class R2; unblocked after #35 merge
+  - issue: 32
+    state: LEGACY_WORK_PRESERVED
+    note: R142 draft in workspace-2-opencode/AGENTS.md; requires OWNER acceptance of exact text
+  - issue: 37
+    state: MIGRATION_IN_PROGRESS
+    note: Legacy slots workspace-2/workspace-2-codex/workspace-2-opencode migrating to workspace-01/*
+
+blocked:
+  - issue: 34
+    reason: WAITING_FOR_S0_DEPENDENCIES
+  - issue: 38
+    reason: PROJECT_LOCAL_TMP_WRAPPER_NOT_READY
+
+nextSafeActions:
+  - merge issue-35 branch into p0-2-task (or p0-2-agentsession) after CI
+  - unblock issue-36 (TD class R2: Reviewer + independent Auditor + mutations)
+  - complete #30 residual after #36
+  - accept R145 bootstrap ledger spec
+  - migrate Codex and OpenCode legacy slots to workspace-01
+
+knownDeviations:
+  - id: DEV-37-SYSTEM-TMP
+    status: OPEN
+    reason: issue 38 (coord-project-tmp wrapper) incomplete; system tmp R143 deviation persists
+  - id: DEV-TARGET-ARCH-DISCUSSION
+    status: OPEN
+    reason: TARGET-ARCHITECTURE.md shows Discussion Graph status as "нет" despite #30 implemented; needs R140 recording and doc update
+
+recovery:
+  legacyCodexPatches:
+    attributed: true
+    location: workspace-01/.scratch/tmp/recovery/
+    patches:
+      - issue-35.patch
+      - issue-36.patch
+      - issue-30-residual-*.diff
+  legacyOpenCode:
+    preserved: true
+    location: workspace-2-opencode (unstaged)
+    content: AGENTS.md R142 draft + docs/decisions/README.md
