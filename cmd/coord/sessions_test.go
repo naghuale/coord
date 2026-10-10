@@ -24,13 +24,23 @@ type sessionCLIRequest struct {
 	Body                localchat.Request
 }
 
-func newSessionCLIHarness(t *testing.T, withOwner bool) (*localchat.Client, string, <-chan sessionCLIRequest) {
+// socketTempDir returns a temp directory whose path is short enough for a
+// Unix socket. Under coord-project-tmp, TMPDIR is deeply nested and exceeds
+// macOS's 104-char socket-path limit; COORD_SOCKET_ROOT is the wrapper-provided
+// short base for sockets.
+func socketTempDir(t *testing.T) string {
 	t.Helper()
-	state, err := os.MkdirTemp("", "coord-")
+	state, err := os.MkdirTemp(os.Getenv("COORD_SOCKET_ROOT"), "coord-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(state) })
+	return state
+}
+
+func newSessionCLIHarness(t *testing.T, withOwner bool) (*localchat.Client, string, <-chan sessionCLIRequest) {
+	t.Helper()
+	state := socketTempDir(t)
 	if withOwner {
 		if err := os.WriteFile(filepath.Join(state, "owner.key"), []byte(testOwnerKey), 0600); err != nil {
 			t.Fatal(err)
