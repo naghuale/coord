@@ -13,9 +13,9 @@ sessionLaunchCwd:
 source:
   repository: https://github.com/naghuale/coord.git
   integrationBranch: p0-2-task
-  integrationHead: d31df66
+  integrationHead: a261fc3
   note: >
-    p0-2-task @ d31df66 includes:
+    p0-2-task @ a261fc3 includes:
     3b9322e (#30 Discussion Graph),
     92e6e94 (#35 unreachable guard removed),
     ee71f2e (ops/ledger-bootstrap R145),
@@ -38,7 +38,9 @@ source:
     180cac7 (#37 fix socket path for wrapper),
     1f12fe4 (docs: OwnerBoundaryCheck gate),
     7c23875 (docs: LOCAL_CONFIG_SYNC as FD),
-    d31df66 (docs: coordinator autonomy presumption and next-action algorithm).
+    d31df66 (docs: coordinator autonomy presumption and next-action algorithm),
+    cd7aa5b (#42 Shadow Validation package),
+    a261fc3 (#42 docs: TARGET-ARCHITECTURE + CHANGELOG).
 
 issues:
   completed:
