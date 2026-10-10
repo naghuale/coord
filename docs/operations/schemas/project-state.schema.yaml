@@ -73,6 +73,7 @@ properties:
             - REVIEW_ACCEPTED
             - READY_FOR_COMMIT
             - COMMITTED
+            - READY_FOR_INTEGRATION
             - BLOCKED_BY_DEPENDENCY
             - LEGACY_WORK_PRESERVED
             - MIGRATION_IN_PROGRESS
