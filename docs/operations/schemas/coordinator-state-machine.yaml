@@ -368,6 +368,57 @@ developmentProcess:
       action: block_and_reconcile_facts
       ownerRequired: false
       ownerRequiredIf: conflict cannot be resolved under applicable authority (R142 boundary)
+    LOCAL_CONFIG_STALE:
+      meaning: local configuration no longer matches accepted project state (e.g. after migration)
+      action: compute_expected_values_from_accepted_configuration
+      next: LOCAL_CONFIG_SYNC_REQUIRED
+      ownerRequired: false
+    LOCAL_CONFIG_SYNC_REQUIRED:
+      meaning: expected local configuration computed and not yet applied
+      action: update_and_verify_local_configuration
+      next: CONTEXT_READY
+      ownerRequired: false
+
+  # ── Local configuration ───────────────────────────────────────────────────
+  localConfiguration:
+    HUMAN_ACTION_REQUIRED:
+      action: prepare_exact_human_command
+      ownerRequired: conditional
+      ownerRequiredOnlyIf:
+        - ownerReservedAction
+        - newNorm
+        - riskAcceptance
+        - trustBoundaryChange
+      note: HUMAN_ACTION_REQUIRED MUST NOT automatically convert to OWNER_REQUIRED
+
+  # ── Events ────────────────────────────────────────────────────────────────
+  events:
+    REPOSITORY_PATH_MIGRATED:
+      action:
+        - update_projects_yaml
+        - update_environment_bootstrap
+        - update_context_files
+        - verify_repository_identity
+        - search_for_stale_path_references
+        - update_operations_ledger
+      ownerRequired: false
+
+  # ── Scenarios ─────────────────────────────────────────────────────────────
+  scenarios:
+    repository_path_changed_after_accepted_migration:
+      classification: FD
+      ownerRequired: false
+      requiredActions:
+        - update COORD_REPOSITORY_ROOT
+        - update projects.yaml
+        - update bootstrap environment file
+        - update CURRENT.yaml
+        - verify branch, HEAD, remote and worktrees
+        - ensure old path is not referenced
+      optionalHumanAction:
+        action: launch frontend with prepared environment
+        classification: HUMAN_ACTION_REQUIRED
+        ownerDecisionRequired: false
 
   # ── Decision states ───────────────────────────────────────────────────────
   decisionStates:

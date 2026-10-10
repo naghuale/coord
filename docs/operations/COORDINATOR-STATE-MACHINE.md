@@ -206,6 +206,21 @@ Infrastructure failure must not mask product failure.
 | `CONTEXT_STALE` | Source changed after summary | Re-read source |
 | `CONTEXT_CONFLICT` | Two sources contradict each other | Apply source hierarchy |
 | `RECOVERY_CONFLICT` | Ledger / Issue / refs / CI diverge | Block automatic continuation; reconcile facts; OWNER only if conflict cannot be resolved under applicable authority |
+| `LOCAL_CONFIG_STALE` | Local configuration no longer matches accepted project state (e.g. after migration) | Compute expected values from accepted configuration → `LOCAL_CONFIG_SYNC_REQUIRED` |
+| `LOCAL_CONFIG_SYNC_REQUIRED` | Expected local configuration computed, not yet applied | Update local registry, environment and context files; verify paths → `CONTEXT_READY` |
+
+### Local configuration transitions
+
+| Event or state | Coordinator action | Next state | OWNER |
+|---|---|---|---|
+| `LOCAL_CONFIG_STALE` | Compute expected configuration from accepted project norms | `LOCAL_CONFIG_SYNC_REQUIRED` | No |
+| `LOCAL_CONFIG_SYNC_REQUIRED` | Update local registry, environment bootstrap, context files; verify each path | `CONTEXT_READY` | No |
+| `HUMAN_ACTION_REQUIRED` | Prepare exact command and expected result | Waiting for human to execute | Only if action is OWNER-reserved |
+| Completed migration changed repository path | Update `COORD_REPOSITORY_ROOT`; grep for stale refs; verify `.git`, branch, HEAD, worktrees | `CONTEXT_READY` | No |
+
+`HUMAN_ACTION_REQUIRED` MUST NOT automatically convert to `OWNER_REQUIRED`.
+Local file operations, environment changes, installation of an already-accepted
+tool, and launching an already-approved session are not new OWNER decisions.
 
 ### Decision states
 
