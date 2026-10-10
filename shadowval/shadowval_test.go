@@ -3,6 +3,7 @@
 package shadowval_test
 
 import (
+	"bytes"
 	"coord/fsm"
 	"coord/internal/rooms"
 	"coord/roles"
@@ -10,9 +11,36 @@ import (
 	"coord/store"
 	"coord/task"
 	"coord/taskid"
+	"encoding/json"
 	"testing"
 	"time"
 )
+
+// jsonSnap serializes a CanonicalState to JSON. Two snapshots of the same
+// state are comparable with bytes.Equal; this avoids false inequality from
+// time.Time monotonic readings that survive in memory but are stripped by JSON.
+func jsonSnap(t *testing.T, s store.CanonicalState) []byte {
+	t.Helper()
+	b, err := json.Marshal(s)
+	if err != nil {
+		t.Fatalf("snapshot marshal: %v", err)
+	}
+	return b
+}
+
+// requireStateUnchanged fails if the JSON representation of state changed
+// after Validate. This catches both count changes and in-place mutations to
+// map values and slice elements.
+func requireStateUnchanged(t *testing.T, before []byte, after store.CanonicalState) {
+	t.Helper()
+	b, err := json.Marshal(after)
+	if err != nil {
+		t.Fatalf("post-validate marshal: %v", err)
+	}
+	if !bytes.Equal(before, b) {
+		t.Fatal("canonical state was mutated by Validate")
+	}
+}
 
 // makeTask returns a minimal canonical Task for the given ID.
 func makeTask(t *testing.T) taskid.ID {
@@ -141,16 +169,15 @@ func TestShadowValidationMismatchOnAbsentAgentID(t *testing.T) {
 
 // ── False equality: Member ≠ Run ──────────────────────────────────────────────
 
-// A room with N members must never produce N canonical Runs as a side effect.
+// A room with N members must never produce N canonical Runs as a side effect,
+// and must not mutate any existing Run in place.
 func TestShadowValidationDoesNotCreateRunFromMember(t *testing.T) {
 	tid := makeTask(t)
-	before := stateWith(tid, "", "") // no runs
+	state := stateWith(tid, "run-existing", "agent-x")
+	snap := jsonSnap(t, state)
 	r := roomFor("room-1", tid, member("agent-x"), member("agent-y"), member("agent-z"))
-	_ = shadowval.Validate([]rooms.Room{r}, before)
-	// Validate takes state by value; verify the original is unchanged.
-	if len(before.Runs) != 0 {
-		t.Fatalf("canonical Run count must not change; got %d", len(before.Runs))
-	}
+	_ = shadowval.Validate([]rooms.Room{r}, state)
+	requireStateUnchanged(t, snap, state)
 }
 
 // A room Member must not be treated as equivalent to a canonical Run even when
@@ -179,63 +206,58 @@ func TestShadowValidationAgentIDMatchIsNotRunEquality(t *testing.T) {
 
 // ── False equality: room event ≠ DomainEvent ─────────────────────────────────
 
-// Canonical DomainEvent count must not change as a result of Validate,
-// regardless of how many rooms Events might exist.
-func TestShadowValidationDoesNotCreateDomainEventFromRoomEvent(t *testing.T) {
+// Canonical DomainEvents must not be added, removed, or mutated by Validate.
+// rooms.Room has no public event collection, so the structural exclusion is
+// guaranteed by the API; this test verifies that existing DomainEvent values
+// in the state are not modified in place.
+func TestShadowValidationDoesNotMutateDomainEvents(t *testing.T) {
 	tid := makeTask(t)
-	before := stateWith(tid, "run-1", "agent-1")
-	before.Events = []task.DomainEvent{
-		{Type: task.ReviewResultRecorded, CreatedAt: time.Now()},
+	state := stateWith(tid, "run-1", "agent-1")
+	state.Events = []task.DomainEvent{
+		{Type: task.ReviewResultRecorded, TaskID: tid, ActorID: "agent-1", CreatedAt: time.Now()},
 	}
+	snap := jsonSnap(t, state)
 	r := roomFor("room-1", tid, member("agent-1"))
-	_ = shadowval.Validate([]rooms.Room{r}, before)
-	if len(before.Events) != 1 {
-		t.Fatalf("canonical DomainEvent count must not change; got %d", len(before.Events))
-	}
+	_ = shadowval.Validate([]rooms.Room{r}, state)
+	requireStateUnchanged(t, snap, state)
 }
 
 // ── False equality: room state ≠ Task lifecycle ───────────────────────────────
 
-// Validate must not copy any room lifecycle field into canonical Task state.
-func TestShadowValidationDoesNotCopyRoomStateIntoTask(t *testing.T) {
+// Validate must not copy any room lifecycle field into canonical Task state,
+// and must not mutate the Task value that already exists in the state.
+func TestShadowValidationDoesNotMutateTask(t *testing.T) {
 	tid := makeTask(t)
-	before := stateWith(tid, "", "")
+	state := stateWith(tid, "", "")
+	snap := jsonSnap(t, state)
 	r := rooms.Room{
 		ID:     "room-1",
 		Task:   tid.String(),
-		Closed: true, // a room lifecycle field
+		Closed: true,
+		Title:  "some room title",
 	}
-	_ = shadowval.Validate([]rooms.Room{r}, before)
-	tsk := before.Tasks[tid]
-	// task.Task has no Closed field; verifying Tasks map is unchanged.
-	if _, ok := before.Tasks[tid]; !ok {
-		t.Fatal("Task must still exist in canonical state after validation")
-	}
-	_ = tsk
+	_ = shadowval.Validate([]rooms.Room{r}, state)
+	requireStateUnchanged(t, snap, state)
 }
 
 // ── Read-only invariant ───────────────────────────────────────────────────────
 
-// Validate must not modify the canonical state it receives.
+// Validate must not modify the canonical state it receives — neither counts
+// nor field values of existing entries. The deep-snapshot comparison detects
+// in-place mutations to map values and slice elements that a length-only check
+// would miss.
 func TestShadowValidationIsReadOnly(t *testing.T) {
 	tid := makeTask(t)
 	state := stateWith(tid, "run-1", "agent-1")
-	runsBefore := len(state.Runs)
-	tasksBefore := len(state.Tasks)
-	eventsBefore := len(state.Events)
+	state.Events = []task.DomainEvent{
+		{Type: task.ReviewResultRecorded, TaskID: tid, ActorID: "agent-1", CreatedAt: time.Now()},
+	}
+	snap := jsonSnap(t, state)
 
 	r := roomFor("room-1", tid, member("agent-1"), member("agent-new"))
 	_ = shadowval.Validate([]rooms.Room{r}, state)
 
-	if len(state.Runs) != runsBefore {
-		t.Fatalf("Run count changed: before %d after %d", runsBefore, len(state.Runs))
-	}
-	if len(state.Tasks) != tasksBefore {
-		t.Fatalf("Task count changed: before %d after %d", tasksBefore, len(state.Tasks))
-	}
-	if len(state.Events) != eventsBefore {
-		t.Fatalf("Event count changed: before %d after %d", eventsBefore, len(state.Events))
-	}
+	requireStateUnchanged(t, snap, state)
 }
 
 // AgentIDs from RoleHistory (past roles) must also be matched, not only
