@@ -6,7 +6,7 @@ project:
   id: coord
   source:
     branch: p0-2-task
-    commit: 2ec0468
+    commit: 66a15ba
 
 currentStage: workspace-migration
 
@@ -17,6 +17,15 @@ active:
     note: COORD_REPOSITORY_ROOT transitional = workspace-01/coordinator; target = workspace-01/repositories/coord
 
 completedThisSession:
+  - issue: 41
+    state: COMPLETE
+    commits: [9863dbd, 837c5f0, 66a15ba]
+    mergedTo: p0-2-task
+    ci: PASS
+    note: Coordinator State Machine spec + Architecture Sync Kit (9 components)
+    completionReport: "https://github.com/naghuale/coord/issues/41#issuecomment-6094660954"
+
+
   - id: portability-bootstrap
     state: COMPLETE
     commits: [6b07211, 3276e85]

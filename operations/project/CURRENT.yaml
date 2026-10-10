@@ -13,9 +13,9 @@ sessionLaunchCwd:
 source:
   repository: https://github.com/naghuale/coord.git
   integrationBranch: p0-2-task
-  integrationHead: 2ec0468
+  integrationHead: 66a15ba
   note: >
-    p0-2-task @ 2ec0468 includes:
+    p0-2-task @ 66a15ba includes:
     3b9322e (#30 Discussion Graph),
     92e6e94 (#35 unreachable guard removed),
     ee71f2e (ops/ledger-bootstrap R145),
@@ -29,7 +29,12 @@ source:
     a13957c (completion-report v2: GitHub Issue publishing + text fields),
     908af6e (completion-report v3: READY_FOR_INTEGRATION in schema),
     f192b69 (#39 RFC-0001 Proposed registered),
-    2ec0468 (#39 RFC-0001 Accepted by OWNER).
+    2ec0468 (#39 RFC-0001 Accepted by OWNER),
+    5465e80 (#40 AGENTS.md sync),
+    8582d15 (#37 wrapper symlink containment),
+    9863dbd (#41 coordinator state machine spec),
+    837c5f0 (#41 arch sync kit 9 components),
+    66a15ba (#41 CI fix PyYAML graceful).
 
 issues:
   completed:
@@ -101,6 +106,18 @@ issues:
       detailsLoaded: false
 
   active:
+    - issue: 41
+      title: Coordinator State Machine Specification + Architecture Sync Kit
+      class: FD
+      commits: [9863dbd, 837c5f0, 66a15ba]
+      reviewer: codex:workspace-c9d
+      reviewVerdict: REVIEW_ACCEPTED
+      auditor: opencode:workspace-o57
+      auditVerdict: AUDIT_ACCEPTED
+      ci: PASS
+      state: COMPLETE
+      completionReport: "https://github.com/naghuale/coord/issues/41#issuecomment-6094660954"
+
     - issue: 37
       title: Migrate coordinator → repositories/coord
       state: ACTIVE
