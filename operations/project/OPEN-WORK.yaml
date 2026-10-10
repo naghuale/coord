@@ -17,9 +17,15 @@ completedThisSession:
     state: COMPLETE
     commits: [8582d15, 180cac7, 1f12fe4, 7c23875]
     mergedTo: p0-2-task
-    ci: PENDING
+    ci: PASS
     note: wrapper REVIEW_ACCEPTED (Codex); directory migrated to repositories/coord; bootstrap file created; make check PASS
-    completionReport: "https://github.com/naghuale/coord/issues/37#issuecomment-6095154434"
+
+  - id: coordinator-autonomy-norms
+    state: COMPLETE
+    commit: d31df66
+    mergedTo: p0-2-task
+    ci: PASS
+    note: "10-point normative update: autonomy presumption, priority order, false-choice ban, OWNER_NOTIFICATION, Decision Trace, prohibited OWNER reasons, new SM states, behavioral scenarios, metrics"
 
   - issue: 41
     state: COMPLETE
