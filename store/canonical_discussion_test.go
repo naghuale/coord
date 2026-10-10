@@ -7,7 +7,6 @@ import (
 	"coord/taskid"
 	"errors"
 	"reflect"
-	"strings"
 	"testing"
 	"time"
 )
@@ -284,19 +283,19 @@ func TestDiscussionNodeRequiresActor(t *testing.T) {
 			if err := node.Validate(); !errors.Is(err, task.ErrDiscussionNodeActorRequired) {
 				t.Fatalf("Validate error=%v, want ErrDiscussionNodeActorRequired", err)
 			}
-			detachDiscussionMemoryState(t, s)
-			setDiscussionCommandAgentID(s, actor)
 			before, err := s.CanonicalSnapshot()
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, replayed, err := s.RecordDiscussionNode(validAgentCommandFrame(p.state, "bad-node-actor-"+map[string]string{"": "empty", " \t": "whitespace"}[actor]), id, before.Tasks[id].Revision, task.DiscussionNode{Type: task.DiscussionQuestion, Summary: "invalid author", Refs: []task.Reference{}})
-			if actor == "" {
-				if !errors.Is(err, ErrAgentCommandMissingAgentID) || replayed {
-					t.Fatalf("empty AgentID command err=%v replayed=%v", err, replayed)
-				}
-			} else if !errors.Is(err, ErrAgentCommandTransitionForbidden) || !strings.Contains(err.Error(), task.ErrDiscussionNodeActorRequired.Error()) || replayed {
-				t.Fatalf("whitespace Actor should fail in node schema: err=%v replayed=%v", err, replayed)
+			invalidSnapshot, err := copyCanonicalState(before)
+			if err != nil {
+				t.Fatal(err)
+			}
+			discussionEvent := &invalidSnapshot.Events[len(invalidSnapshot.Events)-1]
+			discussionEvent.DiscussionNode.Actor = actor
+			discussionEvent.ActorID = actor
+			if err := ValidateCanonicalState(invalidSnapshot); !errors.Is(err, task.ErrDiscussionNodeActorRequired) {
+				t.Fatalf("ValidateCanonicalState error=%v, want ErrDiscussionNodeActorRequired", err)
 			}
 			assertDiscussionValidationStoreUnchanged(t, s, p, id, clock, before, diskBefore, graphBefore, saves)
 		})
@@ -329,26 +328,24 @@ func TestDiscussionNodeRequiresRole(t *testing.T) {
 }
 
 func TestDiscussionEdgeRequiresActor(t *testing.T) {
+	id := taskid.ID("task_01ARZ3NDEKTSV4RRFFQ69G5FAV")
 	for _, actor := range []string{"", " \t"} {
 		t.Run(map[string]string{"": "empty", " \t": "whitespace"}[actor], func(t *testing.T) {
-			s, p, id, clock, _, diskBefore, graphBefore, saves := discussionValidationFixture(t)
+			s, p, _, clock, _, diskBefore, graphBefore, saves := discussionValidationFixture(t)
 			edge := task.DiscussionEdge{EdgeID: "schema-edge", Type: task.DiscussionRefersTo, FromNodeID: "from", ToNodeID: "to", TaskID: id, Actor: actor, CreatedAt: time.Unix(6000, 0).UTC()}
 			if err := edge.Validate(); !errors.Is(err, task.ErrDiscussionEdgeActorRequired) {
 				t.Fatalf("Validate error=%v, want ErrDiscussionEdgeActorRequired", err)
 			}
-			detachDiscussionMemoryState(t, s)
-			setDiscussionCommandAgentID(s, actor)
 			before, err := s.CanonicalSnapshot()
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, replayed, err := s.RecordDiscussionEdge(validAgentCommandFrame(p.state, "bad-edge-actor-"+map[string]string{"": "empty", " \t": "whitespace"}[actor]), id, before.Tasks[id].Revision, task.DiscussionEdge{Type: task.DiscussionRefersTo, FromNodeID: "from", ToNodeID: "to"})
-			if actor == "" {
-				if !errors.Is(err, ErrAgentCommandMissingAgentID) || replayed {
-					t.Fatalf("empty AgentID command err=%v replayed=%v", err, replayed)
-				}
-			} else if !errors.Is(err, ErrAgentCommandTransitionForbidden) || !strings.Contains(err.Error(), task.ErrDiscussionEdgeActorRequired.Error()) || replayed {
-				t.Fatalf("whitespace Actor should fail in edge schema: err=%v replayed=%v", err, replayed)
+			invalidSnapshot := recordedDiscussionEdgeSnapshot(t)
+			discussionEvent := &invalidSnapshot.Events[len(invalidSnapshot.Events)-1]
+			discussionEvent.DiscussionEdge.Actor = actor
+			discussionEvent.ActorID = actor
+			if err := ValidateCanonicalState(invalidSnapshot); !errors.Is(err, task.ErrDiscussionEdgeActorRequired) {
+				t.Fatalf("ValidateCanonicalState error=%v, want ErrDiscussionEdgeActorRequired", err)
 			}
 			assertDiscussionValidationStoreUnchanged(t, s, p, id, clock, before, diskBefore, graphBefore, saves)
 		})
@@ -362,18 +359,6 @@ func detachDiscussionMemoryState(t *testing.T, s *CanonicalStore) {
 		t.Fatal(err)
 	}
 	s.state = state
-}
-
-func setDiscussionCommandAgentID(s *CanonicalStore, agentID string) {
-	run := s.state.Runs["run-1"]
-	run.RoleSelection.AgentID = agentID
-	s.state.Runs[run.RunID] = run
-	for address, session := range s.state.AgentSessions {
-		if session.AgentID == "agent-executor" {
-			session.AgentID = agentID
-			s.state.AgentSessions[address] = session
-		}
-	}
 }
 
 func discussionValidationFixture(t *testing.T) (*CanonicalStore, *canonicalMemory, taskid.ID, *canonicalTestClock, CanonicalState, CanonicalState, task.DiscussionGraph, int) {

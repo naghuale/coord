@@ -345,9 +345,8 @@ TD по R142: формат ResultRef оставлен для #6, посколь�
   `TestDiscussionRunRoleAssignmentIsRequired` проверяет отказ edge-команды без role assignment.
 - **TD4 (R142):** Discussion edge намеренно не имеет поля `Role`; роль автора edge
   определяется `Run.RoleSelection`. Node и edge schemas отдельно требуют непустой Actor;
-  node schema отдельно требует непустой Role, проверки возвращают typed errors. Пустой
-  AgentID отвергается `ApplyAgentCommand` до callback; whitespace AgentID проходит раннюю
-  проверку и тестируется через команду, чтобы подтвердить отказ именно schema validation.
+  node schema отдельно требует непустой Role, проверки возвращают typed errors. Пустой или whitespace AgentID отвергается `ApplyAgentCommand` до callback; тесты #30
+  проверяют schema напрямую и через `ValidateCanonicalState` на копии снимка с malformed Discussion event; metadata ActorID остаётся согласованным, поэтому отказ происходит именно на schema-проверке. После отказа исходное состояние стора и durable state остаются без изменений.
   Некорректный Role отклоняется `validateAgentCommandRoleStage`, поэтому обязательность
   node.Role также проверяется непосредственно через typed schema error. Тесты доказывают
   неизменность Task, Graph, Events, Inbox, Outbox и durable state после reopen.
@@ -433,9 +432,9 @@ fail-closed, а причина должна быть видна как blocker; 
 | `TestDiscussionProjectionRebuildsFromEvents` | Повторное восстановление даёт те же node/edge IDs, данные и связи только из canonical Events | хранить изменяемую независимую копию Graph либо терять node/edge при rebuild |
 | `TestDiscussionRejectsDanglingOrCrossTaskEdges` | Node/edge schema валидна, ссылки принадлежат ожидаемой Task и существуют | принять dangling ID или ссылку на другую Task |
 | `TestDiscussionDoesNotPromoteTransportEvents` | ACK/heartbeat/delivery/retry и обычные реплики не создают пользовательский node/event | автоматически отображать transport envelope как FACT/RESULT |
-| `TestDiscussionNodeRequiresActor` | Node schema отдельно отклоняет пустой и пробельный Actor с `ErrDiscussionNodeActorRequired`; whitespace AgentID проходит в callback и даёт этот schema error; после отказа Task/Graph/Events/Inbox/Outbox/durable state не меняются и reopen совпадает | убрать проверку node Actor |
+| `TestDiscussionNodeRequiresActor` | Node schema отклоняет пустой и пробельный Actor напрямую и при `ValidateCanonicalState` снимка с Discussion event; тест проверяет именно typed schema error, затем неизменность исходного Task/Graph/Events/Inbox/Outbox/durable state и reopen | убрать проверку node Actor |
 | `TestDiscussionNodeRequiresRole` | Node schema отдельно отклоняет пустой и пробельный Role с `ErrDiscussionNodeRoleRequired`; командный путь отдельно подтверждает, что `validateAgentCommandRoleStage` отклоняет неправильную Run role до callback; state и reopen неизменны | убрать проверку node Role |
-| `TestDiscussionEdgeRequiresActor` | Edge schema отдельно отклоняет пустой и пробельный Actor с `ErrDiscussionEdgeActorRequired`; whitespace AgentID проходит в callback и даёт schema error; после отказа Task/Graph/Events/Inbox/Outbox/durable state не меняются и reopen совпадает | убрать проверку edge Actor |
+| `TestDiscussionEdgeRequiresActor` | Edge schema отклоняет пустой и пробельный Actor напрямую и при `ValidateCanonicalState` снимка с Discussion event; тест проверяет именно typed schema error, затем неизменность исходного Task/Graph/Events/Inbox/Outbox/durable state и reopen | убрать проверку edge Actor |
 | `TestDiscussionNodeTypesCarryRequiredFields` | Узел каждого типа из перечня R138 принимается с общим минимумом и полем по типу: `FINDING` — `ReviewResultRef`/`AuditResultRef`, `DECISION` — `OwnerDecisionRef`/`ConflictID`, `RESULT` — `ResultRef`, `BLOCKER` — `ReasonCode`; для `QUESTION`, `PROPOSAL`, `FACT`, `ACTION` достаточно общего минимума | принять узел без поля по типу, с пустым `Summary`/`Refs` или принять FACT или FINDING с пустым `Refs[]` |
 | `TestDiscussionFindingRequiresExactlyOneResultReference` | FINDING требует ровно одну из `ReviewResultRef` и `AuditResultRef` | принять FINDING без ссылки или с двумя ссылками |
 | `TestDiscussionConflictFactRequiresR137References` | Conflict FACT требует `ConflictID`, ReviewResultRef и AuditResultRef | принять конфликтный FACT без одной из ссылок или без ConflictID |
