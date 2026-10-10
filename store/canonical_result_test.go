@@ -714,3 +714,75 @@ func resultState(resultRole roles.Role) CanonicalState {
 	state.Runs[runID] = run
 	return state
 }
+
+// executorState returns a CanonicalState with a Task at Execution stage and an
+// active Executor Run, ready to receive RecordExecutorResult.
+func executorState() CanonicalState {
+	state := EmptyCanonicalState()
+	id := resultTaskID
+	now := time.Unix(100, 0).UTC()
+	currentStage := task.Execution
+	state.Tasks[id] = task.Task{
+		ID: id, Title: "Task", OwnerID: "owner", Revision: 2, LastEventSeq: 2,
+		StagePlan:    task.StagePlan{Stages: []task.Stage{task.Execution, task.Review}, PolicyVersion: task.StagePlanPolicyVersion},
+		CurrentStage: &currentStage, Status: task.InProgress, Fence: 1,
+		CreatedAt: now, UpdatedAt: now.Add(time.Second),
+	}
+	state.Events = append(state.Events,
+		task.DomainEvent{ID: task.EventID(id, 1), TaskID: id, EventSeq: 1, TaskRevision: 1, TaskFence: 0, Type: task.TaskCreated, ActorID: "owner", CreatedAt: now},
+		task.DomainEvent{ID: task.EventID(id, 2), TaskID: id, RunID: "run-executor", EventSeq: 2, TaskRevision: 2, TaskFence: 1, Type: task.TaskOwnershipTransferred, CreatedAt: now.Add(time.Second)},
+	)
+	sha := strings.Repeat("a", 40)
+	executorSelection := roles.Selection{AgentID: "agent-executor", Session: "executor-session", Profile: roles.Profile{Role: roles.Executor}}
+	state.Runs["run-executor"] = fsm.Run{
+		Task: "task-label", TaskID: id, RunID: "run-executor", Attempt: 1, Fence: 1,
+		TargetSHA: sha, CoordinatorSession: "coord-session", Worktree: "worktree",
+		Deadline: now.Add(time.Hour), AssignedAt: now, LastUpdate: now, Status: fsm.Started,
+		RequiredRole:  roles.Requirement{Role: roles.Executor},
+		RoleSelection: &executorSelection, RoleHistory: []roles.Selection{executorSelection},
+	}
+	run := state.Runs["run-executor"]
+	bindCanonicalTestRun(&state, &run, executorSelection.AgentID, now)
+	state.Runs[run.RunID] = run
+	return state
+}
+
+func TestExecutorResultIsStructuredAndTaskScoped(t *testing.T) {
+	p := &canonicalMemory{state: executorState()}
+	s, err := NewCanonical(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	now := time.Unix(500, 0).UTC()
+	result := task.ExecutorResult{Outcome: task.ExecutorSuccess, Summary: "executor finished", OutputArtifactRefs: []string{}}
+	receipt, replayed, err := s.RecordExecutorResult("executor-message", resultTaskID, "run-executor", 2, result, now)
+	if err != nil || replayed {
+		t.Fatalf("receipt=%+v replayed=%v err=%v", receipt, replayed, err)
+	}
+	assertResultCommit(t, p, receipt, task.ExecutorResultRecorded, now)
+	event := p.state.Events[len(p.state.Events)-1]
+	if event.ActorID != "agent-executor" || event.ExecutorResult == nil || event.ExecutorResult.Outcome != task.ExecutorSuccess {
+		t.Fatalf("Executor result actor/payload incorrect: %+v", event)
+	}
+	if p.state.Runs["run-executor"].Status != fsm.Done {
+		t.Fatal("Executor Run status was not set to Done after result")
+	}
+}
+
+func TestExecutorResultRejectsNonExecutorRun(t *testing.T) {
+	p := &canonicalMemory{state: resultState(roles.Reviewer)}
+	s, err := NewCanonical(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	result := task.ExecutorResult{Outcome: task.ExecutorSuccess, Summary: "done", OutputArtifactRefs: []string{}}
+	_, _, err = s.RecordExecutorResult("wrong-role", resultTaskID, "run-review", 3, result, time.Unix(500, 0).UTC())
+	if err == nil || !strings.Contains(err.Error(), "Executor Run") {
+		t.Fatalf("non-Executor Run accepted: err=%v", err)
+	}
+	if p.saveCalls != 0 {
+		t.Fatal("non-Executor result was committed")
+	}
+}

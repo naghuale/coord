@@ -1,5 +1,26 @@
 # История изменений
 
+## 2026-10-10 — Issue #6 (P0-3): canonical Executor RESULT path (R117/R124)
+
+- (код) task/result.go: добавлены `ExecutorOutcome` (SUCCESS/FAILURE/PARTIAL),
+  `ExecutorResult` struct с `Validate()`. Refs #6.
+- (код) task/event.go: добавлен `ExecutorResultRecorded` EventType; поле
+  `ExecutorResult` в `DomainEvent`; обработка в `Validate()`.
+- (код) store/canonical.go: добавлен метод `TaskRevision(id) (uint64, bool)`.
+- (код) store/canonical_result.go: добавлен `RecordExecutorResult` —
+  атомарная запись результата, DomainEvent и ResultAck через `ApplyInboxCommand`.
+  `validateTaskResultEvents` обновлён для Executor (EventSeq, стадия Execution,
+  метаданные). `requiresDomainResult` скорректирован: `run.Result == nil ||
+  Reviewer || Auditor` (без Executor — canonical path уже охвачен через `Result == nil`).
+- (код) store/canonical_discussion.go: удалён placeholder-error; `ResultRef`
+  теперь валидируется через `ExecutorResultRecorded` event.
+- (код) coordinator.go: добавлен fail-closed gate (R117/R124) — task-scoped Run
+  с RESULT envelope маршрутизируется только через `RecordExecutorResult`; при
+  отсутствии `CanonicalStore` возвращает ошибку без fallback.
+- (тесты) store/canonical_result_test.go: `TestExecutorResultIsStructuredAndTaskScoped`,
+  `TestExecutorResultRejectsNonExecutorRun`.
+- (тесты) coordinator_test.go: `TestCanonicalExecutorResultGateFailsClosedWithoutCanonicalStore`.
+
 ## 2026-10-10 — AGENT_INSTRUCTIONS cleanup: COORD_GLOBAL_ROOT bootstrap, legacy/canonical separation, identity (документация)
 
 - (документация) docs/AGENT_INSTRUCTIONS.md: редакционная пометка добавлена; FD.

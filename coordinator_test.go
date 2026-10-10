@@ -7,6 +7,7 @@ import (
 	"coord/fsm"
 	"coord/retry"
 	"coord/store"
+	"coord/taskid"
 	"coord/watchdog"
 	"errors"
 	"net/http"
@@ -330,5 +331,31 @@ func TestRunTransportClosure(t *testing.T) {
 	close(f.tp.in)
 	if !errors.Is(f.c.Run(context.Background()), ErrTransportClosed) {
 		t.Fatal("closed transport not detected")
+	}
+}
+
+// TestCanonicalExecutorResultGateFailsClosedWithoutCanonicalStore verifies R117/R124:
+// a task-scoped Run's RESULT envelope is rejected when the coordinator does not
+// hold a CanonicalStore — no fallback to the legacy Apply path is attempted.
+func TestCanonicalExecutorResultGateFailsClosedWithoutCanonicalStore(t *testing.T) {
+	f := setup(t) // legacy store.Store, not CanonicalStore
+	f.assign(t)
+
+	// Inject a TaskID onto the run so the canonical RESULT gate activates.
+	taskID := taskid.ID("task_01ARZ3NDEKTSV4RRFFQ69G5FAV")
+	if err := f.s.Update(func(runs map[string]fsm.Run) error {
+		r := runs["run"]
+		r.TaskID = taskID
+		runs["run"] = r
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	e := f.reply(envelope.Result)
+	e.ResultPayload = &envelope.ResultPayload{Outcome: "SUCCESS", Summary: "done"}
+	err := f.c.Handle(context.Background(), e)
+	if err == nil || !strings.Contains(err.Error(), "fail-closed") {
+		t.Fatalf("task-scoped RESULT on legacy store was not rejected fail-closed: err=%v", err)
 	}
 }

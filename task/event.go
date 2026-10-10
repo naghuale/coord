@@ -14,6 +14,7 @@ const (
 	TaskOwnershipTransferred EventType = "TASK_OWNERSHIP_TRANSFERRED"
 	ReviewResultRecorded     EventType = "REVIEW_RESULT_RECORDED"
 	AuditResultRecorded      EventType = "AUDIT_RESULT_RECORDED"
+	ExecutorResultRecorded   EventType = "EXECUTOR_RESULT_RECORDED"
 	DiscussionNodeRecorded   EventType = "DISCUSSION_NODE_RECORDED"
 	DiscussionEdgeRecorded   EventType = "DISCUSSION_EDGE_RECORDED"
 )
@@ -31,6 +32,7 @@ type DomainEvent struct {
 	Summary        string          `json:"summary,omitempty"`
 	ReviewResult   *ReviewResult   `json:"review_result,omitempty"`
 	AuditResult    *AuditResult    `json:"audit_result,omitempty"`
+	ExecutorResult *ExecutorResult `json:"executor_result,omitempty"`
 	DiscussionNode *DiscussionNode `json:"discussion_node,omitempty"`
 	DiscussionEdge *DiscussionEdge `json:"discussion_edge,omitempty"`
 	CreatedAt      time.Time       `json:"created_at"`
@@ -52,7 +54,7 @@ func (e DomainEvent) Validate() error {
 	}
 	switch e.Type {
 	case DiscussionNodeRecorded:
-		if e.DiscussionNode == nil || e.DiscussionEdge != nil || e.ReviewResult != nil || e.AuditResult != nil {
+		if e.DiscussionNode == nil || e.DiscussionEdge != nil || e.ReviewResult != nil || e.AuditResult != nil || e.ExecutorResult != nil {
 			return fmt.Errorf("DISCUSSION_NODE_RECORDED requires only a DiscussionNode payload")
 		}
 		if err := e.DiscussionNode.Validate(); err != nil {
@@ -62,7 +64,7 @@ func (e DomainEvent) Validate() error {
 			return fmt.Errorf("DiscussionNode metadata differs from DomainEvent")
 		}
 	case DiscussionEdgeRecorded:
-		if e.DiscussionEdge == nil || e.DiscussionNode != nil || e.ReviewResult != nil || e.AuditResult != nil {
+		if e.DiscussionEdge == nil || e.DiscussionNode != nil || e.ReviewResult != nil || e.AuditResult != nil || e.ExecutorResult != nil {
 			return fmt.Errorf("DISCUSSION_EDGE_RECORDED requires only a DiscussionEdge payload")
 		}
 		if err := e.DiscussionEdge.Validate(); err != nil {
@@ -72,21 +74,28 @@ func (e DomainEvent) Validate() error {
 			return fmt.Errorf("DiscussionEdge metadata differs from DomainEvent")
 		}
 	case ReviewResultRecorded:
-		if e.ReviewResult == nil || e.AuditResult != nil {
+		if e.ReviewResult == nil || e.AuditResult != nil || e.ExecutorResult != nil {
 			return fmt.Errorf("REVIEW_RESULT_RECORDED requires only a ReviewResult payload")
 		}
 		if err := e.ReviewResult.Validate(); err != nil {
 			return fmt.Errorf("invalid ReviewResult payload: %w", err)
 		}
 	case AuditResultRecorded:
-		if e.AuditResult == nil || e.ReviewResult != nil {
+		if e.AuditResult == nil || e.ReviewResult != nil || e.ExecutorResult != nil {
 			return fmt.Errorf("AUDIT_RESULT_RECORDED requires only an AuditResult payload")
 		}
 		if err := e.AuditResult.Validate(); err != nil {
 			return fmt.Errorf("invalid AuditResult payload: %w", err)
 		}
+	case ExecutorResultRecorded:
+		if e.ExecutorResult == nil || e.ReviewResult != nil || e.AuditResult != nil || e.DiscussionNode != nil || e.DiscussionEdge != nil {
+			return fmt.Errorf("EXECUTOR_RESULT_RECORDED requires only an ExecutorResult payload")
+		}
+		if err := e.ExecutorResult.Validate(); err != nil {
+			return fmt.Errorf("invalid ExecutorResult payload: %w", err)
+		}
 	default:
-		if e.ReviewResult != nil || e.AuditResult != nil || e.DiscussionNode != nil || e.DiscussionEdge != nil {
+		if e.ReviewResult != nil || e.AuditResult != nil || e.ExecutorResult != nil || e.DiscussionNode != nil || e.DiscussionEdge != nil {
 			return fmt.Errorf("event type %q cannot contain a typed payload", e.Type)
 		}
 	}

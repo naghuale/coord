@@ -11,6 +11,77 @@ import (
 	"time"
 )
 
+// RecordExecutorResult commits a canonical Executor result, its Task transition,
+// event, receipt and acknowledgement in one snapshot transaction. The actor is
+// always selected from the persisted Run, never from result input. The RESULT
+// envelope payload is translated to an ExecutorResult domain event; the legacy
+// fsm.Run.Result field is left unset for canonical Runs (TaskID != "").
+func (s *CanonicalStore) RecordExecutorResult(messageID string, id taskid.ID, runID string, expectedRevision uint64, result task.ExecutorResult, now time.Time) (InboxReceipt, bool, error) {
+	run, ok := s.Get(runID)
+	if !ok || run.TaskID != id || run.RoleSelection == nil || run.RoleSelection.AgentID == "" {
+		return InboxReceipt{}, false, fmt.Errorf("canonical Run with Task-scoped RoleSelection required")
+	}
+	if run.RoleSelection.Profile.Role != roles.Executor {
+		return InboxReceipt{}, false, fmt.Errorf("RecordExecutorResult requires an Executor Run")
+	}
+	actorID := run.RoleSelection.AgentID
+	result = task.ExecutorResult{
+		Outcome:            result.Outcome,
+		Summary:            result.Summary,
+		OutputArtifactRefs: cloneStrings(result.OutputArtifactRefs),
+		CreatedAt:          result.CreatedAt,
+	}
+	return s.ApplyInboxCommand(actorID, messageID, id, expectedRevision, func(state *CanonicalState) (InboxReceipt, error) {
+		currentRun, exists := state.Runs[runID]
+		if !exists || currentRun.TaskID != id || currentRun.RoleSelection == nil || currentRun.RoleSelection.AgentID != actorID {
+			return InboxReceipt{}, fmt.Errorf("canonical Run actor changed")
+		}
+		currentTask, exists := state.Tasks[id]
+		if !exists {
+			return InboxReceipt{}, fmt.Errorf("canonical Task %q not found", id)
+		}
+		if currentTask.Status != task.InProgress || currentTask.CurrentStage == nil || *currentTask.CurrentStage != task.Execution {
+			return InboxReceipt{}, fmt.Errorf("task must be IN_PROGRESS at EXECUTION stage")
+		}
+		if currentRun.RoleSelection.Profile.Role != roles.Executor {
+			return InboxReceipt{}, fmt.Errorf("ExecutorResult requires an Executor Run")
+		}
+		if currentRun.Terminal() || (currentRun.Status != fsm.Started && currentRun.Status != fsm.ResultReady) {
+			return InboxReceipt{}, fmt.Errorf("executor Run must be working before result acceptance")
+		}
+		if now.IsZero() || now.Before(currentTask.UpdatedAt) {
+			return InboxReceipt{}, fmt.Errorf("result timestamp must not precede Task state")
+		}
+		result.CreatedAt = now
+		if err := result.Validate(); err != nil {
+			return InboxReceipt{}, err
+		}
+		currentTask.Revision++
+		currentTask.LastEventSeq++
+		currentTask.Status = task.Blocked
+		currentTask.UpdatedAt = now
+		state.Tasks[id] = currentTask
+		currentRun.Status = fsm.Done
+		currentRun.LastUpdate = now
+		state.Runs[runID] = currentRun
+		event := task.DomainEvent{
+			ID: task.EventID(id, currentTask.LastEventSeq), TaskID: id, RunID: runID,
+			EventSeq: currentTask.LastEventSeq, TaskRevision: currentTask.Revision,
+			TaskFence: currentTask.Fence, Type: task.ExecutorResultRecorded, ActorID: actorID,
+			Summary: result.Summary, ExecutorResult: &result, CreatedAt: now,
+		}
+		state.Events = append(state.Events, event)
+		ack, err := resultAck(currentRun, messageID, now)
+		if err != nil {
+			return InboxReceipt{}, err
+		}
+		state.Outbox[runID] = appendOutbox(state.Outbox[runID], OutboxMessage{Envelope: ack, EventID: event.ID})
+		return InboxReceipt{ActorID: actorID, MessageID: messageID, TaskID: id, RunID: runID,
+			EventIDs: []string{event.ID}, ExpectedRevision: expectedRevision,
+			CommittedRevision: currentTask.Revision, RecordedAt: now}, nil
+	})
+}
+
 // RecordReviewResult commits a canonical Review verdict, its Task transition,
 // event, receipt and acknowledgement in one snapshot transaction. The actor is
 // always selected from the persisted Run, never from result input.
@@ -219,6 +290,11 @@ func validateTaskResultEvents(state CanonicalState) error {
 			if event.Summary != event.AuditResult.Summary || !event.CreatedAt.Equal(event.AuditResult.CreatedAt) {
 				return fmt.Errorf("DomainEvent %q metadata differs from AuditResult payload", event.ID)
 			}
+		case task.ExecutorResultRecorded:
+			role = roles.Executor
+			if event.Summary != event.ExecutorResult.Summary || !event.CreatedAt.Equal(event.ExecutorResult.CreatedAt) {
+				return fmt.Errorf("DomainEvent %q metadata differs from ExecutorResult payload", event.ID)
+			}
 		default:
 			continue
 		}
@@ -231,23 +307,30 @@ func validateTaskResultEvents(state CanonicalState) error {
 		}
 		if event.EventSeq == state.Tasks[event.TaskID].LastEventSeq {
 			expectedStage := task.Review
-			if role == roles.Auditor {
+			switch role {
+			case roles.Auditor:
 				expectedStage = task.Audit
+			case roles.Executor:
+				expectedStage = task.Execution
 			}
 			taskValue := state.Tasks[event.TaskID]
 			if taskValue.Status != task.Blocked || taskValue.CurrentStage == nil || *taskValue.CurrentStage != expectedStage {
 				return fmt.Errorf("latest result event %q must leave Task BLOCKED at %s awaiting supervisor stop", event.ID, expectedStage)
 			}
 		}
-		hasExecutorAttempt := false
-		for _, candidate := range state.Runs {
-			if candidate.TaskID == event.TaskID && candidate.Attempt == run.Attempt && candidate.RoleSelection != nil && candidate.RoleSelection.Profile.Role == roles.Executor {
-				hasExecutorAttempt = true
-				break
+		if role != roles.Executor {
+			// Reviewer and Auditor runs must have a corresponding Executor Run for
+			// the same Attempt; Executor is its own evidence.
+			hasExecutorAttempt := false
+			for _, candidate := range state.Runs {
+				if candidate.TaskID == event.TaskID && candidate.Attempt == run.Attempt && candidate.RoleSelection != nil && candidate.RoleSelection.Profile.Role == roles.Executor {
+					hasExecutorAttempt = true
+					break
+				}
 			}
-		}
-		if !hasExecutorAttempt {
-			return fmt.Errorf("result Run %q has no Executor Run for the same Attempt", run.RunID)
+			if !hasExecutorAttempt {
+				return fmt.Errorf("result Run %q has no Executor Run for the same Attempt", run.RunID)
+			}
 		}
 		for i, finding := range findings {
 			expectedID := fmt.Sprintf("%s/finding/%d", event.ID, i+1)
@@ -270,6 +353,8 @@ func validateTaskResultEvents(state CanonicalState) error {
 			if run.RoleSelection != nil {
 				role = run.RoleSelection.Profile.Role
 			}
+			// Canonical path Runs leave run.Result nil; legacy Runs carry it.
+			// Reviewer and Auditor always require a DomainEvent.
 			requiresDomainResult := run.Result == nil || role == roles.Reviewer || role == roles.Auditor
 			if requiresDomainResult && !resultRuns[runID] {
 				return fmt.Errorf("task-scoped DONE Run %q has no canonical result event", runID)

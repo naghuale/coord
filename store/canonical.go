@@ -1126,6 +1126,17 @@ func requireTaskRunEvent(previous, next CanonicalState, events map[taskid.ID][]t
 	return fmt.Errorf("run %q domain mutation requires a same-commit event at Task revision %d", runID, newTask.Revision)
 }
 
+// TaskRevision returns the current revision of the Task identified by id.
+// It is the caller's responsibility to pass this revision as expectedRevision to
+// any subsequent ApplyInboxCommand call; the CAS check inside that call guards
+// against concurrent mutations between this read and the write.
+func (s *CanonicalStore) TaskRevision(id taskid.ID) (uint64, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	t, ok := s.state.Tasks[id]
+	return t.Revision, ok
+}
+
 // CanonicalSnapshot returns an isolated copy for startup diagnostics and
 // validation; callers cannot mutate the published state.
 func (s *CanonicalStore) CanonicalSnapshot() (CanonicalState, error) {

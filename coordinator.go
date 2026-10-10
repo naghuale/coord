@@ -8,6 +8,7 @@ import (
 	"coord/retry"
 	"coord/roles"
 	"coord/store"
+	"coord/task"
 	"coord/transport"
 	"errors"
 	"fmt"
@@ -321,6 +322,31 @@ func (c *Coordinator) Handle(ctx context.Context, e envelope.Envelope) error {
 	}
 	if (e.Kind == envelope.Ack && e.AckPayload.State == "ACCEPTED" && !e.AckPayload.NextUpdateBy.After(now)) || (e.Kind == envelope.Heartbeat && !e.HeartbeatPayload.NextUpdateBy.After(now)) {
 		return fmt.Errorf("expired next_update_by")
+	}
+	// R117/R124: canonical Executor RESULT path. All task-scoped Runs route through
+	// RecordExecutorResult; the legacy Apply path is closed for them. Fail-closed:
+	// if the store is not a CanonicalStore, the command is rejected with no fallback.
+	if r.TaskID != "" && e.Kind == envelope.Result {
+		canonical, ok := c.store.(*store.CanonicalStore)
+		if !ok {
+			return fmt.Errorf("canonical Executor RESULT path requires CanonicalStore: fail-closed")
+		}
+		if e.ResultPayload == nil {
+			return fmt.Errorf("RESULT envelope missing payload")
+		}
+		rev, exists := canonical.TaskRevision(r.TaskID)
+		if !exists {
+			return fmt.Errorf("task %q not found in canonical state", r.TaskID)
+		}
+		executorResult := task.ExecutorResult{
+			Outcome:            task.ExecutorOutcome(e.ResultPayload.Outcome),
+			Summary:            e.ResultPayload.Summary,
+			OutputArtifactRefs: []string{},
+		}
+		if _, _, err := canonical.RecordExecutorResult(e.MessageID, r.TaskID, r.RunID, rev, executorResult, now); err != nil {
+			return err
+		}
+		return c.flush(ctx, r.RunID)
 	}
 	if err := r.Apply(e, now); err != nil {
 		c.Metrics.Inc("fsm_errors_total")

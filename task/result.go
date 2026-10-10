@@ -82,6 +82,39 @@ func (r AuditResult) Validate() error {
 	return validateResult(r.Summary, r.Findings, r.InputArtifactRefs, r.OutputArtifactRefs, r.CreatedAt)
 }
 
+type ExecutorOutcome string
+
+const (
+	ExecutorSuccess ExecutorOutcome = "SUCCESS"
+	ExecutorFailure ExecutorOutcome = "FAILURE"
+	ExecutorPartial ExecutorOutcome = "PARTIAL"
+)
+
+type ExecutorResult struct {
+	Outcome            ExecutorOutcome `json:"outcome"`
+	Summary            string          `json:"summary"`
+	OutputArtifactRefs []string        `json:"output_artifact_refs"`
+	CreatedAt          time.Time       `json:"created_at"`
+}
+
+func (r ExecutorResult) Validate() error {
+	switch r.Outcome {
+	case ExecutorSuccess, ExecutorFailure, ExecutorPartial:
+	default:
+		return fmt.Errorf("unsupported Executor outcome %q", r.Outcome)
+	}
+	if strings.TrimSpace(r.Summary) == "" || r.CreatedAt.IsZero() {
+		return fmt.Errorf("summary and creation time are required")
+	}
+	if r.OutputArtifactRefs == nil {
+		return fmt.Errorf("output_artifact_refs must be present")
+	}
+	if len(r.OutputArtifactRefs) > 0 {
+		return fmt.Errorf("artifact metadata not defined")
+	}
+	return nil
+}
+
 func validateResult(summary string, findings []Finding, inputs, outputs []string, createdAt time.Time) error {
 	if strings.TrimSpace(summary) == "" || createdAt.IsZero() {
 		return fmt.Errorf("summary and creation time are required")

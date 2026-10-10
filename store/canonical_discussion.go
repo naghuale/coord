@@ -159,14 +159,11 @@ func validateDiscussionNodeReferences(state CanonicalState, node task.Discussion
 	if node.ConflictID != "" {
 		return fmt.Errorf("conflict Events are not present in CanonicalState")
 	}
-	if node.ResultRef != "" {
-		return fmt.Errorf("canonical Executor Result is not available before #6")
-	}
 	for _, field := range []struct {
 		name  string
 		value string
 		want  task.EventType
-	}{{"ReviewResultRef", node.ReviewResultRef, task.ReviewResultRecorded}, {"AuditResultRef", node.AuditResultRef, task.AuditResultRecorded}} {
+	}{{"ResultRef", node.ResultRef, task.ExecutorResultRecorded}, {"ReviewResultRef", node.ReviewResultRef, task.ReviewResultRecorded}, {"AuditResultRef", node.AuditResultRef, task.AuditResultRecorded}} {
 		if field.value == "" {
 			continue
 		}
