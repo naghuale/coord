@@ -1,0 +1,99 @@
+$schema: coord.dev/v1alpha1/schema/assignment
+description: Assignment record created by Coordinator for each task.
+
+required:
+  - projectId
+  - issue
+  - taskId
+  - baseSha
+  - assignedBy
+  - assignedTo
+  - workspace
+  - allowedFiles
+  - forbidden
+  - stopConditions
+
+properties:
+  projectId:
+    type: string
+    example: coord
+
+  issue:
+    type: integer
+    example: 35
+
+  taskId:
+    type: string
+    pattern: "^task_[0-9A-Z]{26}$"
+
+  baseSha:
+    type: string
+    pattern: "^[0-9a-f]{40}$"
+
+  assignedBy:
+    type: object
+    required: [role, session]
+    properties:
+      role:
+        enum: [COORDINATOR]
+      session:
+        type: string
+
+  assignedTo:
+    type: object
+    required: [role, agentId, session]
+    properties:
+      role:
+        enum: [EXECUTOR, REVIEWER, AUDITOR]
+      agentId:
+        type: string
+      session:
+        type: string
+
+  workspace:
+    type: object
+    required: [projectId, localNamespace, sessionCwd, assignedWorktree]
+    properties:
+      projectId:
+        type: string
+        example: coord
+      localNamespace:
+        type: string
+        example: workspace-01
+      sessionCwd:
+        type: string
+        description: Launch cwd for ALL sessions of this project
+        example: /Users/andreybabenko/Downloads/workspace/workspace-01
+      assignedWorktree:
+        type: string
+        description: Absolute path to the worktree for this task
+        example: /Users/andreybabenko/Downloads/workspace/worktrees/workspace-01/issue-35
+      operationsWorktree:
+        type: string
+        description: Absolute path to the role's ops ledger worktree
+        example: /Users/andreybabenko/Downloads/workspace/worktrees/workspace-01/operations-executor
+      tempRoot:
+        type: string
+        example: /Users/andreybabenko/Downloads/workspace/workspace-01/.scratch/tmp
+    note: >
+      sessionCwd != assignedWorktree.
+      The agent launches from sessionCwd (project root) and accesses
+      assignedWorktree via absolute paths and git -C.
+      The concept of "agent slot" (workspace-01/codex, workspace-01/opencode)
+      as launch directory is DEPRECATED. All roles launch from sessionCwd.
+
+  allowedFiles:
+    type: array
+    items:
+      type: string
+    description: Relative paths within assignedWorktree
+
+  forbidden:
+    type: array
+    items:
+      type: string
+
+  stopConditions:
+    type: array
+    items:
+      type: string

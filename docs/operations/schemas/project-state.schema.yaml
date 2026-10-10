@@ -1,0 +1,107 @@
+$schema: coord.dev/v1alpha1/schema/project-state
+description: CURRENT.yaml — verified project checkpoint in ops/coord/project.
+
+required:
+  - project
+  - source
+  - stage
+  - active
+  - blocked
+  - nextSafeActions
+  - knownDeviations
+
+properties:
+  project:
+    required: [id, repository, integrationBranch]
+    properties:
+      id:
+        type: string
+        example: coord
+      repository:
+        type: string
+        example: naghuale/coord
+      integrationBranch:
+        type: string
+        example: p0-2-task
+
+  source:
+    required: [commit, recordedAt]
+    properties:
+      commit:
+        type: string
+        pattern: "^[0-9a-f]{40}$"
+      recordedAt:
+        type: string
+        format: date-time
+
+  stage:
+    required: [current, authority]
+    properties:
+      current:
+        type: string
+      authority:
+        type: string
+        description: Decision reference that established this stage (e.g. R132)
+
+  completed:
+    type: array
+    items:
+      required: [issue, result, commit]
+      properties:
+        issue:
+          type: integer
+        result:
+          type: string
+        commit:
+          type: string
+          pattern: "^[0-9a-f]{40}$"
+
+  active:
+    type: array
+    items:
+      required: [issue, state, role]
+      properties:
+        issue:
+          type: integer
+        state:
+          enum:
+            - READY_FOR_ASSIGNMENT
+            - ASSIGNED
+            - EXECUTOR_IN_PROGRESS
+            - READY_FOR_REVIEW
+            - REVIEW_IN_PROGRESS
+            - REVIEW_ACCEPTED
+            - READY_FOR_COMMIT
+            - COMMITTED
+            - BLOCKED_BY_DEPENDENCY
+            - LEGACY_WORK_PRESERVED
+            - MIGRATION_IN_PROGRESS
+        role:
+          enum: [EXECUTOR, REVIEWER, AUDITOR, COORDINATOR]
+
+  blocked:
+    type: array
+    items:
+      required: [issue, reason]
+      properties:
+        issue:
+          type: integer
+        reason:
+          type: string
+
+  nextSafeActions:
+    type: array
+    items:
+      type: string
+
+  knownDeviations:
+    type: array
+    items:
+      required: [id, status, reason]
+      properties:
+        id:
+          type: string
+        status:
+          enum: [OPEN, RESOLVED]
+        reason:
+          type: string

@@ -1,0 +1,132 @@
+$schema: coord.dev/v1alpha1/schema/role-work
+description: Per-role work records. Each role uses a subset of these types.
+
+# --- EXECUTOR ---
+ExecutorResult:
+  required: [taskId, issue, baseSha, resultTreeHash, testsPassed, makeCheckPassed]
+  properties:
+    taskId:
+      type: string
+    issue:
+      type: integer
+    baseSha:
+      type: string
+      pattern: "^[0-9a-f]{40}$"
+    resultTreeHash:
+      type: string
+      pattern: "^[0-9a-f]{40}$"
+    testsPassed:
+      type: boolean
+    makeCheckPassed:
+      type: boolean
+    changedFiles:
+      type: array
+      items:
+        type: object
+        required: [path, sha256]
+    stopReason:
+      type: string
+      enum: [COMPLETED, BLOCKED, NORM_CONFLICT, OWNER_REQUIRED, HANDOFF]
+
+# --- REVIEWER ---
+ReviewResult:
+  required: [taskId, issue, reviewedTreeHash, verdict, reviewerAgentId, checklist]
+  properties:
+    taskId:
+      type: string
+    issue:
+      type: integer
+    reviewedTreeHash:
+      type: string
+      pattern: "^[0-9a-f]{40}$"
+    verdict:
+      enum: [ACCEPTED, CHANGES_REQUIRED]
+    reviewerAgentId:
+      type: string
+      description: Must be distinct from any Executor agent_id for this Task (CM-07, TM-28)
+    checklist:
+      type: array
+      items:
+        required: [item, result]
+        properties:
+          item:
+            type: string
+          result:
+            enum: [PASS, FAIL, NA]
+          note:
+            type: string
+    findings:
+      type: array
+      items:
+        required: [file, line, description]
+        properties:
+          file:
+            type: string
+          line:
+            type: integer
+          description:
+            type: string
+
+# --- AUDITOR ---
+AuditResult:
+  required: [taskId, issue, auditedTreeHash, verdict, auditorAgentId, securityBoundary]
+  properties:
+    taskId:
+      type: string
+    issue:
+      type: integer
+    auditedTreeHash:
+      type: string
+      pattern: "^[0-9a-f]{40}$"
+    verdict:
+      enum: [ACCEPTED, CHANGES_REQUIRED]
+    auditorAgentId:
+      type: string
+      description: Must be distinct from Executor and Reviewer agent_ids (CM-07, TM-28)
+    securityBoundary:
+      type: object
+      required: [description, failClosedPreserved]
+      properties:
+        description:
+          type: string
+        failClosedPreserved:
+          type: boolean
+    mutationMatrix:
+      type: array
+      items:
+        required: [mutationDescription, result]
+        properties:
+          mutationDescription:
+            type: string
+          result:
+            enum: [killed, equivalent, not_evaluated, na]
+          note:
+            type: string
+    notEvaluated:
+      type: array
+      items:
+        type: string
+    residualRisks:
+      type: array
+      items:
+        type: string
+
+# --- CORRECTION ---
+Correction:
+  required: [kind, correctsEvent, reason, correctedConclusion]
+  properties:
+    kind:
+      enum: [Correction]
+    correctsEvent:
+      type: string
+      description: ops_<ULID> of the record being corrected
+    reason:
+      type: string
+    correctedConclusion:
+      type: string
+    evidence:
+      type: array
+      items:
+        type: string
+    recorded_after_fact:
+      type: boolean
