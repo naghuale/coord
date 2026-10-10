@@ -138,3 +138,31 @@ func TestResolveRequiredDocumentMissing(t *testing.T) {
 		t.Fatalf("expected INVALID_ADMISSION when required doc is missing")
 	}
 }
+
+func TestResolveProposedRejected(t *testing.T) {
+	root, req := makeRoot(t)
+	writeFixture(t, root, "docs/DOCUMENT-REGISTRY.yaml", testRegistry+`  - id: proposed-doc
+    path: docs/PROPOSED.md
+    class: design
+    status: proposed
+    readWhen: [SESSION_STARTED]
+    currentOperationalAuthority: false
+`)
+	writeFixture(t, root, "docs/PROPOSED.md", "# proposed")
+	req.AdditionalDocumentIDs = []string{"proposed-doc"}
+	req.AllowProposedDirection = false
+
+	result, err := Resolve(req)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if result.Admission.Status != StatusInvalidAdmission {
+		t.Fatalf("expected INVALID_ADMISSION for proposed document, got %s", result.Admission.Status)
+	}
+	for _, rejection := range result.Admission.Rejections {
+		if rejection.Reason == ErrProposedNotAccepted {
+			return
+		}
+	}
+	t.Fatalf("expected %s rejection, got %+v", ErrProposedNotAccepted, result.Admission.Rejections)
+}

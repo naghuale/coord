@@ -3,7 +3,9 @@ package admission
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -95,4 +97,83 @@ func TestValidateSideEffectsBlocked(t *testing.T) {
 	if !found {
 		t.Fatalf("expected %s in errors, got %v", ErrSideEffectsBlocked, result.Errors)
 	}
+}
+
+func TestValidateBaseSHAMismatch(t *testing.T) {
+	root := t.TempDir()
+	repo := filepath.Join(root, "repo")
+	worktree := filepath.Join(root, "worktree")
+	if err := os.MkdirAll(repo, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(worktree, 0755); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repo, "init", "-q")
+	runGit(t, repo, "config", "user.name", "Coord Test")
+	runGit(t, repo, "config", "user.email", "coord-test@example.invalid")
+	runGit(t, repo, "config", "commit.gpgsign", "false")
+	if err := os.WriteFile(filepath.Join(repo, "tracked.txt"), []byte("test\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repo, "add", "tracked.txt")
+	runGit(t, repo, "commit", "-q", "-m", "fixture")
+
+	b := makeBootstrap(t, root, repo, worktree)
+	b.Assignment.BaseSHA = strings.Repeat("a", 40)
+	result, err := Validate(b, ValidateOptions{RequireBaseSHAMatch: true, DryRun: true})
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if result.Result != StatusInvalidAdmission {
+		t.Fatalf("expected INVALID_ADMISSION for base SHA mismatch, got %s", result.Result)
+	}
+	if !containsError(result.Errors, ErrBaseSHAMismatch) {
+		t.Fatalf("expected %s in errors, got %v", ErrBaseSHAMismatch, result.Errors)
+	}
+}
+
+func TestValidateExecutableNotAllowed(t *testing.T) {
+	root := t.TempDir()
+	repo := filepath.Join(root, "repo")
+	worktree := filepath.Join(root, "worktree")
+	if err := os.MkdirAll(repo, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(worktree, 0755); err != nil {
+		t.Fatal(err)
+	}
+	b := makeBootstrap(t, root, repo, worktree)
+	result, err := Validate(b, ValidateOptions{
+		ExecutablePath:      "/usr/bin/env",
+		ExecutableAllowlist: []string{"/usr/bin/grep"},
+		DryRun:              true,
+	})
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if result.Result != StatusInvalidAdmission {
+		t.Fatalf("expected INVALID_ADMISSION for executable outside allowlist, got %s", result.Result)
+	}
+	if !containsError(result.Errors, ErrExecutableNotAllowed) {
+		t.Fatalf("expected %s in errors, got %v", ErrExecutableNotAllowed, result.Errors)
+	}
+}
+
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, output)
+	}
+}
+
+func containsError(errors []string, code string) bool {
+	for _, err := range errors {
+		if strings.HasPrefix(err, code) {
+			return true
+		}
+	}
+	return false
 }
