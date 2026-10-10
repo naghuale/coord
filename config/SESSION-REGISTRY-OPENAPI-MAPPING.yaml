@@ -1,0 +1,87 @@
+apiVersion: coord.dev/v1alpha1
+kind: AgentSessionRegistryOpenApiMapping
+mappingVersion: 1
+canonicalSemantics:
+  owner: AGENT-COMMAND-BOUNDARY / CM-13 / TM-27
+  identity:
+    bindingKey: registered session address
+    trustedAgentId: returned only after active binding validation
+    generation: key rotation within the same binding
+    addressChange: revoke old binding and register a new AgentSession
+  ordering:
+  - authenticated_session
+  - active_agent_session
+  - generation_and_key
+  - trusted_agent_id
+  - run_and_task_fence
+  - role_and_stage
+  - replay
+  - revision_and_transition
+  - durable_commit
+transport:
+  style: openapi-http-json
+  baseUrlEnv: COORD_SESSION_REGISTRY_URL
+  auth:
+    mode: bearer
+    tokenEnv: COORD_SESSION_REGISTRY_TOKEN
+    header: Authorization
+    prefix: Bearer
+operations:
+  admit:
+    operationId: AgentSessionAdmit
+    method: POST
+    pathTemplate: /v1/agent-sessions:admit
+    idempotent: true
+  heartbeat:
+    operationId: AgentSessionHeartbeat
+    method: POST
+    pathTemplate: /v1/agent-sessions/{sessionId}:heartbeat
+    idempotent: true
+  complete:
+    operationId: AgentSessionComplete
+    method: POST
+    pathTemplate: /v1/agent-sessions/{sessionId}:complete
+    idempotent: true
+  fence:
+    operationId: AgentSessionFence
+    method: POST
+    pathTemplate: /v1/agent-sessions/{sessionId}:fence
+    idempotent: true
+requestMapping:
+  projectId: projectId
+  assignmentId: assignmentId
+  baseSha: baseSha
+  role: role
+  agentId: agentId
+  sessionId: sessionId
+  generation: generation
+  leaseTokenDigest: leaseTokenDigest
+  registryRevision: registryRevision
+  idempotencyKey: idempotencyKey
+  heartbeatSequence: heartbeatSequence
+responseMapping:
+  projectId: projectId
+  assignmentId: assignmentId
+  sessionId: sessionId
+  agentId: trustedAgentId
+  generation: generation
+  leaseTokenDigest: leaseTokenDigest
+  registryRevision: revision
+  status: status
+  fenceReason: fenceReason
+statusMapping:
+  active: ADMITTED
+  revoked: FENCED
+  expired: EXPIRED
+  rejected: REJECTED
+verification:
+  requiredOpenApiFields:
+  - openapi
+  - paths
+  requiredOperationIds:
+  - AgentSessionAdmit
+  - AgentSessionHeartbeat
+  - AgentSessionComplete
+  - AgentSessionFence
+  status: NOT_EVALUATED
+  reason: canonical OpenAPI file was not available in the current execution workspace

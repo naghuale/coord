@@ -1,0 +1,28 @@
+apiVersion: coord.dev/v1alpha1
+kind: RegistryRetryPolicy
+retry:
+  maxAttempts: 4
+  initialDelayMilliseconds: 200
+  maxDelayMilliseconds: 2000
+  multiplier: 2.0
+  jitterFraction: 0.20
+  retryHttpStatuses: [408, 425, 429, 500, 502, 503, 504]
+  retryTransportErrors: true
+  respectRetryAfter: true
+idempotency:
+  header: Idempotency-Key
+  keyAlgorithm: sha256
+  keyInputs:
+    - operation
+    - projectId
+    - assignmentId
+    - sessionId
+    - generation
+    - heartbeatSequence
+    - leaseTokenDigest
+  stableAcrossRetries: true
+heartbeat:
+  monotonicSequenceRequired: true
+  duplicateResponseMustMatchOriginal: true
+  acceptedStatuses: [ADMITTED, ACTIVE]
+  terminalStatuses: [FENCED, REVOKED, EXPIRED, REJECTED]

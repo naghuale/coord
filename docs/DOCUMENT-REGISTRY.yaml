@@ -3548,6 +3548,52 @@ documents:
       updates: COORDINATOR
       accountable: OWNER
     acceptance: {reviewer: required, auditor: true, owner: false}
+  - id: session-registry-openapi-mapping
+    path: config/SESSION-REGISTRY-OPENAPI-MAPPING.yaml
+    class: process
+    status: proposed
+    purpose:
+      - Canonical OpenAPI mapping for AgentSession Registry HTTP adapter: transport, operations, request/response/status mapping, idempotency contract; verification status NOT_EVALUATED
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+    readWhen:
+      - SESSION_START
+      - ISSUE_PLANNING
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: true, owner: false}
+  - id: registry-retry-policy
+    path: config/REGISTRY-RETRY.yaml
+    class: process
+    status: proposed
+    purpose:
+      - Retry and idempotency policy for Registry HTTP adapter: max attempts, backoff, jitter, retryable statuses, Idempotency-Key inputs, heartbeat sequence contract
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+    readWhen:
+      - SESSION_START
+      - ISSUE_PLANNING
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: true, owner: false}
   - id: supervisor-policy
     path: config/SUPERVISOR.yaml
     class: process
@@ -3576,7 +3622,7 @@ documents:
     class: process
     status: proposed
     purpose:
-      - HTTP adapter config for AgentSession Registry: endpoints, auth, response mapping; canonicalOpenApiMapping NOT_EVALUATED
+      - Superseded by session-registry-openapi-mapping; retained as alternate format reference
     usedBy:
       - COORDINATOR
       - EXECUTOR
