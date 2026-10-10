@@ -40,3 +40,30 @@ mutationVerified: true
 findings: none
 auditorAssigned: opencode:workspace-o73
 auditStatus: IN_PROGRESS
+
+---
+# Auto-appended 2026-10-10
+event: ISSUE_36_AUDIT_ACCEPTED
+type: audit_result
+auditor: opencode:workspace-o73
+auditVerdict: AUDIT_ACCEPTED
+auditItems: 7
+allPass: true
+mutationVerified: true
+findings: none
+
+---
+# Auto-appended 2026-10-10
+event: ISSUE_36_INTEGRATED
+type: integration
+commits:
+  - sha: 2a9c8b0
+    branch: p0-2-task
+    cherry_pick_of: 5e0f425
+  - sha: c8f2fda
+    branch: p0-2-task
+    cherry_pick_of: 54825a5
+integrationBranch: p0-2-task
+makeCheck: PASS
+pushed: true
+status: COMPLETE
