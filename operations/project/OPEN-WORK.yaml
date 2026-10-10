@@ -25,6 +25,19 @@ completedThisSession:
       ExecutorOutcome/ExecutorResult types; validateTaskResultEvents Executor;
       3 target tests; make check PASS
 
+  - id: architecture-md-changes-required
+    title: ARCHITECTURE.md CHANGES_REQUIRED FD cleanup
+    class: FD
+    commit: 5522da8
+    mergedTo: p0-2-task
+    state: COMPLETE
+    note: >
+      blocking: result section contradiction fixed, recovery guarantee corrected;
+      significant: TARGET-ARCHITECTURE link, atomic mutation scope, Shadow Validation
+      ROADMAP source, Discussion Graph actor provenance; editorial: Coordinator vs
+      coordd, proposed labels, section name, Telepathy link, backtick identifiers.
+      make check PASS.
+
   - id: adr-0007-changes-required
     title: ADR-0007 PROJECT-BRIEF CHANGES_REQUIRED FD cleanup
     class: FD
