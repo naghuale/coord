@@ -1,5 +1,12 @@
 # История изменений
 
+## 2026-10-10 — Completion Report standard in Operations Ledger
+
+- (документация) `docs/operations/OPERATIONS-LEDGER.md`: добавлена секция
+  `Completion Report` с обязательным форматом таблицы и правилами (одно
+  сообщение OWNER после завершения задачи, без дублирования деталей из Ledger,
+  без лишних вопросов).
+
 ## 2026-10-10 — Remove hardcoded /tmp in newSessionCLIHarness ([#38](https://github.com/naghuale/coord/issues/38))
 
 - (тест) `cmd/coord/sessions_test.go`: `os.MkdirTemp("/tmp", "coord-")` заменён на

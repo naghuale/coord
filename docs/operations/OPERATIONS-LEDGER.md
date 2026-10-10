@@ -159,6 +159,47 @@ clone repository
 
 If CURRENT.yaml diverges from GitHub, HEAD, or CI, a `RECOVERY_CONFLICT` record is created and work does not continue until the conflict is resolved.
 
+## Completion Report
+
+After every completed task the coordinator sends the OWNER one brief Completion Report.
+Detailed evidence (diffs, mutation outputs, review discussion) is stored in the Operations
+Ledger and is not duplicated in the report. If OWNER action is not required, the report
+does not end with a question or a confirmation request.
+
+### Format
+
+```
+#<issue> завершён.
+
+| Поле              | Результат                                |
+|---|---|
+| Integration HEAD  | `<sha>`                                  |
+| Executor          | `<session>`                              |
+| Reviewer          | `ACCEPTED`                               |
+| Auditor           | `ACCEPTED` или `N/A — <основание>`       |
+| Проверки          | `make check PASS; diff-check PASS`       |
+| CI                | `PASS`                                   |
+| Интеграция        | `fast-forward в <branch>`                |
+| Нормативный факт  | `<краткий подтверждённый результат>`     |
+
+Что изменилось: <одно предложение>.
+Что теперь работает: <одно предложение>.
+Что осталось открытым: <список или «ничего»>.
+Требуется OWNER: <да/нет и основание>.
+
+Следующий безопасный шаг: <одно действие>.
+```
+
+### Rules
+
+- One report per completed task, sent to OWNER immediately after integration.
+- Table rows map to verifiable ledger records — do not include rows with no backing evidence.
+- `Auditor: N/A` is valid for non-TD-R2 tasks; include the basis (e.g. `N/A — not TD-R2`).
+- `Нормативный факт` states the confirmed behavioural change, not the intent.
+- If nothing remains open and OWNER is not required, end the report after the table.
+- The Completion Report replaces ad-hoc summary prose; do not repeat the same facts in
+  surrounding text.
+
 ## Coordinator Autonomy Under R145
 
 The coordinator maintains the ledger without OWNER involvement for:
