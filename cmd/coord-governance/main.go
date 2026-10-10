@@ -23,7 +23,7 @@ func main() {
 
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "usage: coord-governance <command> [flags]")
-		fmt.Fprintln(os.Stderr, "commands: resolve, agent launch")
+		fmt.Fprintln(os.Stderr, "commands: resolve, agent launch, run-scenarios")
 		os.Exit(2)
 	}
 
@@ -60,6 +60,11 @@ func main() {
 			os.Exit(2)
 		}
 		if err := runAgentLaunch(context.Background(), os.Args[3:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	case "run-scenarios":
+		if err := runRunScenarios(context.Background(), os.Args[2:]); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
