@@ -1,115 +1,151 @@
 apiVersion: coord.dev/v1alpha1
 kind: ContextCheck
+sessionId: claude-workspace-10
+checkAt: 2026-10-10T03:15:00Z
+result: PASS
+probes: 6/6
 
-metadata:
-  projectId: coord
-  sessionId: claude-workspace-10
-  checkedAt: "2026-10-10"
-  phase: session_start
+# ── HAND-OFF: записано перед перезапуском сессии ─────────────────────────────
 
-source:
-  branch: p0-2-task
-  commit: c8f2fda
+project:
+  id: coord
+  repository: https://github.com/naghuale/coord.git
+  integrationBranch: p0-2-task
+  integrationHead: f192b69
+  stage: post-rfc-0001
 
-requiredFacts:
-  projectId:
-    present: true
-    value: coord
+activeTask: none
+blockers:
+  - issue: 34
+    reason: WAITING_FOR_S0 (Proposed ADR-0009)
 
-  sourceCommit:
-    present: true
-    value: c8f2fda
+nextSafeAction: >
+  OWNER принимает RFC-0001 (переводит статус Proposed → Accepted) или открывает
+  issues с замечаниями. После — начать #37 (миграция coordinator → repositories/coord).
 
-  currentStage:
-    present: true
-    value: post-36-pre-portability
+ownerDecisionRequired:
+  - id: rfc-0001-acceptance
+    description: >
+      RFC-0001 зарегистрирован как Proposed в p0-2-task@f192b69.
+      Перевод в Accepted — только OWNER (не координатор, не агент).
+      Issue #39 остаётся OPEN до OWNER acceptance.
 
-  activeTask:
-    present: true
-    value: portability-bootstrap
+# ── ЧТО СДЕЛАНО В ЭТОЙ СЕССИИ ────────────────────────────────────────────────
 
-  blockers:
-    present: true
-    value: []
+completedThisSession:
+  - id: portability-bootstrap
+    commits: [6b07211, 3276e85]
+    note: CONTEXT-INDEX + 4-layer contextModel + context-check schema
 
-  nextSafeAction:
-    present: true
-    value: commit portability-bootstrap (.coord/project.yaml + CONTEXT-INDEX.yaml)
+  - issue: 38
+    commit: dea1fa4
+    note: Удалён hardcoded /tmp в sessions_test.go → os.MkdirTemp("","coord-")
 
-  ownerDecisions:
-    present: true
-    open: []
+  - id: completion-report
+    commits: [603761c, a13957c, 908af6e]
+    note: >
+      Completion Report standard в OPERATIONS-LEDGER: формат, GitHub Issue
+      publishing, 7 close conditions, READY_FOR_INTEGRATION в schema enum.
+      #36 и #38 закрыты в GitHub с опубликованными Completion Reports.
 
-  knownDeviations:
-    present: true
-    value:
-      - "#38 open: system /tmp not yet enforced"
-      - "COORD_REPOSITORY_ROOT = workspace-01/coordinator (transitional)"
+  - issue: 39
+    commit: f192b69
+    note: >
+      RFC-0001-LOCAL-PROJECT-OPERATIONS.md зарегистрирован (Proposed).
+      Executor: codex:workspace-c9d. Reviewer: opencode:workspace-o73 ACCEPTED.
+      AGENTS.md: раздел «Обновление Telepathy» добавлен.
+      CI: ожидается.
 
-sources:
-  current:
-    path: operations/project/CURRENT.yaml
-    verified: true
+  - id: repo-visibility
+    note: naghuale/coord переведён в PUBLIC (GitHub Actions minutes = unlimited)
 
-  openWork:
-    path: operations/project/OPEN-WORK.yaml
-    verified: true
+# ── ЗАКРЫТЫЕ ISSUES ───────────────────────────────────────────────────────────
 
-  contextIndex:
-    path: .coord/CONTEXT-INDEX.yaml
-    verified: false
-    note: "To be created in portability-bootstrap commit"
+closedThisSession:
+  - issue: 36   # ApplyAgentCommand whitespace AgentID — COMPLETE
+  - issue: 38   # hardcoded /tmp — COMPLETE
+  - issue: 32   # AGENTS.md R142 draft — STALE (workspace-2-opencode не существует)
 
-  assignment:
-    path: "operations/assignments/portability-bootstrap.yaml"
-    verified: false
-    note: "No formal assignment; OWNER autonomous decision R142"
+# ── НЕЗАКРЫТЫЕ ISSUES (для новой сессии) ─────────────────────────────────────
 
-behavior:
-  unnecessaryOwnerQuestions: 0
-  missedOwnerBoundaries: 0
-  decisionsReversedDueToStaleContext: 0
-  crossProjectContextDetected: false
-  staleAuthoritativeSourceDetected: false
+openIssues:
+  - issue: 39
+    title: RFC-0001 Local Project Workspace
+    state: READY_FOR_INTEGRATION  # commit есть, CI pending, OWNER acceptance pending
+    ownerRequired: true
 
-probes:
-  - id: project-and-head
-    question: "Какой ProjectID и исходный commit?"
-    answer: "coord @ c8f2fda"
-    passed: true
+  - issue: 37
+    title: Migrate coordinator → repositories/coord
+    state: QUEUED
+    note: COORD_REPOSITORY_ROOT = workspace-01/coordinator (transitional)
 
-  - id: active-task
-    question: "Какая задача активна сейчас?"
-    answer: "portability-bootstrap (.coord env-vars + CONTEXT-INDEX)"
-    passed: true
+  - issue: 31
+    title: Telepathy 0.9.0 compatibility check
+    state: BLOCKED
+    note: >
+      0.9.0 уже установлен на диске. OpenCode перезапущен как opencode:workspace-o57.
+      Требуется: node /Users/andreybabenko/.claude/plugins/cache/telepathy/telepathy/0.8.0/dist/update-all.mjs
+      После запуска — перезапустить все активные сессии.
 
-  - id: blockers
-    question: "Что блокирует следующий переход?"
-    answer: "Ничего. #38 открыт но не блокирует portability-bootstrap"
-    passed: true
+  - issue: 34
+    state: BLOCKED
+    reason: WAITING_FOR_S0
 
-  - id: next-safe-action
-    question: "Какой следующий безопасный шаг?"
-    answer: "commit portability-bootstrap → независимый review → CI"
-    passed: true
+# ── ТЕХНИЧЕСКИЕ ДЕТАЛИ ДЛЯ НОВОЙ СЕССИИ ─────────────────────────────────────
 
-  - id: owner-boundary
-    question: "Требуется ли сейчас решение OWNER?"
-    answer: "Нет. R142 покрывает portability-bootstrap"
-    passed: true
+technicalContext:
+  telepathy:
+    currentVersion: "0.8.0"
+    installedVersion: "0.9.0"
+    updateCommand: "node /Users/andreybabenko/.claude/plugins/cache/telepathy/telepathy/0.8.0/dist/update-all.mjs"
+    requiresOwnerApproval: true
+    openCodeNewSession: "opencode:workspace-o57 [opencode-64235]"
+    codexSession: "codex:workspace-c70 [codex-01a12344-2437-7d52-943f-2ad62486a7a4]"
 
-  - id: evidence-recovery
-    question: "Можно ли восстановить доказательства последней завершённой задачи?"
-    answer: "#36: SHA 2a9c8b0+c8f2fda, review=codex:workspace-c9d ACCEPTED, audit=opencode:workspace-o73 ACCEPTED"
-    passed: true
+  workspacePolicy:
+    systemTmp: deny
+    allAgentsLaunchFromGlobalRoot: true
+    COORD_GLOBAL_ROOT: set via env var (never hardcoded)
+    COORD_REPOSITORY_ROOT: workspace-01/coordinator (transitional, target = repositories/coord)
 
-summary:
-  passed: 6
-  total: 6
+  prohibitedActions:
+    - do not modify workspace-00/legacy-qwen
+    - do not reset or delete workspace-2-codex or workspace-2-opencode
+    - do not force-push or rewrite published history
+    - do not mix changes from different issues in one commit
+    - do not translate Proposed ADR or RFC to Accepted (OWNER only)
+    - do not weaken fail-closed behavior
+    - do not accept new product norms as OWNER
 
-result:
-  status: PASS
-  reason: >-
-    Все обязательные факты присутствуют, источники актуальны,
-    следующий шаг определён, граница OWNER не нарушена,
-    доказательства #36 восстанавливаются без загрузки истории.
+  opsCheckpoint:
+    branch: ops/coord/project
+    commit: 33d55f0
+
+# ── PROBES ───────────────────────────────────────────────────────────────────
+
+probeResults:
+  - probe: project-and-head
+    result: PASS
+    evidence: p0-2-task@f192b69, ops/coord/project@33d55f0
+
+  - probe: active-task
+    result: PASS
+    evidence: active=[], no task in progress
+
+  - probe: blockers
+    result: PASS
+    evidence: "#34 WAITING_FOR_S0; #39 needs OWNER acceptance"
+
+  - probe: next-safe-action
+    result: PASS
+    evidence: OWNER принимает RFC-0001 или открывает issues; затем #37
+
+  - probe: owner-boundary
+    result: PASS
+    evidence: RFC-0001 status=Proposed; Accepted — только OWNER
+
+  - probe: evidence-recovery
+    result: PASS
+    evidence: >
+      Все задачи имеют commit SHA, pushed, Completion Reports в GitHub Issues.
+      ops/coord/project checkpoint актуален.
