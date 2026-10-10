@@ -13,9 +13,9 @@ sessionLaunchCwd:
 source:
   repository: https://github.com/naghuale/coord.git
   integrationBranch: p0-2-task
-  integrationHead: c8c1416
+  integrationHead: 9af98dd
   note: >
-    p0-2-task @ a261fc3 includes:
+    p0-2-task @ 9af98dd includes:
     3b9322e (#30 Discussion Graph),
     92e6e94 (#35 unreachable guard removed),
     ee71f2e (ops/ledger-bootstrap R145),
@@ -41,7 +41,11 @@ source:
     d31df66 (docs: coordinator autonomy presumption and next-action algorithm),
     cd7aa5b (#42 Shadow Validation package),
     a261fc3 (#42 docs: TARGET-ARCHITECTURE + CHANGELOG),
-    c8c1416 (#42 fix: deep-snapshot read-only invariant + CHANGELOG evidence).
+    c8c1416 (#42 fix: deep-snapshot read-only invariant + CHANGELOG evidence),
+    ee07eed (ADR-0007 CHANGES_REQUIRED FD cleanup),
+    aa90ea5 (ADR-0008 CHANGES_REQUIRED FD cleanup),
+    c177be1 (AGENT_INSTRUCTIONS CHANGES_REQUIRED FD cleanup),
+    9af98dd (#6 canonical Executor RESULT path R117/R124).
 
 issues:
   completed:
@@ -111,6 +115,13 @@ issues:
       ownerDecision: "OWNER (naghuale) accepted 2026-10-10"
       completionReport: "https://github.com/naghuale/coord/issues/39#issuecomment-6093268487"
       detailsLoaded: false
+
+    - issue: 6
+      title: Canonical Executor RESULT path (R117/R124)
+      class: TD
+      commit: 9af98dd
+      ci: PENDING
+      state: READY_FOR_REVIEW
 
   active:
     - issue: 41

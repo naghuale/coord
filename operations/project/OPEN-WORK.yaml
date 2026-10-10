@@ -6,13 +6,46 @@ project:
   id: coord
   source:
     branch: p0-2-task
-    commit: 7c23875
+    commit: 9af98dd
 
 currentStage: workspace-migration
 
 active: []
 
 completedThisSession:
+  - issue: 6
+    title: Canonical Executor RESULT path (R117/R124)
+    class: TD
+    commit: 9af98dd
+    mergedTo: p0-2-task
+    ci: PENDING
+    state: READY_FOR_REVIEW
+    note: >
+      fail-closed gate in coordinator.go; RecordExecutorResult in store;
+      ExecutorOutcome/ExecutorResult types; validateTaskResultEvents Executor;
+      3 target tests; make check PASS
+
+  - id: adr-0007-changes-required
+    title: ADR-0007 PROJECT-BRIEF CHANGES_REQUIRED FD cleanup
+    class: FD
+    commit: ee07eed
+    mergedTo: p0-2-task
+    state: COMPLETE
+
+  - id: adr-0008-changes-required
+    title: ADR-0008 AUTONOMOUS-COMMIT CHANGES_REQUIRED FD cleanup
+    class: FD
+    commit: aa90ea5
+    mergedTo: p0-2-task
+    state: COMPLETE
+
+  - id: agent-instructions-changes-required
+    title: AGENT_INSTRUCTIONS CHANGES_REQUIRED FD cleanup
+    class: FD
+    commit: c177be1
+    mergedTo: p0-2-task
+    state: COMPLETE
+
   - issue: 37
     state: COMPLETE
     commits: [8582d15, 180cac7, 1f12fe4, 7c23875]
@@ -28,11 +61,13 @@ completedThisSession:
     note: "10-point normative update: autonomy presumption, priority order, false-choice ban, OWNER_NOTIFICATION, Decision Trace, prohibited OWNER reasons, new SM states, behavioral scenarios, metrics"
 
   - issue: 42
-    state: REVIEW_ROUND_2
+    state: COMPLETE
     commits: [cd7aa5b, a261fc3, c8c1416]
     mergedTo: p0-2-task
+    reviewer: codex:workspace-c9d
+    reviewVerdict: REVIEW_ACCEPTED
     ci: PENDING
-    note: "Shadow Validation: CHANGES_REQUIRED from Codex addressed (deep-snapshot mutation detection); round 2 sent"
+    note: "Shadow Validation (ADR-0001 step 10): ACCEPTED c8c1416; 12 tests, deep-snapshot mutation detection"
     completionReport: "https://github.com/naghuale/coord/issues/42#issuecomment-6095308291"
 
   - issue: 41
