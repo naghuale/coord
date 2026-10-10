@@ -23,7 +23,7 @@ func main() {
 
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "usage: coord-governance <command> [flags]")
-		fmt.Fprintln(os.Stderr, "commands: resolve, agent launch, run-scenarios")
+		fmt.Fprintln(os.Stderr, "commands: resolve, agent launch, run-scenarios, baseline")
 		os.Exit(2)
 	}
 
@@ -65,6 +65,27 @@ func main() {
 		}
 	case "run-scenarios":
 		if err := runRunScenarios(context.Background(), os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	case "baseline":
+		if len(os.Args) < 3 {
+			fmt.Fprintln(os.Stderr, "usage: coord-governance baseline <store-run|compare|promote> [flags]")
+			os.Exit(2)
+		}
+		var err error
+		switch os.Args[2] {
+		case "store-run":
+			err = runBaselineStoreRun(context.Background(), os.Args[3:])
+		case "compare":
+			err = runBaselineCompare(context.Background(), os.Args[3:])
+		case "promote":
+			err = runBaselinePromote(context.Background(), os.Args[3:])
+		default:
+			fmt.Fprintf(os.Stderr, "unknown baseline subcommand: %s\n", os.Args[2])
+			os.Exit(2)
+		}
+		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
