@@ -10,8 +10,13 @@ sessionLaunchCwd: /Users/andreybabenko/Downloads/workspace
 source:
   repository: https://github.com/naghuale/coord.git
   integrationBranch: p0-2-task
-  integrationHead: 3b9322eeccbd5006a8ed3b3ade7a94277efaf4ef
-  note: "#35 merged to issue-35-unreachable-role-selection-guard branch (CI PASS), not yet fast-forwarded to p0-2-task"
+  integrationHead: a782ddd
+  note: >
+    p0-2-task @ a782ddd includes:
+    3b9322e (#30), 92e6e94 (#35 fast-forward),
+    ee71f2e (ops/ledger-bootstrap R145 spec),
+    a782ddd (globalRoot invariant fix).
+    #36 on issue-36-whitespace-agentid-check, awaiting Reviewer (Codex) + Auditor (OpenCode).
 
 issues:
   completed:
