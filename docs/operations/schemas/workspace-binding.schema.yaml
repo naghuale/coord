@@ -1,0 +1,106 @@
+$schema: coord.dev/v1alpha1/schema/workspace-binding
+description: >
+  WorkspaceBinding separates session launch cwd from the assigned worktree.
+  All agents in the same project share one sessionCwd.
+  Work isolation is achieved through assignedWorktree, not through different launch directories.
+
+invariant: >
+  sessionCwd == {globalRoot}/{localNamespace}
+  assignedWorktree is under {globalRoot}/worktrees/{localNamespace}/
+  systemTmp is denied; project temp is under sessionCwd/.scratch/tmp/
+
+required:
+  - project
+  - session
+  - assignment
+  - repository
+  - allowedPaths
+
+properties:
+  project:
+    required: [projectId, localNamespace]
+    properties:
+      projectId:
+        type: string
+        example: coord
+      localNamespace:
+        type: string
+        example: workspace-01
+
+  session:
+    required: [sessionAddress, agentId, launchCwd]
+    properties:
+      sessionAddress:
+        type: string
+        example: codex:demo-session
+      sessionGeneration:
+        type: integer
+      agentId:
+        type: string
+      launchCwd:
+        type: string
+        description: MUST equal {globalRoot}/{localNamespace}
+        example: /Users/andreybabenko/Downloads/workspace/workspace-01
+
+  assignment:
+    required: [issue, taskId, role]
+    properties:
+      issue:
+        type: integer
+      taskId:
+        type: string
+      role:
+        enum: [EXECUTOR, REVIEWER, AUDITOR, COORDINATOR]
+
+  repository:
+    required: [path, branch, baseSha]
+    properties:
+      path:
+        type: string
+        description: Absolute path to the assigned worktree
+        example: /Users/andreybabenko/Downloads/workspace/worktrees/workspace-01/issue-35
+      branch:
+        type: string
+      baseSha:
+        type: string
+        pattern: "^[0-9a-f]{40}$"
+
+  allowedPaths:
+    type: array
+    items:
+      type: string
+    description: Glob patterns of paths the agent may read/write
+
+  readOnlyPaths:
+    type: array
+    items:
+      type: string
+
+  prohibitedPaths:
+    type: array
+    items:
+      type: string
+    description: Explicit denials (other worktrees, other namespaces)
+
+  temporaryStorage:
+    properties:
+      root:
+        type: string
+        example: /Users/andreybabenko/Downloads/workspace/workspace-01/.scratch/tmp
+      systemTmp:
+        enum: [deny]
+        description: System /tmp, /private/tmp, /var/tmp are always denied
+
+admission:
+  description: >
+    Admission check verifies the session's actual cwd equals the project root
+    (NOT a specific worktree). The assigned worktree is verified separately.
+  checks:
+    - name: cwdIsProjectRoot
+      condition: session.launchCwd == {globalRoot}/{localNamespace}
+    - name: worktreeWithinNamespace
+      condition: repository.path starts with {globalRoot}/worktrees/{localNamespace}/
+    - name: tempWithinProjectRoot
+      condition: temporaryStorage.root starts with {globalRoot}/{localNamespace}/.scratch/
+    - name: systemTmpDenied
+      condition: no access to /tmp, /private/tmp, /var/tmp

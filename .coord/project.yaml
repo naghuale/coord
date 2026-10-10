@@ -1,0 +1,45 @@
+apiVersion: coord.dev/v1alpha1
+kind: ProjectIdentity
+
+metadata:
+  projectId: coord
+  displayName: Coord
+  recordedAt: 2026-10-10
+
+repository:
+  canonicalUrl: https://github.com/naghuale/coord.git
+  mainBranch: main
+  integrationBranch: p0-2-task
+
+operations:
+  prefix: ops/coord
+  branches:
+    project: ops/coord/project
+    coordinator: ops/coord/coordinator
+    executor: ops/coord/executor
+    reviewer: ops/coord/reviewer
+    auditor: ops/coord/auditor
+  ledger: docs/operations/OPERATIONS-LEDGER.md
+
+workspacePolicy:
+  allSessionsLaunchFromProjectRoot: true
+  systemTmp: deny
+  directWorktreeLaunch: deny
+  note: >
+    All agent sessions for this project launch from {globalRoot}/{localNamespace}.
+    The assigned worktree is passed via WorkspaceBinding, not via session cwd.
+    Agents use absolute paths and `git -C <worktree>` to interact with assigned trees.
+
+documents:
+  agents: AGENTS.md
+  roadmap: docs/ROADMAP.md
+  taskModel: docs/TASK-MODEL.md
+  targetArchitecture: docs/TARGET-ARCHITECTURE.md
+  changelog: CHANGELOG.md
+  decisions: docs/decisions/
+
+localBinding:
+  note: >
+    Local namespace (workspace-NN) is stored only in projects.yaml on the local machine.
+    It is NOT part of project identity. ProjectID + canonicalUrl + Git object identity
+    define the project. A different machine uses a different namespace; projectId stays stable.
