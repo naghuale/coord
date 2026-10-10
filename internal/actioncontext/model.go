@@ -1,5 +1,7 @@
 package actioncontext
 
+import "context"
+
 // Role identifies the agent role for which context is resolved.
 type Role string
 
@@ -88,4 +90,34 @@ type ResolveRequest struct {
 
 type ResolveResult struct {
 	Admission Admission `json:"admission"`
+}
+
+// SubjectBinding identifies the assignment for which context is resolved.
+type SubjectBinding struct {
+	AssignmentID string `json:"assignmentId"`
+	BaseSHA      string `json:"baseSha"`
+}
+
+// Transition describes actions allowed for an event in the Action Map.
+type Transition struct {
+	AllowedActions   []string `json:"allowedActions"`
+	ForbiddenActions []string `json:"forbiddenActions"`
+	ExpectedResults  []string `json:"expectedResults"`
+}
+
+// ActionContext is the complete result of resolving project context.
+type ActionContext struct {
+	APIVersion string         `json:"apiVersion"`
+	Kind       string         `json:"kind"`
+	Event      Event          `json:"event"`
+	Role       Role           `json:"role"`
+	Subject    SubjectBinding `json:"subject"`
+	Budget     ContextBudget  `json:"budget"`
+	Transition Transition     `json:"transition"`
+	Admission  Admission      `json:"admission"`
+}
+
+// Resolver resolves the permitted context for a role and process event.
+type Resolver interface {
+	Resolve(context.Context, ResolveRequest) (ActionContext, error)
 }

@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"coord/internal/actioncontext"
 )
@@ -16,6 +19,7 @@ func main() {
 	event := resolveCmd.String("event", "", "process event name from ACTION-MAP.yaml")
 	assignmentID := resolveCmd.String("assignment-id", "", "assignment identifier")
 	baseSHA := resolveCmd.String("base-sha", "", "base git commit SHA")
+	output := resolveCmd.String("output", "", "relative path inside project root to write JSON result (atomic)")
 
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "usage: coord-governance <command> [flags]")
@@ -32,7 +36,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, "resolve requires -project-root, -role, -event, -assignment-id, -base-sha")
 			os.Exit(2)
 		}
-		result, err := actioncontext.Resolve(actioncontext.ResolveRequest{
+		result, err := (&actioncontext.FileResolver{ProjectRoot: *projectRoot}).Resolve(context.Background(), actioncontext.ResolveRequest{
 			ProjectRoot:  *projectRoot,
 			Role:         actioncontext.Role(*role),
 			Event:        actioncontext.Event(*event),
@@ -43,10 +47,8 @@ func main() {
 			fmt.Fprintln(os.Stderr, "resolve:", err)
 			os.Exit(1)
 		}
-		enc := json.NewEncoder(os.Stdout)
-		enc.SetIndent("", "  ")
-		if err := enc.Encode(result); err != nil {
-			fmt.Fprintln(os.Stderr, "encode:", err)
+		if err := writeResult(*projectRoot, *output, result); err != nil {
+			fmt.Fprintln(os.Stderr, "write result:", err)
 			os.Exit(1)
 		}
 		if result.Admission.Status != actioncontext.StatusAdmitted {
@@ -56,4 +58,119 @@ func main() {
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
 		os.Exit(2)
 	}
+}
+
+func writeResult(projectRoot, output string, result actioncontext.ActionContext) error {
+	if output == "" {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(result)
+	}
+	if filepath.IsAbs(output) {
+		return fmt.Errorf("output path must be relative to project root")
+	}
+
+	root, err := filepath.Abs(projectRoot)
+	if err != nil {
+		return err
+	}
+	root, err = filepath.EvalSymlinks(root)
+	if err != nil {
+		return fmt.Errorf("resolve project root: %w", err)
+	}
+	root = filepath.Clean(root)
+	target := filepath.Clean(filepath.Join(root, output))
+	if !pathWithinRoot(target, root) {
+		return fmt.Errorf("output path is outside project root")
+	}
+
+	tmpDir := filepath.Join(root, ".scratch", "tmp")
+	tmpDir, err = ensureContainedDirectory(root, tmpDir)
+	if err != nil {
+		return fmt.Errorf("prepare project-local temp directory: %w", err)
+	}
+	parent, err := ensureContainedDirectory(root, filepath.Dir(target))
+	if err != nil {
+		return fmt.Errorf("prepare output directory: %w", err)
+	}
+	target = filepath.Join(parent, filepath.Base(target))
+
+	f, err := os.CreateTemp(tmpDir, "ac-*.json")
+	if err != nil {
+		return err
+	}
+	tmpPath := f.Name()
+	defer func() { _ = os.Remove(tmpPath) }()
+
+	enc := json.NewEncoder(f)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(result); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, target); err != nil {
+		return err
+	}
+	return nil
+}
+
+func pathWithinRoot(path, root string) bool {
+	rel, err := filepath.Rel(root, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+func ensureContainedDirectory(root, path string) (string, error) {
+	path = filepath.Clean(path)
+	if !pathWithinRoot(path, root) {
+		return "", fmt.Errorf("directory path is outside project root")
+	}
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return "", err
+	}
+	current := root
+	if rel == "." {
+		return current, nil
+	}
+	for _, component := range strings.Split(rel, string(filepath.Separator)) {
+		if component == "" || component == "." {
+			continue
+		}
+		next := filepath.Join(current, component)
+		info, err := os.Lstat(next)
+		if os.IsNotExist(err) {
+			if err := os.Mkdir(next, 0700); err != nil && !os.IsExist(err) {
+				return "", err
+			}
+			info, err = os.Lstat(next)
+		}
+		if err != nil {
+			return "", err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			next, err = filepath.EvalSymlinks(next)
+			if err != nil {
+				return "", err
+			}
+			if !pathWithinRoot(next, root) {
+				return "", fmt.Errorf("directory path resolves outside project root")
+			}
+			info, err = os.Stat(next)
+			if err != nil {
+				return "", err
+			}
+		}
+		if !info.IsDir() {
+			return "", fmt.Errorf("path component %q is not a directory", component)
+		}
+		current = next
+	}
+	return current, nil
 }

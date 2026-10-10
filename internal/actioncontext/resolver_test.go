@@ -1,6 +1,7 @@
 package actioncontext
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -165,4 +166,35 @@ func TestResolveProposedRejected(t *testing.T) {
 		}
 	}
 	t.Fatalf("expected %s rejection, got %+v", ErrProposedNotAccepted, result.Admission.Rejections)
+}
+
+func TestFileResolverImplementsInterface(t *testing.T) {
+	root, req := makeRoot(t)
+	var _ Resolver = &FileResolver{ProjectRoot: root}
+	r := &FileResolver{ProjectRoot: root}
+	ctx := context.Background()
+	ac, err := r.Resolve(ctx, ResolveRequest{
+		Role:         req.Role,
+		Event:        req.Event,
+		AssignmentID: req.AssignmentID,
+		BaseSHA:      req.BaseSHA,
+	})
+	if err != nil {
+		t.Fatalf("FileResolver.Resolve: %v", err)
+	}
+	if ac.Admission.Status != StatusAdmitted {
+		t.Fatalf("expected ADMITTED, got %s: %+v", ac.Admission.Status, ac.Admission.Rejections)
+	}
+	if ac.Event != req.Event {
+		t.Fatalf("expected Event=%s, got %s", req.Event, ac.Event)
+	}
+	if ac.Role != req.Role {
+		t.Fatalf("expected Role=%s, got %s", req.Role, ac.Role)
+	}
+	if len(ac.Transition.AllowedActions) == 0 {
+		t.Fatal("expected non-empty Transition.AllowedActions")
+	}
+	if ac.APIVersion == "" || ac.Kind != "ActionContext" {
+		t.Fatalf("expected APIVersion/Kind set, got %q/%q", ac.APIVersion, ac.Kind)
+	}
 }

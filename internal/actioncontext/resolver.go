@@ -1,6 +1,7 @@
 package actioncontext
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -32,10 +33,44 @@ type contextBudgetsFile struct {
 
 var subjectSHA = regexp.MustCompile(`^[0-9a-f]{40,64}$`)
 
+// FileResolver implements Resolver by reading YAML files from ProjectRoot.
+type FileResolver struct {
+	ProjectRoot   string
+	RegistryPath  string
+	ActionMapPath string
+	BudgetsPath   string
+}
+
+func (f *FileResolver) Resolve(ctx context.Context, req ResolveRequest) (ActionContext, error) {
+	if err := ctx.Err(); err != nil {
+		return ActionContext{}, err
+	}
+	req.ProjectRoot = f.ProjectRoot
+	if f.RegistryPath != "" {
+		req.RegistryPath = f.RegistryPath
+	}
+	if f.ActionMapPath != "" {
+		req.ActionMapPath = f.ActionMapPath
+	}
+	if f.BudgetsPath != "" {
+		req.BudgetsPath = f.BudgetsPath
+	}
+	return resolveActionContext(req)
+}
+
+// Resolve preserves the original admission-only API for existing callers.
 func Resolve(req ResolveRequest) (ResolveResult, error) {
+	ac, err := resolveActionContext(req)
+	if err != nil {
+		return ResolveResult{}, err
+	}
+	return ResolveResult{Admission: ac.Admission}, nil
+}
+
+func resolveActionContext(req ResolveRequest) (ActionContext, error) {
 	root, err := canonicalDir(req.ProjectRoot)
 	if err != nil {
-		return ResolveResult{}, fmt.Errorf("project root: %w", err)
+		return ActionContext{}, fmt.Errorf("project root: %w", err)
 	}
 	registryPath := req.RegistryPath
 	if registryPath == "" {
@@ -51,34 +86,41 @@ func Resolve(req ResolveRequest) (ResolveResult, error) {
 	}
 	registryFile, err := containedExistingFile(root, registryPath)
 	if err != nil {
-		return ResolveResult{}, fmt.Errorf("document registry: %w", err)
+		return ActionContext{}, fmt.Errorf("document registry: %w", err)
 	}
 	actionFile, err := containedExistingFile(root, actionMapPath)
 	if err != nil {
-		return ResolveResult{}, fmt.Errorf("action map: %w", err)
+		return ActionContext{}, fmt.Errorf("action map: %w", err)
 	}
 	budgetFile, err := containedExistingFile(root, budgetsPath)
 	if err != nil {
-		return ResolveResult{}, fmt.Errorf("context budgets: %w", err)
+		return ActionContext{}, fmt.Errorf("context budgets: %w", err)
 	}
 
 	var actionMap actionMapFile
 	if err := readYAML(actionFile, &actionMap); err != nil {
-		return ResolveResult{}, fmt.Errorf("decode action map: %w", err)
+		return ActionContext{}, fmt.Errorf("decode action map: %w", err)
 	}
 	var registry documentRegistryFile
 	if err := readYAML(registryFile, &registry); err != nil {
-		return ResolveResult{}, fmt.Errorf("decode document registry: %w", err)
+		return ActionContext{}, fmt.Errorf("decode document registry: %w", err)
 	}
 	var budgets contextBudgetsFile
 	if err := readYAML(budgetFile, &budgets); err != nil {
-		return ResolveResult{}, fmt.Errorf("decode context budgets: %w", err)
+		return ActionContext{}, fmt.Errorf("decode context budgets: %w", err)
 	}
 	if actionMap.Kind != "ActionMap" || registry.Kind != "DocumentRegistry" {
-		return ResolveResult{}, errors.New("governance document kind is invalid")
+		return ActionContext{}, errors.New("governance document kind is invalid")
 	}
 
-	result := ResolveResult{Admission: Admission{Status: StatusInvalidAdmission}}
+	result := ActionContext{
+		APIVersion: "coord.dev/v1alpha1",
+		Kind:       "ActionContext",
+		Event:      req.Event,
+		Role:       req.Role,
+		Subject:    SubjectBinding{AssignmentID: req.AssignmentID, BaseSHA: req.BaseSHA},
+		Admission:  Admission{Status: StatusInvalidAdmission},
+	}
 	if req.AssignmentID == "" {
 		result.Admission.Rejections = append(result.Admission.Rejections,
 			AuthorityRejection{Reason: ErrSubjectBindingMissing, Detail: "assignmentId"})
@@ -95,16 +137,22 @@ func Resolve(req ResolveRequest) (ResolveResult, error) {
 	}
 	budget, ok := budgets.Budgets[req.Role]
 	if !ok {
-		return ResolveResult{}, fmt.Errorf("no context budget for role %q", req.Role)
+		return ActionContext{}, fmt.Errorf("no context budget for role %q", req.Role)
+	}
+	result.Budget = budget
+	result.Transition = Transition{
+		AllowedActions:   append([]string(nil), spec.AllowedActions...),
+		ForbiddenActions: append([]string(nil), spec.ForbiddenActions...),
+		ExpectedResults:  append([]string(nil), spec.ExpectedResults...),
 	}
 
 	documentsByID := make(map[string]registryDocument, len(registry.Documents))
 	for _, doc := range registry.Documents {
 		if doc.ID == "" || doc.Path == "" {
-			return ResolveResult{}, errors.New("document registry contains an entry without id or path")
+			return ActionContext{}, errors.New("document registry contains an entry without id or path")
 		}
 		if _, exists := documentsByID[doc.ID]; exists {
-			return ResolveResult{}, fmt.Errorf("document registry has duplicate id %q", doc.ID)
+			return ActionContext{}, fmt.Errorf("document registry has duplicate id %q", doc.ID)
 		}
 		documentsByID[doc.ID] = doc
 	}
