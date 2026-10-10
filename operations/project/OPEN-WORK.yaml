@@ -25,6 +25,20 @@ completedThisSession:
       ExecutorOutcome/ExecutorResult types; validateTaskResultEvents Executor;
       3 target tests; make check PASS
 
+  - id: current-version-md-changes-required
+    title: CURRENT_VERSION.md CHANGES_REQUIRED FD cleanup
+    class: FD
+    commit: b490f48
+    mergedTo: p0-2-task
+    state: COMPLETE
+    note: >
+      blocking: MUST NOT blockquote added; P0-2 "завершение" replaced by
+      "Позднейшая пометка" + "не означает закрытие всей границы"; live evidence
+      path marked non-portable. significant: "Что запускать"→"запускалось";
+      cmd/coord as legacy not coordd; Telepathy 0.8.0 historical-only;
+      "Real model: false"→natural language; commits separated into new section.
+      make check PASS.
+
   - id: architecture-md-changes-required
     title: ARCHITECTURE.md CHANGES_REQUIRED FD cleanup
     class: FD
