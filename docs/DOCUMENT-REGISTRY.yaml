@@ -3548,6 +3548,125 @@ documents:
       updates: COORDINATOR
       accountable: OWNER
     acceptance: {reviewer: required, auditor: true, owner: false}
+  - id: supervisor-policy
+    path: config/SUPERVISOR.yaml
+    class: process
+    status: proposed
+    purpose:
+      - AgentSession Supervisor policy: heartbeat intervals, max failures, fence conditions, graceful/force termination
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+    readWhen:
+      - SESSION_START
+      - ISSUE_PLANNING
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: true, owner: false}
+  - id: session-registry-http
+    path: config/SESSION-REGISTRY-HTTP.yaml
+    class: process
+    status: proposed
+    purpose:
+      - HTTP adapter config for AgentSession Registry: endpoints, auth, response mapping; canonicalOpenApiMapping NOT_EVALUATED
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+    readWhen:
+      - SESSION_START
+      - ISSUE_PLANNING
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: true, owner: false}
+  - id: seccomp-profiles
+    path: config/SECCOMP-PROFILES.yaml
+    class: process
+    status: proposed
+    purpose:
+      - Linux seccomp allowlist profiles (python-agent-v1): default ERRNO, explicit deny list, noNewPrivileges
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+    readWhen:
+      - SESSION_START
+      - ISSUE_PLANNING
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: true, owner: false}
+  - id: production-registry-adapter-doc
+    path: docs/PRODUCTION-REGISTRY-ADAPTER.md
+    class: process
+    status: proposed
+    purpose:
+      - Documents production acceptance criteria for the HTTP Registry adapter; notes NOT_EVALUATED OpenAPI mapping
+    usedBy:
+      - COORDINATOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - REVIEW
+      - AUDIT
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: true, owner: false}
+  - id: seccomp-doc
+    path: docs/SECCOMP.md
+    class: process
+    status: proposed
+    purpose:
+      - Documents Linux seccomp profile design; allowlist approach, failure modes, combination with namespaces and supervision
+    usedBy:
+      - COORDINATOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - REVIEW
+      - AUDIT
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: true, owner: false}
 unregisteredDocumentPolicy:
   action: fail
   code: DOCUMENT_NOT_REGISTERED

@@ -122,6 +122,11 @@ State Machine и принятыми процессными нормами.
 - [OS Sandbox Profiles](../config/SANDBOX-PROFILES.yaml) — профили Bubblewrap sandbox (evaluation-linux, production-linux) для `scripts/sandbox_exec.py` (`proposed`)
 - [AgentSession Registry Contract](../config/SESSION-REGISTRY-CONTRACT.yaml) — контракт адаптера registry: операции, поля ответа, политика launcher (`proposed`)
 - [Security Boundary](SECURITY-BOUNDARY.md) — граница OS sandbox и AgentSession Registry; Linux backend, статус macOS/Windows, ограничения (`proposed`)
+- [Supervisor Policy](../config/SUPERVISOR.yaml) — heartbeat intervals, fence conditions, process group termination для `scripts/session_supervisor.py` (`proposed`)
+- [Session Registry HTTP](../config/SESSION-REGISTRY-HTTP.yaml) — HTTP adapter config: endpoints, auth, response mapping; canonicalOpenApiMapping NOT_EVALUATED (`proposed`)
+- [Seccomp Profiles](../config/SECCOMP-PROFILES.yaml) — Linux allowlist profiles для `scripts/seccomp_exec.py`; python-agent-v1 (`proposed`)
+- [Production Registry Adapter](PRODUCTION-REGISTRY-ADAPTER.md) — критерии принятия HTTP adapter; NOT_EVALUATED OpenAPI mapping (`proposed`)
+- [Seccomp](SECCOMP.md) — дизайн Linux seccomp profiles; сочетание с namespaces и supervision (`proposed`)
 
 ## Приоритет источников
 

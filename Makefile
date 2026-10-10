@@ -1,6 +1,6 @@
 GO_FILES := $(shell git ls-files -co --exclude-standard '*.go' | while read f; do test -f "$$f" && echo "$$f"; done)
 
-.PHONY: help fmt check-format vet cross-vet test build demo roles check test-telepathy lint test-telepathy-host check-architecture-sync check-defect-patterns check-document-registry check-action-map check-resolver-launcher check-sandbox-session-registry
+.PHONY: help fmt check-format vet cross-vet test build demo roles check test-telepathy lint test-telepathy-host check-architecture-sync check-defect-patterns check-document-registry check-action-map check-resolver-launcher check-sandbox-session-registry check-supervisor-seccomp-registry
 
 help:
 	@echo 'make demo   — полный цикл задачи в локальном транспорте'
@@ -69,7 +69,10 @@ check-resolver-launcher:
 check-sandbox-session-registry:
 	PYTHONPATH=scripts python3 -m unittest discover -s tests -p 'test_sandbox_session_registry.py' -v
 
-check: check-document-registry check-action-map check-resolver-launcher check-sandbox-session-registry check-architecture-sync check-format vet cross-vet test lint check-defect-patterns
+check-supervisor-seccomp-registry:
+	PYTHONPATH=scripts python3 -m unittest discover -s tests -p 'test_supervisor_seccomp_registry.py' -v
+
+check: check-document-registry check-action-map check-resolver-launcher check-sandbox-session-registry check-supervisor-seccomp-registry check-architecture-sync check-format vet cross-vet test lint check-defect-patterns
 	go build ./...
 	go mod tidy -diff
 

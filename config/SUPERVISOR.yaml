@@ -1,0 +1,19 @@
+apiVersion: coord.dev/v1alpha1
+kind: AgentSessionSupervisorPolicy
+heartbeatIntervalSeconds: 1
+heartbeatTimeoutSeconds: 8
+maxConsecutiveHeartbeatFailures: 2
+completionTimeoutSeconds: 8
+termination:
+  gracefulSignal: SIGTERM
+  gracefulTimeoutSeconds: 1
+  forceSignal: SIGKILL
+  killProcessGroup: true
+fenceOn:
+- registry_status_fenced
+- generation_mismatch
+- lease_digest_mismatch
+- registry_revision_rollback
+- heartbeat_failure_limit
+- malformed_registry_response
+unknownResult: FENCE

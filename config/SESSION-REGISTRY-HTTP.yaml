@@ -1,0 +1,38 @@
+apiVersion: coord.dev/v1alpha1
+kind: AgentSessionRegistryHttpAdapter
+adapter:
+  id: coord-session-registry-http
+  version: 1.0.0
+baseUrlEnv: COORD_SESSION_REGISTRY_URL
+auth:
+  mode: bearer
+  tokenEnv: COORD_SESSION_REGISTRY_TOKEN
+  header: Authorization
+  prefix: Bearer
+http:
+  timeoutSeconds: 10
+  tlsVerify: true
+operations:
+  admit:
+    method: POST
+    path: /v1/agent-sessions/admit
+  heartbeat:
+    method: POST
+    path: "/v1/agent-sessions/{sessionId}/heartbeat"
+  complete:
+    method: POST
+    path: "/v1/agent-sessions/{sessionId}/complete"
+  fence:
+    method: POST
+    path: "/v1/agent-sessions/{sessionId}/fence"
+responseMapping:
+  projectId: projectId
+  assignmentId: assignmentId
+  sessionId: sessionId
+  generation: generation
+  leaseTokenDigest: leaseTokenDigest
+  registryRevision: registryRevision
+  status: status
+  fenceReason: fenceReason
+acceptedStatus: ADMITTED
+fencedStatuses: [FENCED, REVOKED, EXPIRED, REJECTED]
