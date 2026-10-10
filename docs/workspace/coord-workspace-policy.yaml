@@ -1,0 +1,293 @@
+apiVersion: coord.dev/v1alpha1
+kind: WorkspacePolicy
+metadata:
+  name: local-workspace-policy
+  status: proposed
+  decision: R143
+  wrapperVersion: v1
+
+spec:
+  globalRoot: /Users/andreybabenko/Downloads/workspace
+
+  projectNamespaces:
+    naming:
+      pattern: '^workspace-(0[0-9]|10)$'
+      allowed:
+        - workspace-00
+        - workspace-01
+        - workspace-02
+        - workspace-03
+        - workspace-04
+        - workspace-05
+        - workspace-06
+        - workspace-07
+        - workspace-08
+        - workspace-09
+        - workspace-10
+      autoExpand: false
+      ownerDecisionRequiredForExpansion: true
+
+    layout:
+      projectRoot: '{globalRoot}/{project}'
+      agentSlots:
+        coordinator: '{projectRoot}/coordinator'
+        codex:       '{projectRoot}/codex'
+        opencode:    '{projectRoot}/opencode'
+      taskRoot:           '{globalRoot}/tasks/{project}'
+      taskPath:           '{globalRoot}/tasks/{project}/task_{taskULID}'
+      worktreeRoot:       '{projectRoot}/worktrees'
+      worktreePath:       '{projectRoot}/worktrees/{worktreeName}'
+      runtimeRoot:        '{projectRoot}/runtime'
+      evidenceRoot:       '{projectRoot}/evidence'
+      scratchRoot:        '{projectRoot}/.scratch'
+      tempRoot:           '{projectRoot}/.scratch/tmp'
+      sessionTempPath:    '{projectRoot}/.scratch/tmp/sessions/{sessionBindingId}/{generation}'
+      runTempPath:        '{projectRoot}/.scratch/tmp/sessions/{sessionBindingId}/{generation}/runs/{runId}'
+      socketRoot:         '{projectRoot}/.scratch/tmp/s'
+      cacheRoot:          '{projectRoot}/.scratch/cache'
+      goBuildCache:       '{projectRoot}/.scratch/go-build'
+      goTmpDir:           '{projectRoot}/.scratch/go-tmp'
+      runtimeScratchRoot: '{projectRoot}/.scratch/runtime'
+
+    operationsWorktree:
+      executor: '{projectRoot}/worktrees/operations-executor'
+      reviewer: '{projectRoot}/worktrees/operations-reviewer'
+      auditor:  '{projectRoot}/worktrees/operations-auditor'
+
+  sessionLaunch:
+    cwd:
+      env: COORD_GLOBAL_ROOT
+    allAgentsUseGlobalRoot: true
+    agentMaySetOwnCwd: false
+
+  pathPolicy:
+    requireCanonicalAbsolutePath: true
+    resolveSymlinks: true
+    denySymlinkEscape: true
+    requireProjectContainment: true
+    requireWorkspaceBinding: true
+    agentMayChooseGlobalRoot: false
+    agentMayChooseProjectNamespace: false
+    agentMaySubmitAbsoluteWorkspacePath: false
+    daemonBuildsAbsolutePathsFromRelativePaths: true
+
+    forbiddenRoots:
+      - /tmp
+      - /private/tmp
+      - /var/tmp
+      - /Users/andreybabenko/Downloads/workspace-01
+      - /Users/andreybabenko/Downloads/workspace-2
+      - /Users/andreybabenko/Downloads/workspace-codex
+      - /Users/andreybabenko/Downloads/workspace-opencode
+
+    forbiddenPatterns:
+      - '^/Users/andreybabenko/Downloads/workspace-[^/]+$'
+      - '^/tmp(?:/|$)'
+      - '^/private/tmp(?:/|$)'
+      - '^/var/tmp(?:/|$)'
+
+  projectIsolation:
+    default: deny
+    crossProjectAccess: deny
+    sameProjectOnly: true
+    allowedScopes:
+      - '{projectRoot}/worktrees/{assignedWorktree}/**'
+      - '{globalRoot}/tasks/{project}/{assignedTaskId}/**'
+      - '{projectRoot}/.scratch/tmp/sessions/{sessionBindingId}/{generation}/**'
+      - '{projectRoot}/runtime/{requiredEndpoint}/**'
+    prohibitedScopes:
+      - '{globalRoot}/workspace-00/**'
+      - '{globalRoot}/workspace-01/**'
+      - '{globalRoot}/workspace-02/**'
+      - '{globalRoot}/workspace-03/**'
+      - '{globalRoot}/workspace-04/**'
+      - '{globalRoot}/workspace-05/**'
+      - '{globalRoot}/workspace-06/**'
+      - '{globalRoot}/workspace-07/**'
+      - '{globalRoot}/workspace-08/**'
+      - '{globalRoot}/workspace-09/**'
+      - '{globalRoot}/workspace-10/**'
+    note: >-
+      At admission time the selected project scope is removed from prohibitedScopes
+      and becomes the only writable project namespace for that session. allowedScopes
+      grants access only to the assigned worktree, assigned task, own session temp,
+      and required runtime endpoints — not to the whole project root.
+
+  temporaryStorage:
+    systemTmp: deny
+    externalTmp: deny
+    hardCodedSystemTmp: deny
+    requireProjectLocalTmp: true
+    cleanupPolicy: owner-scoped
+    uniqueCopyMayLiveOnlyInTmp: false
+    usedForRecovery: false
+    commitToGit: false
+
+    environment:
+      TMPDIR:             '{sessionTempPath}/'
+      TMP:                '{sessionTempPath}'
+      TEMP:               '{sessionTempPath}'
+      TEMPDIR:            '{sessionTempPath}'
+      XDG_RUNTIME_DIR:    '{runtimeScratchRoot}'
+      XDG_CACHE_HOME:     '{cacheRoot}'
+      GOCACHE:            '{goBuildCache}'
+      GOTMPDIR:           '{goTmpDir}'
+      PIP_CACHE_DIR:      '{scratchRoot}/pip-cache'
+      npm_config_cache:   '{scratchRoot}/npm-cache'
+      YARN_CACHE_FOLDER:  '{scratchRoot}/yarn-cache'
+      COORD_SYSTEM_TMP_POLICY: deny
+
+    ownership:
+      sessionTempOwner:
+        - project
+        - sessionBindingId
+        - generation
+      taskTempOwner:
+        - project
+        - taskULID
+      runTempOwner:
+        - project
+        - sessionBindingId
+        - generation
+        - runId
+      cleanupRequiresExactOwnerMatch: true
+      cleanupActiveOwner: deny
+
+  workspaceBinding:
+    required: true
+    identityFields:
+      - project
+      - slot
+      - sessionAddress
+      - sessionGeneration
+      - agentId
+      - workspaceRelativePath
+    oneActiveOwnerPerWorkspace: true
+    trustedAgentIdFromAgentSession: true
+    trustAgentIdFromCommandBody: false
+    directoryNameIsIdentity: false
+    validateObservedCwd: true
+    validateExpectedHead: true
+    validateCleanliness: true
+    validateAllowedPaths: true
+
+  admission:
+    requiredChecks:
+      - activeAgentSession
+      - currentGeneration
+      - verifiedKey
+      - trustedAgentId
+      - projectNamespaceAllowed
+      - observedCwdInsideProject
+      - workspaceBindingMatches
+      - expectedHeadMatches
+      - workspaceOwnershipExclusive
+      - taskIsOpen
+      - capabilityAllowsRequestedWork
+      - tempEnvironmentInsideProject
+    memoryFromContinueIsTrusted: false
+    ownerAttestationMayApproveKnownSession: true
+    ownerAttestationDoesNotOverride:
+      - currentGeneration
+      - verifiedKey
+      - workspaceContainment
+      - taskAssignment
+      - capability
+
+  processLaunch:
+    cwdMustBeGlobalRoot: true
+    inheritProjectTempEnvironment: true
+    directSystemTmpUse: deny
+    wrapper:
+      path: '{globalRoot}/coord-project-tmp'
+      version: v1
+      required: true
+      invocation:
+        - '{globalRoot}/coord-project-tmp'
+        - --project
+        - '{project}'
+        - --binding
+        - '{sessionBindingId}'
+        - --generation
+        - '{generation}'
+        - --
+        - '{command...}'
+
+  git:
+    taskIdFormat: '^task_[0-9A-HJKMNP-TV-Z]{26}$'
+    worktreeLocationMustMatchProject: true
+    createWorktreeByCopyingUnknownTree: false
+    useGitWorktree: true
+    protectedUntrackedFiles:
+      - HANDOFF-*.md
+    publishHistoryRewrite: deny
+    forcePush: deny
+
+  evidence:
+    root: '{evidenceRoot}'
+    credentialsAllowed: false
+    privateKeysAllowed: false
+    runtimeSecretsAllowed: false
+    accessRequiresCapability: true
+
+  violations:
+    WORKSPACE_OUTSIDE_GLOBAL_ROOT:
+      effect: rejectAdmission
+    INVALID_PROJECT_WORKSPACE:
+      effect: rejectAdmission
+    PROJECT_WORKSPACE_MISMATCH:
+      effect: rejectCommand
+    AGENT_SLOT_MISMATCH:
+      effect: rejectAdmission
+    WORKSPACE_SYMLINK_ESCAPE:
+      effect: rejectCommand
+    WORKSPACE_OWNER_CONFLICT:
+      effect: rejectAdmission
+    TASK_PATH_OUTSIDE_PROJECT:
+      effect: rejectCommand
+    WORKTREE_PATH_OUTSIDE_PROJECT:
+      effect: rejectCommand
+    RUNTIME_PATH_OUTSIDE_PROJECT:
+      effect: rejectCommand
+    EVIDENCE_PATH_OUTSIDE_PROJECT:
+      effect: rejectCommand
+    SYSTEM_TMP_FORBIDDEN:
+      effect: rejectLaunch
+    TEMP_PATH_OUTSIDE_PROJECT:
+      effect: rejectLaunch
+    TEMP_SYMLINK_ESCAPE:
+      effect: rejectLaunch
+    TEMP_OWNER_CONFLICT:
+      effect: rejectLaunch
+    TEMP_PATH_NOT_ASSIGNED:
+      effect: rejectLaunch
+
+  migration:
+    automaticDeleteLegacyDirectories: false
+    automaticMoveLegacyDirectories: false
+    newAssignmentsToLegacyDirectories: deny
+    legacyDirectories:
+      - /Users/andreybabenko/Downloads/workspace-2
+      - /Users/andreybabenko/Downloads/workspace-2-codex
+      - /Users/andreybabenko/Downloads/workspace-2-opencode
+    requiredSteps:
+      - inspectGitStatus
+      - recordBranchAndHead
+      - preserveUsefulUncommittedWork
+      - createProjectLocalWorkspace
+      - createGitWorktreeWithoutCopyingUnknownTree
+      - performNewAdmission
+      - verifyCleanLegacyWorkspaceBeforeRemoval
+
+status:
+  implementation: proposed
+  wrapperVersion: v1
+  currentCodeEnforcement: not-implemented
+  requiredDesignDependencies:
+    - ADR-0009 Session Registry and Session Supervisor
+    - ADR-0006 API contract
+    - WorkspaceBinding implementation
+    - OS-level isolation for hard-coded system temporary paths
+  knownLimitation: >-
+    Environment wrappers prevent conventional and accidental system-temp use,
+    but a child binary that ignores the environment requires OS-level sandbox enforcement.

@@ -1,5 +1,21 @@
 # История изменений
 
+## 2026-10-10 — Workspace Root (R143): wrapper v1, policy и AGENTS.md ([#37](https://github.com/naghuale/coord/issues/37))
+
+- (документация) `AGENTS.md`: добавлен раздел `Workspace Root (R143)` — норма запуска
+  агентов из `COORD_GLOBAL_ROOT`, containment проекта в `COORD_PROJECT_ROOT`,
+  запрет системного temp, identity через AgentID/AgentSession/generation/key.
+- (документация) `scripts/coord-project-tmp` v1: `--binding` (обязательный, SessionBindingID),
+  `--generation` (обязательный); новый layout temp
+  `.scratch/tmp/sessions/<binding>/<generation>/runs/<random>`; socket root
+  `.scratch/tmp/s`; `GOCACHE` в `.scratch/go-build`; блокировка `--flag=/tmp/x`
+  и `-X/tmp/x`; 17/17 негативных тестов пройдено.
+- (документация) `docs/workspace/coord-workspace-policy.yaml` v1: исправлен
+  `worktreePath` (`{projectRoot}/worktrees/` вместо `{globalRoot}/worktrees/{project}/`);
+  `allowedScopes` сужены до назначенного worktree, task, session temp и runtime
+  endpoint; добавлены `operationsWorktree`, `sessionLaunch`, `goBuildCache`,
+  `socketRoot`; invocation обновлён на `--binding`/`--generation`.
+
 ## 2026-10-10 — RFC-0001: Local Project Workspace, Operations Ledger and Context Management ([#39](https://github.com/naghuale/coord/issues/39))
 
 - (документация) `docs/rfc/RFC-0001-LOCAL-PROJECT-OPERATIONS.md`: зарегистрирован

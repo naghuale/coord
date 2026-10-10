@@ -32,6 +32,43 @@ docs/ARCHITECTURE.md и документацию затронутого комп
 задания пользователя без отдельной команды OWNER; READY_FOR_COMMIT их не разрешает,
 у каждого своя проверка (R127).
 
+## Workspace Root (R143)
+
+Все агентские сессии MUST запускаться из `COORD_GLOBAL_ROOT`. Значение
+`COORD_GLOBAL_ROOT` задаётся локальной конфигурацией и MUST быть абсолютным
+каноническим путём. На текущем компьютере используется:
+
+```
+COORD_GLOBAL_ROOT=/Users/andreybabenko/Downloads/workspace
+```
+
+Каждый проект получает локальный namespace `workspace-NN` и MUST целиком
+размещаться внутри `COORD_PROJECT_ROOT={COORD_GLOBAL_ROOT}/workspace-NN`.
+Репозитории, worktrees, tasks, runtime, evidence и `.scratch` проекта MUST
+оставаться потомками `COORD_PROJECT_ROOT`.
+
+Стартовый `cwd` сессии и назначенный worktree являются разными сущностями.
+Сессия запускается из `COORD_GLOBAL_ROOT`, а конкретный проект, Task и worktree
+задаются через WorkspaceBinding. Файловые операции проекта за пределами
+назначенного `COORD_PROJECT_ROOT` запрещены.
+
+Временные данные MUST храниться только внутри
+`{COORD_PROJECT_ROOT}/.scratch/tmp`. Использование системных `/tmp`,
+`/private/tmp` и `/var/tmp` запрещено.
+
+Имя каталога не является identity агента. Доверенная identity определяется
+через AgentID, AgentSession, generation и verified key. Абсолютные пути строит
+Coord из локальной конфигурации; агент не выбирает глобальный или проектный
+корень самостоятельно.
+
+Новые задачи MUST NOT назначаться в legacy-каталоги вне `COORD_GLOBAL_ROOT`.
+Создание соседних `workspace-*` вне `COORD_GLOBAL_ROOT` и изменение этой
+политики требуют решения OWNER.
+
+Project-local temp запускается через утверждённую обёртку с ProjectID или
+локальным namespace, SessionBindingID и generation согласно её проверенному
+интерфейсу.
+
 ## Источники истины
 
 - Факты выполнения (состояние Task, Run, Fence, сессий) берутся из состояния
@@ -66,6 +103,7 @@ docs/ARCHITECTURE.md и документацию затронутого комп
 | Порядок работ | docs/ROADMAP.md |
 | Классы дефектов | docs/DEFECT_PATTERNS.md |
 | Правила работы агентов | этот файл |
+| Workspace Root и локальная файловая изоляция | R143, `docs/workspace/coord-workspace-policy.yaml` |
 
 ## Передача работы
 

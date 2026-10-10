@@ -1,0 +1,201 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# coord-project-tmp v1: run a command with all conventional temporary directories
+# anchored inside one approved project workspace.
+#
+# Prevents accidental use of /tmp, /private/tmp, and /var/tmp via environment
+# variables and command-line arguments. Cannot stop a child binary that ignores
+# the environment and opens a hard-coded system path.
+#
+# Changes from v0:
+#   - --session (optional) replaced by --binding (required, SessionBindingID)
+#   - --generation added (required)
+#   - temp layout: .scratch/tmp/sessions/<binding>/<generation>/runs/<random>
+#   - short socket root: .scratch/tmp/s
+#   - GOCACHE exported to .scratch/go-build (Go on macOS ignores XDG_CACHE_HOME)
+#   - arg blocking extended to --flag=/tmp/... and -X/tmp/... forms
+
+GLOBAL_ROOT="/Users/andreybabenko/Downloads/workspace"
+PROJECT=""
+BINDING=""
+GENERATION=""
+KEEP_TMP="${COORD_KEEP_TMP:-1}"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  coord-project-tmp --project workspace-NN --binding ID --generation ID -- COMMAND [ARG...]
+
+Allowed projects:
+  workspace-00 through workspace-10
+
+Example:
+  coord-project-tmp --project workspace-01 --binding codex-sess-30 --generation 1 -- make check
+
+Environment:
+  COORD_KEEP_TMP=1   keep the per-run directory after exit (default)
+  COORD_KEEP_TMP=0   remove the per-run directory after exit
+EOF
+}
+
+fail() {
+  printf 'coord-project-tmp: %s\n' "$*" >&2
+  exit 64
+}
+
+while (($#)); do
+  case "$1" in
+    --project)
+      (($# >= 2)) || fail "--project requires a value"
+      PROJECT="$2"
+      shift 2
+      ;;
+    --binding)
+      (($# >= 2)) || fail "--binding requires a value"
+      BINDING="$2"
+      shift 2
+      ;;
+    --generation)
+      (($# >= 2)) || fail "--generation requires a value"
+      GENERATION="$2"
+      shift 2
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    --)
+      shift
+      break
+      ;;
+    *)
+      fail "unknown wrapper option: $1"
+      ;;
+  esac
+done
+
+[[ -n "$PROJECT"    ]] || fail "--project is required"
+[[ -n "$BINDING"    ]] || fail "--binding is required"
+[[ -n "$GENERATION" ]] || fail "--generation is required"
+(($# > 0))              || fail "COMMAND is required"
+
+case "$PROJECT" in
+  workspace-0[0-9]|workspace-10) ;;
+  *) fail "invalid project '$PROJECT'; expected workspace-00 through workspace-10" ;;
+esac
+
+[[ "$BINDING"    =~ ^[A-Za-z0-9._-]+$ ]] || fail "invalid --binding; use A-Z, a-z, 0-9, dot, underscore, or hyphen"
+[[ "$GENERATION" =~ ^[A-Za-z0-9._-]+$ ]] || fail "invalid --generation; use A-Z, a-z, 0-9, dot, underscore, or hyphen"
+
+PROJECT_ROOT="$GLOBAL_ROOT/$PROJECT"
+[[ -d "$GLOBAL_ROOT"  ]] || fail "global root does not exist: $GLOBAL_ROOT"
+[[ -d "$PROJECT_ROOT" ]] || fail "project root does not exist: $PROJECT_ROOT"
+
+# Resolve symlinks and enforce containment.
+GLOBAL_REAL="$(cd "$GLOBAL_ROOT" && pwd -P)"
+PROJECT_REAL="$(cd "$PROJECT_ROOT" && pwd -P)"
+case "$PROJECT_REAL/" in
+  "$GLOBAL_REAL/$PROJECT/") ;;
+  *) fail "project root escapes the approved global root" ;;
+esac
+
+SCRATCH_ROOT="$PROJECT_REAL/.scratch"
+TMP_ROOT="$SCRATCH_ROOT/tmp"
+SESSION_ROOT="$TMP_ROOT/sessions/$BINDING/$GENERATION"
+RUNS_ROOT="$SESSION_ROOT/runs"
+SOCKET_ROOT="$TMP_ROOT/s"
+
+mkdir -p "$RUNS_ROOT" "$SOCKET_ROOT"
+chmod 700 "$SCRATCH_ROOT" "$TMP_ROOT" "$SESSION_ROOT" "$RUNS_ROOT" "$SOCKET_ROOT"
+
+# mktemp receives an approved explicit template; does not consult /tmp.
+RUN_TMP="$(mktemp -d "$RUNS_ROOT/XXXXXXXX")"
+RUN_REAL="$(cd "$RUN_TMP" && pwd -P)"
+case "$RUN_REAL/" in
+  "$PROJECT_REAL/.scratch/tmp/sessions/$BINDING/$GENERATION/runs/"*) ;;
+  *) fail "temporary directory escapes project-local scratch" ;;
+esac
+chmod 700 "$RUN_REAL"
+
+cleanup() {
+  rc=$?
+  if [[ "$KEEP_TMP" == "0" ]]; then
+    case "$RUN_REAL/" in
+      "$PROJECT_REAL/.scratch/tmp/sessions/$BINDING/$GENERATION/runs/"*)
+        rm -rf -- "$RUN_REAL" ;;
+      *)
+        printf 'coord-project-tmp: refusing unsafe cleanup: %s\n' "$RUN_REAL" >&2 ;;
+    esac
+  else
+    printf 'coord-project-tmp: retained temporary directory: %s\n' "$RUN_REAL" >&2
+  fi
+  exit "$rc"
+}
+trap cleanup EXIT HUP INT TERM
+
+# Reject system-temp paths in command arguments.
+# Catches /tmp/x, --flag=/tmp/x, and -X/tmp/x forms.
+for arg in "$@"; do
+  case "$arg" in
+    /tmp|/tmp/*|/private/tmp|/private/tmp/*|/var/tmp|/var/tmp/*)
+      fail "system temporary path is forbidden in command arguments: $arg"
+      ;;
+    *=/tmp/*|*=/private/tmp/*|*=/var/tmp/*)
+      fail "system temporary path is forbidden in flag value: $arg"
+      ;;
+  esac
+  # Catch single-char combined flags: -o/tmp/x
+  if [[ "${arg:0:1}" == "-" && "${arg:0:2}" != "--" && "${#arg}" -gt 2 ]]; then
+    rest="${arg:2}"
+    case "$rest" in
+      /tmp/*|/private/tmp/*|/var/tmp/*)
+        fail "system temporary path is forbidden in combined flag: $arg"
+        ;;
+    esac
+  fi
+done
+
+# All conventional temp and cache variables are project-local.
+export TMPDIR="$RUN_REAL/"
+export TMP="$RUN_REAL"
+export TEMP="$RUN_REAL"
+export TEMPDIR="$RUN_REAL"
+export XDG_RUNTIME_DIR="$PROJECT_REAL/.scratch/runtime"
+export XDG_CACHE_HOME="$PROJECT_REAL/.scratch/cache"
+export GOCACHE="$PROJECT_REAL/.scratch/go-build"
+export GOTMPDIR="$PROJECT_REAL/.scratch/go-tmp"
+export PIP_CACHE_DIR="$PROJECT_REAL/.scratch/pip-cache"
+export npm_config_cache="$PROJECT_REAL/.scratch/npm-cache"
+export YARN_CACHE_FOLDER="$PROJECT_REAL/.scratch/yarn-cache"
+
+mkdir -p \
+  "$XDG_RUNTIME_DIR" \
+  "$XDG_CACHE_HOME" \
+  "$GOCACHE" \
+  "$GOTMPDIR" \
+  "$PIP_CACHE_DIR" \
+  "$npm_config_cache" \
+  "$YARN_CACHE_FOLDER"
+chmod 700 \
+  "$XDG_RUNTIME_DIR" \
+  "$XDG_CACHE_HOME" \
+  "$GOCACHE" \
+  "$GOTMPDIR" \
+  "$PIP_CACHE_DIR" \
+  "$npm_config_cache" \
+  "$YARN_CACHE_FOLDER"
+
+export COORD_WORKSPACE_ROOT="$GLOBAL_REAL"
+export COORD_PROJECT_WORKSPACE="$PROJECT"
+export COORD_PROJECT_ROOT="$PROJECT_REAL"
+export COORD_SESSION_BINDING_ID="$BINDING"
+export COORD_SESSION_GENERATION="$GENERATION"
+export COORD_SESSION_TMP="$RUN_REAL"
+export COORD_SOCKET_ROOT="$SOCKET_ROOT"
+export COORD_SYSTEM_TMP_POLICY="deny"
+
+printf 'coord-project-tmp: project=%s binding=%s generation=%s tmp=%s\n' \
+  "$PROJECT" "$BINDING" "$GENERATION" "$RUN_REAL" >&2
+
+"$@"
