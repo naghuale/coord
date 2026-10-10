@@ -23,7 +23,7 @@ func main() {
 
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "usage: coord-governance <command> [flags]")
-		fmt.Fprintln(os.Stderr, "commands: resolve")
+		fmt.Fprintln(os.Stderr, "commands: resolve, agent launch")
 		os.Exit(2)
 	}
 
@@ -52,6 +52,15 @@ func main() {
 			os.Exit(1)
 		}
 		if result.Admission.Status != actioncontext.StatusAdmitted {
+			os.Exit(1)
+		}
+	case "agent":
+		if len(os.Args) < 3 || os.Args[2] != "launch" {
+			fmt.Fprintln(os.Stderr, "usage: coord-governance agent launch [flags] [-- executable args...]")
+			os.Exit(2)
+		}
+		if err := runAgentLaunch(context.Background(), os.Args[3:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
 	default:
