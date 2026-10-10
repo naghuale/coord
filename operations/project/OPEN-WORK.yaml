@@ -10,7 +10,12 @@ project:
 
 currentStage: post-completion-report
 
-active: []
+active:
+  - issue: 39
+    title: "RFC-0001: Local Project Workspace, Operations Ledger and Context Management"
+    executor: codex:workspace-c9d
+    state: EXECUTOR_IN_PROGRESS
+    startedAt: 2026-10-10
 
 completedThisSession:
   - id: portability-bootstrap
