@@ -1,0 +1,115 @@
+apiVersion: coord.dev/v1alpha1
+kind: ContextCheck
+
+metadata:
+  projectId: coord
+  sessionId: claude-workspace-10
+  checkedAt: "2026-10-10"
+  phase: session_start
+
+source:
+  branch: p0-2-task
+  commit: c8f2fda
+
+requiredFacts:
+  projectId:
+    present: true
+    value: coord
+
+  sourceCommit:
+    present: true
+    value: c8f2fda
+
+  currentStage:
+    present: true
+    value: post-36-pre-portability
+
+  activeTask:
+    present: true
+    value: portability-bootstrap
+
+  blockers:
+    present: true
+    value: []
+
+  nextSafeAction:
+    present: true
+    value: commit portability-bootstrap (.coord/project.yaml + CONTEXT-INDEX.yaml)
+
+  ownerDecisions:
+    present: true
+    open: []
+
+  knownDeviations:
+    present: true
+    value:
+      - "#38 open: system /tmp not yet enforced"
+      - "COORD_REPOSITORY_ROOT = workspace-01/coordinator (transitional)"
+
+sources:
+  current:
+    path: operations/project/CURRENT.yaml
+    verified: true
+
+  openWork:
+    path: operations/project/OPEN-WORK.yaml
+    verified: true
+
+  contextIndex:
+    path: .coord/CONTEXT-INDEX.yaml
+    verified: false
+    note: "To be created in portability-bootstrap commit"
+
+  assignment:
+    path: "operations/assignments/portability-bootstrap.yaml"
+    verified: false
+    note: "No formal assignment; OWNER autonomous decision R142"
+
+behavior:
+  unnecessaryOwnerQuestions: 0
+  missedOwnerBoundaries: 0
+  decisionsReversedDueToStaleContext: 0
+  crossProjectContextDetected: false
+  staleAuthoritativeSourceDetected: false
+
+probes:
+  - id: project-and-head
+    question: "Какой ProjectID и исходный commit?"
+    answer: "coord @ c8f2fda"
+    passed: true
+
+  - id: active-task
+    question: "Какая задача активна сейчас?"
+    answer: "portability-bootstrap (.coord env-vars + CONTEXT-INDEX)"
+    passed: true
+
+  - id: blockers
+    question: "Что блокирует следующий переход?"
+    answer: "Ничего. #38 открыт но не блокирует portability-bootstrap"
+    passed: true
+
+  - id: next-safe-action
+    question: "Какой следующий безопасный шаг?"
+    answer: "commit portability-bootstrap → независимый review → CI"
+    passed: true
+
+  - id: owner-boundary
+    question: "Требуется ли сейчас решение OWNER?"
+    answer: "Нет. R142 покрывает portability-bootstrap"
+    passed: true
+
+  - id: evidence-recovery
+    question: "Можно ли восстановить доказательства последней завершённой задачи?"
+    answer: "#36: SHA 2a9c8b0+c8f2fda, review=codex:workspace-c9d ACCEPTED, audit=opencode:workspace-o73 ACCEPTED"
+    passed: true
+
+summary:
+  passed: 6
+  total: 6
+
+result:
+  status: PASS
+  reason: >-
+    Все обязательные факты присутствуют, источники актуальны,
+    следующий шаг определён, граница OWNER не нарушена,
+    доказательства #36 восстанавливаются без загрузки истории.

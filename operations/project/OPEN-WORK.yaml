@@ -6,28 +6,23 @@ project:
   id: coord
   source:
     branch: p0-2-task
-    commit: a782ddd
+    commit: c8f2fda
 
-currentStage: review-audit-discussion
+currentStage: portability-review
 
 active:
-  - issue: 36
-    title: Reject whitespace AgentID in ApplyAgentCommand
-    class: TD-R2
-    branch: issue-36-whitespace-agentid-check
-    commits: [5e0f425, 54825a5]
-    state: AUDIT_IN_PROGRESS
-    reviewer: codex:workspace-c9d
-    reviewVerdict: ACCEPTED
+  - id: portability-bootstrap
+    title: "Project context portability: .coord/project.yaml + CONTEXT-INDEX + context-check schema"
+    branch: portability-bootstrap
+    commit: 6b07211
+    state: REVIEW_IN_PROGRESS
+    reviewer: codex:workspace-c70
     auditor: opencode:workspace-o73
-    auditStatus: IN_PROGRESS
-    nextSafeAction: await_audit_then_fast_forward_to_p0_2_task
+    nextSafeAction: await_review_and_audit_then_fast_forward_to_p0_2_task
 
 pendingLocal:
   - id: portability-bootstrap
-    title: "Project context portability: .coord/project.yaml env-vars + CONTEXT-INDEX"
-    state: QUEUED
-    prerequisite: "#36 integrated"
+    title: MOVED to active
     files:
       - .coord/project.yaml
       - .coord/CONTEXT-INDEX.yaml
