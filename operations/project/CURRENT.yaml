@@ -13,15 +13,17 @@ sessionLaunchCwd:
 source:
   repository: https://github.com/naghuale/coord.git
   integrationBranch: p0-2-task
-  integrationHead: c8f2fda
+  integrationHead: 3276e85
   note: >
-    p0-2-task @ c8f2fda includes:
+    p0-2-task @ 3276e85 includes:
     3b9322e (#30 Discussion Graph),
     92e6e94 (#35 unreachable guard removed),
     ee71f2e (ops/ledger-bootstrap R145),
     a782ddd (globalRoot invariant fix),
     2a9c8b0 (#36 whitespace AgentID check),
-    c8f2fda (#30 residual Discussion tests update).
+    c8f2fda (#30 residual Discussion tests update),
+    6b07211 (portability-bootstrap: CONTEXT-INDEX + 4-layer model),
+    3276e85 (portability-bootstrap v2: ops paths + passConditions fix).
 
 issues:
   completed:
@@ -58,12 +60,14 @@ issues:
 
   active:
     - id: portability-bootstrap
-      title: "Project context portability: .coord/project.yaml env-vars + CONTEXT-INDEX"
-      state: QUEUED
-      prerequisite: "#36 integrated (DONE)"
-      files:
-        - .coord/project.yaml
-        - .coord/CONTEXT-INDEX.yaml
+      title: "Project context portability: CONTEXT-INDEX + 4-layer model + context-check schema"
+      commits: [6b07211, 3276e85]
+      reviewer: codex:workspace-c70
+      reviewVerdict: ACCEPTED
+      auditor: opencode:workspace-o73
+      auditVerdict: AUDIT_ACCEPTED
+      ci: PASS
+      state: COMPLETE
 
     - issue: 32
       title: AGENTS.md R142 text (OpenCode draft)

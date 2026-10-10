@@ -8,21 +8,17 @@ project:
     branch: p0-2-task
     commit: c8f2fda
 
-currentStage: portability-review
+currentStage: post-portability
 
-active:
-  - id: portability-bootstrap
-    title: "Project context portability: .coord/project.yaml + CONTEXT-INDEX + context-check schema"
-    branch: portability-bootstrap
-    commit: 6b07211
-    state: REVIEW_IN_PROGRESS
-    reviewer: codex:workspace-c70
-    auditor: opencode:workspace-o73
-    nextSafeAction: await_review_and_audit_then_fast_forward_to_p0_2_task
+active: []
 
-pendingLocal:
+completedThisSession:
   - id: portability-bootstrap
-    title: MOVED to active
+    state: COMPLETE
+    commits: [6b07211, 3276e85]
+    mergedTo: p0-2-task
+    p0-2-task-head: 3276e85
+    ci: PASS
     files:
       - .coord/project.yaml
       - .coord/CONTEXT-INDEX.yaml
