@@ -10,12 +10,7 @@ project:
 
 currentStage: post-completion-report
 
-active:
-  - issue: 39
-    title: "RFC-0001: Local Project Workspace, Operations Ledger and Context Management"
-    executor: codex:workspace-c9d
-    state: EXECUTOR_IN_PROGRESS
-    startedAt: 2026-10-10
+active: []
 
 completedThisSession:
   - id: portability-bootstrap
@@ -38,6 +33,14 @@ completedThisSession:
     p0-2-task-head: 908af6e
     ci: PASS
     note: Completion Report standard added to OPERATIONS-LEDGER; GitHub Issue publishing rule; close conditions
+
+  - issue: 39
+    state: COMPLETE
+    commit: f192b69
+    mergedTo: p0-2-task
+    p0-2-task-head: f192b69
+    ci: PENDING
+    note: RFC-0001 Proposed registered; Accepted status requires OWNER decision
     files:
       - .coord/project.yaml
       - .coord/CONTEXT-INDEX.yaml
