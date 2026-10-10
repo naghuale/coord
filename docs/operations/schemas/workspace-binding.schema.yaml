@@ -1,13 +1,23 @@
 $schema: coord.dev/v1alpha1/schema/workspace-binding
 description: >
-  WorkspaceBinding separates session launch cwd from the assigned worktree.
-  All agents in the same project share one sessionCwd.
-  Work isolation is achieved through assignedWorktree, not through different launch directories.
+  WorkspaceBinding separates session launch directory (globalRoot) from the assigned
+  worktree and project root. All agents in all projects share one launch cwd (globalRoot).
+  Work isolation is achieved through assignedWorktree and allowedPaths, not through
+  different launch directories.
 
 invariant: >
-  sessionCwd == {globalRoot}/{localNamespace}
-  assignedWorktree is under {globalRoot}/worktrees/{localNamespace}/
-  systemTmp is denied; project temp is under sessionCwd/.scratch/tmp/
+  launchCwd == globalRoot (e.g., /workspace on all platforms)
+  projectRoot == {globalRoot}/{localNamespace}
+  assignedWorktree starts with projectRoot/worktrees/
+  tempRoot starts with projectRoot/.scratch/tmp/
+  systemTmp (any platform /tmp equivalent) is denied
+
+platform_note: >
+  macOS:   /Users/<user>/Downloads/workspace
+  Linux:   /home/<user>/workspace
+  Windows: C:\Users\<user>\workspace
+  The schema and policy are platform-agnostic.
+  Only projects.yaml on the local machine stores the actual globalRoot path.
 
 required:
   - project
@@ -18,7 +28,7 @@ required:
 
 properties:
   project:
-    required: [projectId, localNamespace]
+    required: [projectId, localNamespace, projectRoot]
     properties:
       projectId:
         type: string
@@ -26,6 +36,10 @@ properties:
       localNamespace:
         type: string
         example: workspace-01
+      projectRoot:
+        type: string
+        description: "{globalRoot}/{localNamespace}"
+        example: /Users/andreybabenko/Downloads/workspace/workspace-01
 
   session:
     required: [sessionAddress, agentId, launchCwd]
@@ -39,8 +53,8 @@ properties:
         type: string
       launchCwd:
         type: string
-        description: MUST equal {globalRoot}/{localNamespace}
-        example: /Users/andreybabenko/Downloads/workspace/workspace-01
+        description: MUST equal globalRoot
+        example: /Users/andreybabenko/Downloads/workspace
 
   assignment:
     required: [issue, taskId, role]
@@ -57,8 +71,8 @@ properties:
     properties:
       path:
         type: string
-        description: Absolute path to the assigned worktree
-        example: /Users/andreybabenko/Downloads/workspace/worktrees/workspace-01/issue-35
+        description: Absolute path to the assigned worktree, under projectRoot/worktrees/
+        example: /Users/andreybabenko/Downloads/workspace/workspace-01/worktrees/issue-35
       branch:
         type: string
       baseSha:
@@ -69,7 +83,7 @@ properties:
     type: array
     items:
       type: string
-    description: Glob patterns of paths the agent may read/write
+    description: Glob patterns (relative to globalRoot) of paths the agent may read/write
 
   readOnlyPaths:
     type: array
@@ -80,7 +94,7 @@ properties:
     type: array
     items:
       type: string
-    description: Explicit denials (other worktrees, other namespaces)
+    description: Explicit denials — other projects, other worktrees, system tmp
 
   temporaryStorage:
     properties:
@@ -89,18 +103,18 @@ properties:
         example: /Users/andreybabenko/Downloads/workspace/workspace-01/.scratch/tmp
       systemTmp:
         enum: [deny]
-        description: System /tmp, /private/tmp, /var/tmp are always denied
+        description: All platform system temp dirs are denied (e.g., /tmp, /private/tmp, C:\Windows\Temp)
 
 admission:
   description: >
-    Admission check verifies the session's actual cwd equals the project root
-    (NOT a specific worktree). The assigned worktree is verified separately.
+    Admission check verifies the session's actual launchCwd equals globalRoot,
+    NOT any worktree or project subdirectory.
   checks:
-    - name: cwdIsProjectRoot
-      condition: session.launchCwd == {globalRoot}/{localNamespace}
-    - name: worktreeWithinNamespace
-      condition: repository.path starts with {globalRoot}/worktrees/{localNamespace}/
+    - name: cwdIsGlobalRoot
+      condition: session.launchCwd == globalRoot
+    - name: worktreeWithinProject
+      condition: repository.path starts with projectRoot/worktrees/
     - name: tempWithinProjectRoot
-      condition: temporaryStorage.root starts with {globalRoot}/{localNamespace}/.scratch/
+      condition: temporaryStorage.root starts with projectRoot/.scratch/
     - name: systemTmpDenied
-      condition: no access to /tmp, /private/tmp, /var/tmp
+      condition: no access to any platform system temp directory
