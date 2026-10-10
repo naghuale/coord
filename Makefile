@@ -1,6 +1,6 @@
 GO_FILES := $(shell git ls-files -co --exclude-standard '*.go' | while read f; do test -f "$$f" && echo "$$f"; done)
 
-.PHONY: help fmt check-format vet cross-vet test build demo roles check test-telepathy lint test-telepathy-host
+.PHONY: help fmt check-format vet cross-vet test build demo roles check test-telepathy lint test-telepathy-host check-architecture-sync
 
 help:
 	@echo 'make demo   — полный цикл задачи в локальном транспорте'
@@ -40,7 +40,11 @@ demo:
 roles:
 	go run ./examples/roles
 
-check: check-format vet cross-vet test lint
+check-architecture-sync:
+	python3 scripts/check-architecture-sync
+	python3 scripts/check-architecture-sync-test
+
+check: check-format vet cross-vet test lint check-architecture-sync
 	go build ./...
 	go mod tidy -diff
 

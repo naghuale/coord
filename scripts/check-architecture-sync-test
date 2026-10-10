@@ -1,0 +1,120 @@
+#!/usr/bin/env python3
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import shutil
+import yaml
+
+SOURCE = Path(__file__).resolve().parents[1]
+CHECKER_REL = Path("scripts/check-architecture-sync")
+
+
+def run_case(name, mutate, expected):
+    with tempfile.TemporaryDirectory() as td:
+        repo = Path(td) / "repo"
+        shutil.copytree(SOURCE, repo)
+        subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+        subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=repo, check=True)
+        subprocess.run(["git", "config", "user.name", "Architecture Test"], cwd=repo, check=True)
+        # Fixtures referenced by registry.
+        for p in ["docs/ADR-0001-CANONICAL-COORDINATION-MODEL.md", "docs/ADR-0004-RUNTIME-AND-DAEMON-MODEL.md", "docs/TASK-MODEL.md", "docs/rfc/RFC-0001-LOCAL-PROJECT-OPERATIONS.md"]:
+            path = repo / p; path.parent.mkdir(parents=True, exist_ok=True); path.write_text("fixture")
+        arch_anchors = '\n'.join([
+            '<!-- canonical-persistence -->',
+            '<!-- canonical-agent-command-boundary -->',
+            '<!-- agent-session -->',
+            '<!-- canonical-review-audit-results -->',
+            '<!-- canonical-discussion-graph -->',
+            '<!-- daemon-runtime -->',
+            '<!-- project-dependency-graph -->',
+            '<!-- startup-card-read-api -->',
+            '<!-- session-registry-supervisor -->',
+        ]) + '\n'
+        tgt_anchors = '\n'.join([
+            '<!-- canonical-persistence -->',
+            '<!-- canonical-command-boundary -->',
+            '<!-- agent-session -->',
+            '<!-- review-audit-results -->',
+            '<!-- discussion-graph -->',
+            '<!-- daemon-runtime -->',
+            '<!-- project-dependency-graph -->',
+            '<!-- startup-card-read-api -->',
+            '<!-- session-registry-supervisor -->',
+        ]) + '\n'
+        (repo/"docs/ARCHITECTURE.md").write_text(arch_anchors)
+        (repo/"docs/TARGET-ARCHITECTURE.md").write_text(tgt_anchors)
+        go = repo/"fixture.go"
+        go.write_text("\n".join([
+            "package fixture",
+            # symbols
+            "func CanonicalState(){}",
+            "func CanonicalPersistence(){}",
+            "func CanonicalFile(){}",
+            "func UpdateCanonical(){}",
+            "func AuthenticatedFrame(){}",
+            "func ApplyAgentCommand(){}",
+            "func RegisterAgentSession(){}",
+            "func RotateAgentSessionKey(){}",
+            "func ReplaceAgentSessionAddress(){}",
+            "func ValidateHistory(){}",
+            "func ValidateTransition(){}",
+            "func ReviewResult(){}",
+            "func AuditResult(){}",
+            "func NewCanonical(){}",
+            "func ValidateCanonicalState(){}",
+            "func ValidateCanonicalTransition(){}",
+            # tests
+            "func TestCanonicalStoreRejectsTaskMutationWithoutEvent(t interface{}){}",
+            "func TestCanonicalFileReadsAndRewritesCreationOnlyV1WithoutFenceField(t interface{}){}",
+            "func TestAgentCommandCommitsEventReceiptOutboxAtomically(t interface{}){}",
+            "func TestAgentCommandIgnoresActorIDFromBody(t interface{}){}",
+            "func TestAgentCommandRejectsWhitespaceAgentIDWithoutWriting(t interface{}){}",
+            "func TestAgentCommandRejectsMissingRoleSelectionBeforeRoleStage(t interface{}){}",
+            "func TestCanonicalAgentSessionRegistrationPersistsOperatorBinding(t interface{}){}",
+            "func TestCanonicalAgentSessionKeyRotationIncrementsGenerationAtomically(t interface{}){}",
+            "func TestCanonicalAssignmentTakesCurrentActiveAgentSessionBinding(t interface{}){}",
+            "func TestCanonicalStartupRejectsForgedRunGenerationAndAgentID(t interface{}){}",
+            "func TestReviewResultCommitsWithTransitionEvent(t interface{}){}",
+            "func TestAuditResultCommitsWithTransitionEvent(t interface{}){}",
+            "func TestReviewerRejectsExecutorAgentIDAcrossHistory(t interface{}){}",
+            "func TestAuditorRejectsExecutorAgentIDAcrossTaskRuns(t interface{}){}",
+            "func TestDiscussionNodeRequiresActor(t interface{}){}",
+            "func TestDiscussionNodeRequiresRole(t interface{}){}",
+            "func TestDiscussionEdgeRequiresActor(t interface{}){}",
+            "func TestDiscussionEdgeRejectsUnknownType(t interface{}){}",
+            "func TestCoorddTakesNamespaceLockBeforeStores(t interface{}){}",
+            "func TestCoorddReadinessFailsClosedForActiveTaskRunWithoutAgentSessionBinding(t interface{}){}",
+            "",
+        ]) )
+        subprocess.run(["git", "add", "."], cwd=repo, check=True)
+        subprocess.run(["git", "commit", "-qm", "fixture"], cwd=repo, check=True)
+        mutate(repo)
+        result = subprocess.run([sys.executable, str(repo/CHECKER_REL)], cwd=repo, capture_output=True, text=True)
+        ok = result.returncode == expected
+        print(f"{'PASS' if ok else 'FAIL'} {name}")
+        if not ok:
+            print(result.stdout); print(result.stderr)
+            raise SystemExit(1)
+
+
+def no_change(repo): pass
+
+def bad_partial(repo):
+    p=repo/"docs/architecture/COMPONENT-STATUS.yaml"; d=yaml.safe_load(p.read_text()); d['components'][0]['missing']=[]; p.write_text(yaml.safe_dump(d, sort_keys=False))
+
+def proposed_normative(repo):
+    # index 7 = startup-card-read-api (proposed)
+    p=repo/"docs/architecture/COMPONENT-STATUS.yaml"; d=yaml.safe_load(p.read_text()); d['components'][7]['normativeForCurrentProduct']=True; p.write_text(yaml.safe_dump(d, sort_keys=False))
+
+def missing_test(repo):
+    p=repo/"docs/architecture/COMPONENT-STATUS.yaml"; d=yaml.safe_load(p.read_text()); d['components'][0]['evidence']['tests']=['NoSuchTest']; p.write_text(yaml.safe_dump(d, sort_keys=False))
+
+def main():
+    run_case("valid registry", no_change, 0)
+    run_case("partial requires missing list", bad_partial, 1)
+    run_case("proposed is non-normative", proposed_normative, 1)
+    run_case("evidence test must exist", missing_test, 1)
+    print("All architecture sync self-tests PASS")
+
+if __name__ == '__main__': main()

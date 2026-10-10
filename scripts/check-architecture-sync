@@ -1,0 +1,133 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+import fnmatch
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+try:
+    import yaml
+except ImportError:
+    print("ARCHITECTURE_CHECK_ERROR: PyYAML is required", file=sys.stderr)
+    sys.exit(2)
+
+ROOT = Path(__file__).resolve().parents[1]
+REGISTRY = ROOT / "docs/architecture/COMPONENT-STATUS.yaml"
+ALLOWED = {"implemented", "partial", "missing", "proposed", "legacy"}
+ERRORS: list[str] = []
+
+
+def error(code: str, message: str) -> None:
+    ERRORS.append(f"{code}: {message}")
+
+
+def load_yaml(path: Path):
+    try:
+        return yaml.safe_load(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        error("ARCHITECTURE_STATUS_INVALID", f"{path}: {exc}")
+        return {}
+
+
+def file_contains_token(token: str, suffixes=(".go", ".md", ".yaml", ".yml")) -> bool:
+    for path in ROOT.rglob("*"):
+        if not path.is_file() or path.suffix not in suffixes or ".git" in path.parts:
+            continue
+        try:
+            if token in path.read_text(encoding="utf-8", errors="ignore"):
+                return True
+        except OSError:
+            pass
+    return False
+
+
+def anchor_exists(text: str, anchor: str) -> bool:
+    return f'id="{anchor}"' in text or f"id='{anchor}'" in text or f"#{anchor}" in text or f"<!-- {anchor} -->" in text
+
+
+def changed_files() -> list[str]:
+    base = None
+    for candidate in ("origin/p0-2-task", "origin/main", "HEAD^"):
+        result = subprocess.run(["git", "rev-parse", "--verify", candidate], cwd=ROOT, capture_output=True, text=True)
+        if result.returncode == 0:
+            base = candidate
+            break
+    if not base:
+        return []
+    result = subprocess.run(["git", "diff", "--name-only", f"{base}...HEAD"], cwd=ROOT, capture_output=True, text=True)
+    return result.stdout.splitlines() if result.returncode == 0 else []
+
+
+def main() -> int:
+    data = load_yaml(REGISTRY)
+    docs = data.get("documents", {})
+    current_path = ROOT / docs.get("currentArchitecture", "docs/ARCHITECTURE.md")
+    target_path = ROOT / docs.get("targetArchitecture", "docs/TARGET-ARCHITECTURE.md")
+    current = current_path.read_text(encoding="utf-8") if current_path.exists() else ""
+    target = target_path.read_text(encoding="utf-8") if target_path.exists() else ""
+    if not current_path.exists(): error("ARCHITECTURE_CURRENT_MISSING", str(current_path))
+    if not target_path.exists(): error("ARCHITECTURE_TARGET_MISSING", str(target_path))
+
+    seen = set()
+    for component in data.get("components", []):
+        cid = component.get("id", "")
+        status = component.get("status")
+        if not cid or cid in seen:
+            error("ARCHITECTURE_STATUS_CONFLICT", f"duplicate or empty component id: {cid!r}")
+        seen.add(cid)
+        if status not in ALLOWED:
+            error("ARCHITECTURE_STATUS_INVALID", f"{cid}: {status!r}")
+        implemented = component.get("implemented", [])
+        missing = component.get("missing", [])
+        if status == "implemented" and (missing or not implemented):
+            error("ARCHITECTURE_MATURITY_INFLATED", f"{cid}: implemented requires evidence and no missing items")
+        if status == "partial" and (not implemented or not missing):
+            error("ARCHITECTURE_STATUS_INVALID", f"{cid}: partial requires non-empty implemented and missing")
+        if status == "missing" and implemented:
+            error("ARCHITECTURE_STATUS_CONFLICT", f"{cid}: missing cannot list implemented items")
+        if status == "proposed" and component.get("normativeForCurrentProduct") is not False:
+            error("ARCHITECTURE_PROPOSED_AS_IMPLEMENTED", f"{cid}: proposed must set normativeForCurrentProduct: false")
+        for source in component.get("normativeSources", []):
+            if not (ROOT / source).exists():
+                error("ARCHITECTURE_EVIDENCE_MISSING", f"{cid}: missing normative source {source}")
+        evidence = component.get("evidence", {})
+        if status in {"implemented", "partial"} and not evidence.get("tests"):
+            error("ARCHITECTURE_TEST_MISSING", f"{cid}: status {status} requires tests")
+        for test in evidence.get("tests", []):
+            if not file_contains_token(test, (".go",)):
+                error("ARCHITECTURE_TEST_MISSING", f"{cid}: test not found: {test}")
+        for symbol in evidence.get("symbols", []):
+            if not file_contains_token(symbol, (".go",)):
+                error("ARCHITECTURE_SYMBOL_MISSING", f"{cid}: symbol not found: {symbol}")
+        anchors = component.get("documents", {})
+        ca, ta = anchors.get("currentAnchor"), anchors.get("targetAnchor")
+        if ca and current and not anchor_exists(current, ca):
+            error("ARCHITECTURE_ANCHOR_MISSING", f"{cid}: current anchor {ca}")
+        if ta and target and not anchor_exists(target, ta):
+            error("ARCHITECTURE_ANCHOR_MISSING", f"{cid}: target anchor {ta}")
+
+    changed = changed_files()
+    significant = any(any(fnmatch.fnmatch(path, pattern) for pattern in data.get("architectureSignificantPaths", [])) for path in changed)
+    docs_changed = any(path in changed for path in [str(REGISTRY.relative_to(ROOT)), str(current_path.relative_to(ROOT)), str(target_path.relative_to(ROOT))])
+    impact = ROOT / ".coord/architecture-impact.yaml"
+    if significant and not docs_changed:
+        if not impact.exists():
+            error("ARCHITECTURE_DOC_UPDATE_REQUIRED", "architecture-significant code changed without docs/registry or impact manifest")
+        else:
+            manifest = load_yaml(impact)
+            status = manifest.get("architectureDocumentation", {}).get("status")
+            reason = manifest.get("architectureDocumentation", {}).get("reason", "").strip()
+            if status != "N/A" or not reason:
+                error("ARCHITECTURE_DOC_UPDATE_REQUIRED", "impact manifest must contain status: N/A and a non-empty reason")
+
+    if ERRORS:
+        print("Architecture sync check FAILED", file=sys.stderr)
+        for item in ERRORS:
+            print(f"- {item}", file=sys.stderr)
+        return 1
+    print(f"Architecture sync check PASS: {len(seen)} components")
+    return 0
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,292 @@
+apiVersion: coord.dev/v1alpha1
+kind: ArchitectureComponentRegistry
+
+metadata:
+  projectId: coord
+  registryVersion: 1
+  updatedFromCommit: <integration-head-sha>
+  statusVocabulary:
+    - implemented
+    - partial
+    - missing
+    - proposed
+    - legacy
+
+documents:
+  currentArchitecture: docs/ARCHITECTURE.md
+  targetArchitecture: docs/TARGET-ARCHITECTURE.md
+
+architectureSignificantPaths:
+  - store/**
+  - task/**
+  - agentsession/**
+  - transport/**
+  - checkpoint/**
+  - cmd/coordd/**
+  - internal/taskservice/**
+
+components:
+  - id: canonical-persistence
+    title: Canonical persistence
+    status: partial
+    normativeSources:
+      - docs/ADR-0005-STORAGE-MODEL.md
+    implemented:
+      - CanonicalState persisted as one versioned document
+      - Task, Run, DomainEvent, Inbox, Outbox, AgentSession and AgentSessionEvent are part of the durable unit
+      - ReviewResult, AuditResult and Discussion Graph data validated as part of canonical state
+      - atomic replacement uses temporary file, fsync, rename and parent-directory sync
+      - in-memory state published only after successful Save
+      - production coordd opens CanonicalStore backed by CanonicalFile
+    missing:
+      - production command paths for all canonical writers
+      - removal of remaining legacy runtime state owners
+      - full stage scheduler integration
+    evidence:
+      symbols:
+        - CanonicalState
+        - CanonicalPersistence
+        - CanonicalFile
+        - UpdateCanonical
+      tests:
+        - TestCanonicalStoreRejectsTaskMutationWithoutEvent
+        - TestCanonicalFileReadsAndRewritesCreationOnlyV1WithoutFenceField
+      issues:
+        - 5
+    documents:
+      currentAnchor: canonical-persistence
+      targetAnchor: canonical-persistence
+
+  - id: canonical-command-boundary
+    title: Canonical agent command boundary
+    status: partial
+    normativeSources:
+      - docs/ADR-0001-CANONICAL-COORDINATION-MODEL.md
+      - docs/ADR-0004-RUNTIME-AND-DAEMON-MODEL.md
+      - docs/TASK-MODEL.md
+      - docs/plans/p0-2-task/AGENT-COMMAND-BOUNDARY.md
+    implemented:
+      - authenticated frame signature and local-recipient verification
+      - current AgentSession generation and key verification
+      - trusted AgentID resolved from AgentSession rather than command body
+      - Task, Run, Fence, Attempt, role and Stage checks
+      - replay and ExpectedRevision checks
+      - atomic transition, DomainEvent, Inbox receipt and Outbox commit
+      - rejection paths avoid durable side effects
+    missing:
+      - production CLI caller
+      - production Telepathy caller
+      - OwnerCredential
+      - command-boundary AgentSession management operations
+      - Executor RESULT production path
+    evidence:
+      symbols:
+        - AuthenticatedFrame
+        - ApplyAgentCommand
+      tests:
+        - TestAgentCommandCommitsEventReceiptOutboxAtomically
+        - TestAgentCommandIgnoresActorIDFromBody
+        - TestAgentCommandRejectsWhitespaceAgentIDWithoutWriting
+        - TestAgentCommandRejectsMissingRoleSelectionBeforeRoleStage
+      issues:
+        - 26
+        - 35
+        - 36
+    documents:
+      currentAnchor: canonical-agent-command-boundary
+      targetAnchor: canonical-command-boundary
+
+  - id: agent-session
+    title: AgentSession projection, history and Run binding
+    status: partial
+    normativeSources:
+      - docs/ADR-0001-CANONICAL-COORDINATION-MODEL.md
+      - docs/TASK-MODEL.md
+    implemented:
+      - AgentSession projection and append-only event history
+      - registration, key rotation and address replacement store operations
+      - generation and key binding to Task-scoped Run
+      - startup and transition validation
+      - revoked addresses cannot be registered again
+    missing:
+      - operator command path
+      - OwnerCredential integration
+      - standalone revoke command without replacement
+      - production admission and Session Registry
+    evidence:
+      symbols:
+        - RegisterAgentSession
+        - RotateAgentSessionKey
+        - ReplaceAgentSessionAddress
+        - ValidateHistory
+        - ValidateTransition
+      tests:
+        - TestCanonicalAgentSessionRegistrationPersistsOperatorBinding
+        - TestCanonicalAgentSessionKeyRotationIncrementsGenerationAtomically
+        - TestCanonicalAssignmentTakesCurrentActiveAgentSessionBinding
+        - TestCanonicalStartupRejectsForgedRunGenerationAndAgentID
+      issues:
+        - 13
+        - 26
+        - 34
+    documents:
+      currentAnchor: agent-session
+      targetAnchor: agent-session
+
+  - id: review-audit-results
+    title: Canonical ReviewResult and AuditResult
+    status: partial
+    normativeSources:
+      - docs/ADR-0001-CANONICAL-COORDINATION-MODEL.md
+      - docs/TASK-MODEL.md
+    implemented:
+      - typed ReviewResult and AuditResult payloads
+      - atomic result, Task transition, terminal role Run, DomainEvent, receipt and RESULT_ACK commit
+      - startup and transition association validation
+      - Reviewer and Auditor independence by stable AgentID and executor history
+      - former Reviewer or Auditor cannot later become Executor for the same Task
+    missing:
+      - production agent or CLI command path
+      - supervisor stop proof
+      - stage scheduler and next-stage transition
+      - canonical Artifact metadata
+      - read-only API and Startup Card
+    evidence:
+      symbols:
+        - ReviewResult
+        - AuditResult
+      tests:
+        - TestReviewResultCommitsWithTransitionEvent
+        - TestAuditResultCommitsWithTransitionEvent
+        - TestReviewerRejectsExecutorAgentIDAcrossHistory
+        - TestAuditorRejectsExecutorAgentIDAcrossTaskRuns
+      issues:
+        - 30
+    documents:
+      currentAnchor: canonical-review-audit-results
+      targetAnchor: review-audit-results
+
+  - id: discussion-graph
+    title: Canonical Discussion Graph
+    status: partial
+    normativeSources:
+      - docs/ADR-0001-CANONICAL-COORDINATION-MODEL.md
+    implemented:
+      - typed nodes
+      - typed edges
+      - canonical persistence
+      - startup validation
+      - transition validation
+      - required Actor and Role validation
+    missing:
+      - production command path
+      - read-only projection
+      - Owner Console
+      - product Decision Resolver
+    evidence:
+      symbols:
+        - ValidateCanonicalState
+        - ValidateCanonicalTransition
+      tests:
+        - TestDiscussionNodeRequiresActor
+        - TestDiscussionNodeRequiresRole
+        - TestDiscussionEdgeRequiresActor
+        - TestDiscussionEdgeRejectsUnknownType
+      issues:
+        - 30
+    documents:
+      currentAnchor: canonical-discussion-graph
+      targetAnchor: discussion-graph
+
+  - id: daemon-runtime
+    title: Standalone canonical daemon runtime
+    status: partial
+    normativeSources:
+      - docs/ADR-0004-RUNTIME-AND-DAEMON-MODEL.md
+      - docs/ADR-0005-STORAGE-MODEL.md
+    implemented:
+      - standalone coordd executable
+      - namespace lock before store opening
+      - canonical store startup validation
+      - diagnostic-only readiness for unsupported legacy state
+      - operational readiness endpoint for the current Run coordinator
+    missing:
+      - production canonical write path
+      - complete Task-wide readiness checks
+      - full stop-proof recovery
+      - removal of legacy localchat writers
+    evidence:
+      symbols:
+        - NewCanonical
+        - CanonicalFile
+      tests:
+        - TestCoorddTakesNamespaceLockBeforeStores
+        - TestCoorddReadinessFailsClosedForActiveTaskRunWithoutAgentSessionBinding
+      issues:
+        - 6
+        - 7
+    documents:
+      currentAnchor: daemon-runtime
+      targetAnchor: daemon-runtime
+
+  - id: project-dependency-graph
+    title: Project Dependency Graph
+    status: missing
+    normativeSources:
+      - docs/ADR-0002-PROJECT-DEPENDENCY-GRAPH.md
+    implemented: []
+    missing:
+      - canonical graph representation
+      - graph revision and CAS mutation
+      - prerequisite enforcement
+      - read-only projection
+    evidence:
+      symbols: []
+      tests: []
+      issues: []
+    documents:
+      currentAnchor: project-dependency-graph
+      targetAnchor: project-dependency-graph
+
+  - id: startup-card-read-api
+    title: Startup Card and read-only Task API
+    status: proposed
+    normativeForCurrentProduct: false
+    normativeSources:
+      - docs/ADR-0001-CANONICAL-COORDINATION-MODEL.md
+      - docs/ADR-0004-RUNTIME-AND-DAEMON-MODEL.md
+    implemented: []
+    missing:
+      - ADR-0006
+      - Task read-only API
+      - Startup Card projection
+      - Dashboard projection
+    evidence:
+      symbols: []
+      tests: []
+      issues: []
+    documents:
+      currentAnchor: startup-card-read-api
+      targetAnchor: startup-card-read-api
+
+  - id: session-registry-supervisor
+    title: Session Registry and Session Supervisor
+    status: proposed
+    normativeForCurrentProduct: false
+    normativeSources:
+      - docs/rfc/RFC-0001-LOCAL-PROJECT-OPERATIONS.md
+    implemented: []
+    missing:
+      - ADR-0009 acceptance
+      - Session Registry
+      - process identity provider
+      - Session Supervisor
+      - supervised termination plan execution
+    evidence:
+      symbols: []
+      tests: []
+      issues:
+        - 34
+    documents:
+      currentAnchor: session-registry-supervisor
+      targetAnchor: session-registry-supervisor

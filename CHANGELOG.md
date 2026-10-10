@@ -1,5 +1,82 @@
 # История изменений
 
+## 2026-10-10 — Architecture Sync: COMPONENT-STATUS registry expanded to 9 components ([#41](https://github.com/naghuale/coord/issues/41))
+
+- (документация) `docs/architecture/COMPONENT-STATUS.yaml`: реестр расширен с
+  3 до 9 компонентов; добавлены `canonical-persistence` (partial),
+  `agent-session` (partial), `review-audit-results` (partial),
+  `daemon-runtime` (partial), `project-dependency-graph` (missing),
+  `startup-card-read-api` (proposed). Каждый новый компонент: normativeSources,
+  implemented/missing, evidence (symbols + tests), anchors в обоих документах.
+  TestDiscussionEdgeRequiresRole отсутствует в HEAD — вместо него использован
+  `TestDiscussionEdgeRejectsUnknownType`.
+- (документация) `docs/ARCHITECTURE.md`, `docs/TARGET-ARCHITECTURE.md`:
+  HTML anchors для 6 новых компонентов (canonical-persistence, agent-session,
+  canonical-review-audit-results/review-audit-results, daemon-runtime,
+  project-dependency-graph, startup-card-read-api).
+- (документация) `scripts/check-architecture-sync-test`: фиксируемые docs и
+  Go-символы обновлены — покрывают все 9 компонентов; индекс мутации
+  `proposed_normative` исправлен с 2 на 7 (startup-card-read-api).
+
+## 2026-10-10 — Architecture Sync: COMPONENT-STATUS registry, validator and CI ([#41](https://github.com/naghuale/coord/issues/41))
+
+- (документация) `docs/architecture/COMPONENT-STATUS.yaml`: единый реестр
+  статусов компонентов — `canonical-command-boundary` (partial),
+  `discussion-graph` (partial), `session-registry-supervisor` (proposed).
+  Каждый компонент: normativeSources, implemented/missing, evidence (symbols +
+  tests + issues), anchors в обоих архитектурных документах.
+- (документация) `docs/operations/ARCHITECTURE-SYNC-PROCESS.md`: регламент
+  синхронизации — 10-шаговый процесс от architecture impact до Completion
+  Report; словарь статусов (implemented/partial/missing/proposed/legacy);
+  блокирующие ошибки (ARCHITECTURE_MATURITY_INFLATED и др.).
+- (документация) `scripts/check-architecture-sync`: валидатор реестра —
+  уникальность ID, допустимые статусы, partial требует обоих списков,
+  proposed требует normativeForCurrentProduct: false, тесты и символы
+  существуют в коде, anchors присутствуют в документах, arch-significant paths
+  требуют docs-update или impact manifest.
+- (документация) `scripts/check-architecture-sync-test`: 4 самотеста
+  валидатора; все 4 PASS при чистом реестре.
+- (документация) `.github/workflows/architecture-sync.yml`: CI workflow —
+  PR и push в main/p0-2-task; Python 3.12 + PyYAML + check + self-tests.
+- (документация) `Makefile`: target `check-architecture-sync` добавлен в
+  `make check`.
+- (документация) `docs/ARCHITECTURE.md`, `docs/TARGET-ARCHITECTURE.md`:
+  HTML anchors для всех трёх компонентов реестра.
+- (документация) `.coord/architecture-impact.example.yaml`: шаблон manifest
+  для явного N/A при arch-significant изменениях без архитектурного влияния.
+
+## 2026-10-10 — Architecture maps sync: canonical core vs legacy vs production paths ([#41](https://github.com/naghuale/coord/issues/41))
+
+- (документация) `docs/TARGET-ARCHITECTURE.md`: Discussion Graph статус нет →
+  частично (canonical core реализован в #30); ReviewResult/AuditResult «Не
+  реализовано» обновлено; AgentSession Part 4 разделена на «реализована на
+  canonical model» и «production path не подключён»; status definitions
+  уточнены (частично = canonical core реализован, production integration не
+  закрыта); Section 9 P0 расширена списком реализованных canonical срезов;
+  раздел 5 Discussion Graph получил caveat «целевая и частично реализованная
+  модель»; раздел 7 Startup Card помечен как зарезервированное направление
+  ADR-0006.
+- (документация) `docs/ARCHITECTURE.md`: добавлен header с явным разделением
+  legacy runtime / canonical core / не подключённые production paths; расширен
+  состав `CanonicalState` (AgentSessions, ReviewResult, AuditResult, Discussion
+  Graph); «P0-2 завершён» заменено точной формулировкой; раздел «Рабочий цикл»
+  переименован в «Legacy Run execution lifecycle» с пояснением; добавлены новые
+  разделы: «Canonical agent command boundary», «Canonical Discussion Graph»,
+  «Canonical Review и Audit results»; persistence разделён на legacy/canonical;
+  recovery разделён на legacy/Task-wide; «Подтверждение результата» уточняет,
+  что Executor RESULT production path (#6) не подключён.
+
+## 2026-10-10 — Coordinator State Machine: verdicts, transitions and OWNER boundaries ([#41](https://github.com/naghuale/coord/issues/41))
+
+- (документация) `docs/operations/COORDINATOR-STATE-MACHINE.md`: полная
+  спецификация машины состояний координатора — вердикты Executor/Reviewer/Auditor,
+  readiness-переходы NOT_READY→COMPLETE, семантика check/mutation/CI результатов,
+  контекстные состояния, таблица автономии 13 записей.
+- (документация) `docs/operations/schemas/coordinator-state-machine.yaml`:
+  машиночитаемая схема; `developmentProcess.status: active`, session/process
+  lifecycle отделены как `proposed`, `pending-ADR-0009`,
+  `normativeForCurrentProduct: false`.
+
 ## 2026-10-10 — AGENTS.md sync: RFC-0001, R142, R145 and Completion Report ([#40](https://github.com/naghuale/coord/issues/40))
 
 - (документация) `AGENTS.md`: убран абсолютный путь `COORD_GLOBAL_ROOT` из

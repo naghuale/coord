@@ -1,0 +1,5 @@
+apiVersion: coord.dev/v1alpha1
+kind: ArchitectureImpact
+architectureDocumentation:
+  status: N/A
+  reason: "<required: explain why architecture-significant changes do not change components, guarantees, or integration status>"
