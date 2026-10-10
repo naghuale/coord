@@ -1,0 +1,92 @@
+projectId: coord
+issue: 35
+class: TD
+authority: R142
+baseSha: 3b9322eeccbd5006a8ed3b3ade7a94277efaf4ef
+recorded_after_fact: true
+recordedAt: 2026-10-10
+
+history:
+  - event: LEGACY_PATCH_ATTRIBUTED
+    at: 2026-10-10
+    note: >
+      Codex work from workspace-2-codex (p0-2-agentsession branch) attributed.
+      #35 changes: remove nil guard from validateAgentCommandRoleStage +
+      TestAgentCommandRejectsMissingRoleSelectionBeforeRoleStage + assertAgentCommandRejectionUnchanged.
+      Patch saved to workspace-01/.scratch/tmp/recovery/issue-35-*.diff.
+
+  - event: WORKTREE_CREATED
+    at: 2026-10-10
+    worktree: worktrees/workspace-01/issue-35
+    branch: issue-35-unreachable-role-selection-guard
+    base: 3b9322eeccbd5006a8ed3b3ade7a94277efaf4ef
+
+  - event: PATCH_APPLIED
+    at: 2026-10-10
+    files:
+      - store/canonical_agent_command.go
+      - store/canonical_agent_command_test.go
+      - CHANGELOG.md
+      - docs/plans/p0-2-task/AGENT-COMMAND-BOUNDARY.md
+      - docs/decisions/TD-issue-35.yaml
+
+  - event: MAKE_CHECK_PASS
+    at: 2026-10-10
+    result: all packages ok, 0 issues
+
+  - event: SCOPE_AMENDMENT
+    at: 2026-10-10
+    file: docs/plans/p0-2-task/AGENT-COMMAND-BOUNDARY.md
+    class: FD
+    reason: adds TD rationale + test name to mutation table; no contract change
+
+  - event: TD_RECORD_ADDED
+    at: 2026-10-10
+    file: docs/decisions/TD-issue-35.yaml
+    content: context, norms, option, rationale, securityImpact, mutation, rollback
+
+  - event: FROZEN_PATCH_CREATED
+    at: 2026-10-10
+    path: workspace-01/.scratch/tmp/recovery/review-35.patch
+    sha256: 6c9096adb4d54124eb38e47aa16dab205f2761d8f61a9c022c0b2bb69b8e75cc
+
+  - event: REVIEWER_ASSIGNED
+    at: 2026-10-10
+    reviewer: subagent-a638da65ff8f67c04
+    worktree: worktrees/workspace-01/review-35
+    note: fresh independent agent, no prior context of author reasoning
+
+  - event: REVIEW_ACCEPTED
+    at: 2026-10-10
+    verdict: ACCEPTED
+    checklist: all 8 items PASS
+    patchSha256Verified: 6c9096adb4d54124eb38e47aa16dab205f2761d8f61a9c022c0b2bb69b8e75cc
+
+  - event: COMMIT
+    at: 2026-10-10
+    sha: 92e6e94
+    message: "fix(coord): remove unreachable role selection guard"
+
+  - event: PUSH
+    at: 2026-10-10
+    branch: issue-35-unreachable-role-selection-guard
+    status: PASS
+
+  - event: CI_PASS
+    at: 2026-10-10
+    runId: 38012913833
+    macosLatest: PASS
+    ubuntuLatest: PASS
+
+allowedFiles:
+  - store/canonical_agent_command.go
+  - store/canonical_agent_command_test.go
+  - CHANGELOG.md
+  - docs/plans/p0-2-task/AGENT-COMMAND-BOUNDARY.md
+  - docs/decisions/TD-issue-35.yaml
+
+forbidden:
+  - issue-36 changes (strings.TrimSpace)
+  - Discussion Graph residual
+  - gate files
+  - force-push
