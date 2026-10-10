@@ -1,5 +1,24 @@
 # История изменений
 
+## 2026-10-10 — ADR-0008 normative cleanup: AC-09, CommitIntent gaps marked, Executor/Supervisor, Commit Readiness (документация)
+
+- (документация) ADR-0008-AUTONOMOUS-COMMIT.md: редакционная пометка добавлена;
+  FD — документ остаётся Proposed, принятые инварианты AC-01–AC-13 не изменены.
+  - AC-02: "push/merge/deploy выполняет OWNER" → "находятся вне области ADR,
+    регулируются отдельной policy".
+  - AC-06: разделены Git-операция executor и process lifecycle supervisor.
+  - AC-09: заменён blanket OWNER_REQUIRED на точный критерий (норма R / trust
+    boundary / fail-closed / критерии приёмки); независимый Reviewer обязателен.
+  - AC-12: расширен до primary reason + ordered blocking reasons list.
+  - AC-14: добавлен как placeholder — CommitIntent idempotency (TD-R2, не определено).
+  - Commit Readiness: отделён от execution state; добавлены execution states
+    (NOT_STARTED → CONFIRMED/FAILED).
+  - Prerequisites: capability-based list; ссылка на RFC-0001 для workspace layout.
+  - "Этот ADR вводит" → "После принятия и реализации этот ADR вводит..."
+  - CommitIntent protocol, reconciliation, Fence-to-ref binding, replay и
+    Git identity/signing отмечены как TD-R2 — не определены, требуют отдельного
+    Reviewer + Auditor.
+
 ## 2026-10-10 — ADR-0007 normative cleanup: BR-02/BR-07 contradiction, Archived Brief, BR-09 access (документация)
 
 - (документация) ADR-0007-PROJECT-BRIEF.md: редакционная пометка добавлена;
