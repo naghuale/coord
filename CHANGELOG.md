@@ -1,5 +1,15 @@
 # История изменений
 
+## 2026-10-10 — Remove hardcoded /tmp in newSessionCLIHarness ([#38](https://github.com/naghuale/coord/issues/38))
+
+- (тест) `cmd/coord/sessions_test.go`: `os.MkdirTemp("/tmp", "coord-")` заменён на
+  `os.MkdirTemp("", "coord-")` — убирает явную ссылку на системный `/tmp`,
+  использует OS-дефолтный temp dir через `$TMPDIR`. `t.TempDir()` не подходит:
+  добавляет имя теста в путь и превышает лимит Unix socket (104 символа на macOS)
+  (`TestSessionBlockAndUnblockUseOwnerCapability`,
+  `TestSessionBlockRejectsInvalidArgsBeforeRequest`,
+  `TestSessionUnblockReferencesRemainExecutable`).
+
 ## 2026-10-10 — Project context portability: CONTEXT-INDEX and four-layer model
 
 - (документация) Добавлена `.coord/CONTEXT-INDEX.yaml` — карта авторитетных источников

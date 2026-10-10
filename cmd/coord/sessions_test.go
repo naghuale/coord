@@ -26,7 +26,7 @@ type sessionCLIRequest struct {
 
 func newSessionCLIHarness(t *testing.T, withOwner bool) (*localchat.Client, string, <-chan sessionCLIRequest) {
 	t.Helper()
-	state, err := os.MkdirTemp("/tmp", "coord-")
+	state, err := os.MkdirTemp("", "coord-")
 	if err != nil {
 		t.Fatal(err)
 	}
