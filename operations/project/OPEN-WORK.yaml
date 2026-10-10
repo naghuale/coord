@@ -8,7 +8,7 @@ project:
     branch: p0-2-task
     commit: c8f2fda
 
-currentStage: post-portability
+currentStage: post-completion-report
 
 active: []
 
@@ -23,9 +23,16 @@ completedThisSession:
     state: COMPLETE
     commit: dea1fa4
     mergedTo: p0-2-task
-    p0-2-task-head: dea1fa4
     ci: PASS
     note: systemTmp enforcement now active
+
+  - id: completion-report
+    state: COMPLETE
+    commits: [603761c, a13957c, 908af6e]
+    mergedTo: p0-2-task
+    p0-2-task-head: 908af6e
+    ci: PASS
+    note: Completion Report standard added to OPERATIONS-LEDGER; GitHub Issue publishing rule; close conditions
     files:
       - .coord/project.yaml
       - .coord/CONTEXT-INDEX.yaml
