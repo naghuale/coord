@@ -238,7 +238,11 @@ P0-1 daemon runtime skeleton остаётся частично принятым.
 - atomic canonical persistence.
 
 Это не означает закрытие границы этапа или готовность production write path.
-Ограниченная Shadow Validation и приёмка границы этапа остаются открытыми.
+Ограниченная Shadow Validation реализована (`cd7aa5b`, пакет `shadowval`):
+`TaskIDReference` и `AgentIDPresence` — единственные допустимые факты;
+ложные равенства `room participant = Run`, `room message = DomainEvent` и
+`room state = Task lifecycle` отклоняются явно (12 тестов + мутации).
+Приёмка границы этапа остаётся открытой (#42).
 
 После этого следует P0-3: production CLI и Telepathy write paths через daemon к
 canonical Task. Затем P0-4 executor lifecycle и P0-5 supervisor, deployment и

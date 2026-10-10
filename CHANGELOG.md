@@ -1,5 +1,20 @@
 # История изменений
 
+## 2026-10-10 — Shadow Validation: read-only canonical vs legacy comparison, ADR-0001 step 10 ([#42](https://github.com/naghuale/coord/issues/42))
+
+- (код) пакет `shadowval`: ограниченная Shadow Validation по ADR-0001 §686–691
+  и ROADMAP. Два допустимых факта: `TaskIDReference` (room.Task совпадает с
+  canonical TaskID) и `AgentIDPresence` (AgentID участника присутствует в
+  RoleSelection/RoleHistory canonical Run той же Task). Ни один store не
+  модифицируется; никакой двойной записи.
+- (тесты) 12 тестов с отрицательным покрытием и мутациями: ложные равенства
+  `room participant = Run`, `room message = DomainEvent`, `room state = Task
+  lifecycle` отклонены явно; read-only инвариант проверен.
+- (документация) TARGET-ARCHITECTURE.md: строка Shadow Validation обновлена.
+
+Статус: «реализовано и проверено на canonical + legacy read-only paths;
+production write path и import не подключены; приёмка границы этапа #42 OPEN».
+
 ## 2026-10-10 — Architecture Sync: COMPONENT-STATUS registry expanded to 9 components ([#41](https://github.com/naghuale/coord/issues/41))
 
 - (документация) `docs/architecture/COMPONENT-STATUS.yaml`: реестр расширен с
