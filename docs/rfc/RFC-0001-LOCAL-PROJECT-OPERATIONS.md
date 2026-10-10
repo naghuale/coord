@@ -1,11 +1,12 @@
 # RFC-0001: Local Project Workspace, Operations Ledger and Context Management
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Scope:** `repository-development-process`
 - **Product feature:** no
 - **Issue:** [#39](https://github.com/naghuale/coord/issues/39)
-- **Validated against:** `coord` integration branch `p0-2-task` at `908af6e`
+- **Validated against:** `coord` integration branch `p0-2-task` at `f192b69`
 - **Created:** 2026-10-10
+- **Accepted:** 2026-10-10 by OWNER (naghuale)
 
 ## Abstract
 
@@ -14,6 +15,10 @@ This RFC defines a portable operating standard for working on multiple software 
 This RFC describes the repository development process. It does not define a Coord product feature or replace the product architecture in accepted ADRs. Its requirements apply to projects that adopt this RFC; the conformance record in §17 distinguishes current `coord` behavior from work that is still in progress.
 
 ## Status and change control
+
+**Acceptance record:** This revision (`p0-2-task@f192b69`) was accepted on 2026-10-10 by OWNER (naghuale). Independent review: opencode:workspace-o73 (ACCEPTED). Verification: `make check` + `git diff --check` + reference/path checks passed on `p0-2-task@908af6e` (pre-registration commit). Closing issue: [#39](https://github.com/naghuale/coord/issues/39).
+
+---
 
 `Proposed` means the text is registered for review and is not yet an accepted process norm. Move this RFC to `Accepted` only after:
 
