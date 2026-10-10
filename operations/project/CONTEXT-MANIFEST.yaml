@@ -1,0 +1,46 @@
+apiVersion: coord.dev/v1alpha1
+kind: CoordinatorContextManifest
+sessionId: claude-workspace-10
+createdAt: 2026-10-10
+
+project:
+  id: coord
+
+source:
+  branch: p0-2-task
+  commit: c8f2fda
+
+session:
+  cwd:
+    env: COORD_GLOBAL_ROOT
+
+loaded:
+  permanent:
+    - .coord/project.yaml
+    - AGENTS.md
+
+  current:
+    - operations/project/CURRENT.yaml
+    - operations/project/OPEN-WORK.yaml
+    - operations/project/CONTEXT-MANIFEST.yaml
+
+  taskSpecific:
+    - operations/assignments/issue-36.yaml
+    - docs/decisions/TD-36.yaml
+
+notLoaded:
+  - completed task history (archive)
+  - legacy-qwen workspace
+  - workspace-2-codex, workspace-2-opencode
+  - full mutation test outputs
+  - old session transcripts
+  - unrelated ADRs
+
+compacted:
+  - issue-35 full diff
+  - issue-35 review details (summary: ACCEPTED, SHA: 92e6e94)
+  - ops/ledger-bootstrap spec content (summary: merged to p0-2-task @ ee71f2e)
+
+nextSafeAction:
+  begin_portability_bootstrap_task
+  then_address_issue_38_wrapper

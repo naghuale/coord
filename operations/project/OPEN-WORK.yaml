@@ -1,0 +1,81 @@
+apiVersion: coord.dev/v1alpha1
+kind: OpenWork
+updatedAt: 2026-10-10
+
+project:
+  id: coord
+  source:
+    branch: p0-2-task
+    commit: a782ddd
+
+currentStage: review-audit-discussion
+
+active:
+  - issue: 36
+    title: Reject whitespace AgentID in ApplyAgentCommand
+    class: TD-R2
+    branch: issue-36-whitespace-agentid-check
+    commits: [5e0f425, 54825a5]
+    state: AUDIT_IN_PROGRESS
+    reviewer: codex:workspace-c9d
+    reviewVerdict: ACCEPTED
+    auditor: opencode:workspace-o73
+    auditStatus: IN_PROGRESS
+    nextSafeAction: await_audit_then_fast_forward_to_p0_2_task
+
+pendingLocal:
+  - id: portability-bootstrap
+    title: "Project context portability: .coord/project.yaml env-vars + CONTEXT-INDEX"
+    state: QUEUED
+    prerequisite: "#36 integrated"
+    files:
+      - .coord/project.yaml
+      - .coord/CONTEXT-INDEX.yaml
+      - docs/operations/
+      - CHANGELOG.md
+    note: >
+      Replace macOS-specific note in .coord/project.yaml with sessionCwdVariable.
+      Add CONTEXT-INDEX.yaml. Define four context layers. Separate from #36.
+
+blocked:
+  - issue: 34
+    reason: WAITING_FOR_S0
+
+  - issue: 38
+    title: Fix system /tmp in cmd/coord/sessions_test.go
+    reason: PROJECT_LOCAL_TMP_NOT_READY
+    note: After fix, system tmp enforcement becomes active
+
+  - issue: 37
+    title: Migrate coordinator → repositories/coord (COORD_REPOSITORY_ROOT)
+    reason: AFTER_36_COMPLETION
+    note: >
+      COORD_REPOSITORY_ROOT currently = workspace-01/coordinator (transitional).
+      Target = workspace-01/repositories/coord.
+      Migrate after all active worktrees clean.
+
+openDecisions:
+  - id: telepathy-update
+    description: >
+      telepathy 0.8.0 installed; 0.9.0 available.
+      Update requires: node /Users/andreybabenko/.claude/plugins/cache/telepathy/telepathy/0.8.0/dist/update-all.mjs
+      Requires OWNER approval before running.
+
+completedRecent:
+  - issue: 35
+    state: COMPLETE
+    commit: 92e6e94
+    ci: PASS
+    review: ACCEPTED
+
+  - id: r145-bootstrap
+    title: Operations Ledger bootstrap (R145)
+    state: COMPLETE
+    commits: [ade55e8, 94ef203, ee71f2e, a782ddd]
+    review: ACCEPTED
+    mergedTo: p0-2-task
+
+  - id: globalroot-invariant
+    title: GlobalRoot invariant — all agents from COORD_GLOBAL_ROOT
+    state: COMPLETE
+    note: "projects.yaml updated to env-var schema; memory updated; worktrees migrated"

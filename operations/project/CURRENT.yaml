@@ -3,88 +3,94 @@ kind: ProjectCheckpoint
 checkpointAt: 2026-10-10
 
 projectId: coord
-projectRoot: /Users/andreybabenko/Downloads/workspace/workspace-01
-globalRoot: /Users/andreybabenko/Downloads/workspace
-sessionLaunchCwd: /Users/andreybabenko/Downloads/workspace
+projectRoot:
+  env: COORD_PROJECT_ROOT
+globalRoot:
+  env: COORD_GLOBAL_ROOT
+sessionLaunchCwd:
+  env: COORD_GLOBAL_ROOT
 
 source:
   repository: https://github.com/naghuale/coord.git
   integrationBranch: p0-2-task
-  integrationHead: a782ddd
+  integrationHead: c8f2fda
   note: >
-    p0-2-task @ a782ddd includes:
-    3b9322e (#30), 92e6e94 (#35 fast-forward),
-    ee71f2e (ops/ledger-bootstrap R145 spec),
-    a782ddd (globalRoot invariant fix).
-    #36 on issue-36-whitespace-agentid-check, awaiting Reviewer (Codex) + Auditor (OpenCode).
+    p0-2-task @ c8f2fda includes:
+    3b9322e (#30 Discussion Graph),
+    92e6e94 (#35 unreachable guard removed),
+    ee71f2e (ops/ledger-bootstrap R145),
+    a782ddd (globalRoot invariant fix),
+    2a9c8b0 (#36 whitespace AgentID check),
+    c8f2fda (#30 residual Discussion tests update).
 
 issues:
   completed:
     - issue: 30
       title: Discussion Graph implementation
-      commit: 3b9322eeccbd5006a8ed3b3ade7a94277efaf4ef
-      branch: p0-2-task
-      status: MERGED
+      commit: 3b9322e
+      state: COMPLETE
 
     - issue: 35
-      title: Remove unreachable RoleSelection nil guard in ApplyAgentCommand
+      title: Remove unreachable RoleSelection nil guard
       class: TD
-      commit: 92e6e942d0f6953cefeb54d883b73aad60fb6b1f
-      branch: issue-35-unreachable-role-selection-guard
-      status: CI_PASS
+      commit: 92e6e94
+      review: ACCEPTED
+      ci: PASS
+      state: COMPLETE
+
+    - issue: 36
+      title: Reject whitespace AgentID in ApplyAgentCommand
+      class: TD-R2
+      commits: [2a9c8b0, c8f2fda]
+      reviewer: codex:workspace-c9d
       reviewVerdict: ACCEPTED
-      reviewer: subagent-a638da65ff8f67c04
-      ciRunId: "38012913833"
-      note: Awaiting fast-forward merge to p0-2-task
+      auditor: opencode:workspace-o73
+      auditVerdict: AUDIT_ACCEPTED
+      ci: PASS
+      state: COMPLETE
+
+    - id: r145-ops-ledger-bootstrap
+      title: Operations Ledger bootstrap spec (R145)
+      commits: [ee71f2e, a782ddd]
+      reviewer: opencode:workspace-o73
+      reviewVerdict: ACCEPTED
+      state: COMPLETE
 
   active:
-    - issue: 36
-      title: Add TrimSpace whitespace check for AgentID
-      class: TD-R2
-      status: READY_TO_START
-      prerequisite: "#35 fast-forward"
-      note: Create worktree at workspace-01/worktrees/issue-36; two negative subtests + mutation per checkpoint; TrimSpace for emptiness check only, must not normalize AgentID
+    - id: portability-bootstrap
+      title: "Project context portability: .coord/project.yaml env-vars + CONTEXT-INDEX"
+      state: QUEUED
+      prerequisite: "#36 integrated (DONE)"
+      files:
+        - .coord/project.yaml
+        - .coord/CONTEXT-INDEX.yaml
 
     - issue: 32
       title: AGENTS.md R142 text (OpenCode draft)
-      status: PRESERVED
-      note: Draft in workspace-2-opencode/AGENTS.md; present exact text to OWNER for gate-file acceptance
+      state: PRESERVED
+      note: Draft in workspace-2-opencode/AGENTS.md; present exact text to OWNER
 
     - issue: 37
-      title: Migration — close legacy slots
-      status: IN_PROGRESS
-      note: workspace-2-codex, workspace-2-opencode, workspace-00/legacy-qwen need formal closure
+      title: Migrate coordinator → repositories/coord
+      state: QUEUED
+      note: COORD_REPOSITORY_ROOT transitional = workspace-01/coordinator
 
   blocked:
     - issue: 34
-      title: TBD
       status: BLOCKED
 
     - issue: 38
-      title: Fix system /tmp usage in cmd/coord/sessions_test.go
+      title: Fix system /tmp in sessions_test.go
       status: BLOCKED
-      note: Use workspace-01/.scratch/tmp/s for short unix sockets; enables system temp enforcement after fix
-
-operationsLedger:
-  ops_branches:
-    - ops/coord/project
-    - ops/coord/coordinator
-    - ops/coord/executor
-    - ops/coord/reviewer
-    - ops/coord/auditor
-  worktrees:
-    operations-project: /Users/andreybabenko/Downloads/workspace/workspace-01/worktrees/operations-project
-    operations-coordinator: /Users/andreybabenko/Downloads/workspace/workspace-01/worktrees/operations-coordinator
-    operations-executor: /Users/andreybabenko/Downloads/workspace/workspace-01/worktrees/operations-executor
-    operations-reviewer: /Users/andreybabenko/Downloads/workspace/workspace-01/worktrees/operations-reviewer
-    operations-auditor: /Users/andreybabenko/Downloads/workspace/workspace-01/worktrees/operations-auditor
+      note: After fix → system tmp enforcement ACTIVE
 
 workspaceModel:
   allAgentsLaunchFromGlobalRoot: true
   systemTmp: deny
-  temporaryDeviation: "#38 open — system tmp enforcement not yet active"
+  temporaryDeviation: "#38 open — system tmp not yet enforced"
+  COORD_REPOSITORY_ROOT: workspace-01/coordinator (transitional, target = repositories/coord)
 
-stage: post-35-pre-36
+stage: post-36-pre-portability
 
 security:
   prohibitedActions:
