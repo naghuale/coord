@@ -60,7 +60,7 @@ completedThisSession:
 
 blocked:
   - issue: 34
-    reason: WAITING_FOR_S0
+    reason: WAITING_FOR_ADR-0009-and-Session-Supervisor
 
 openDecisions:
   - id: telepathy-update
