@@ -919,3 +919,87 @@ func TestAgentCommandRejectsUntrustedKeyForCurrentSession(t *testing.T) {
 		t.Fatalf("wrong verified key error=%v saves=%d", err, p.saveCalls)
 	}
 }
+
+func TestAgentCommandRejectsMissingRoleSelectionBeforeRoleStage(t *testing.T) {
+	state := taskStateWithRun()
+	clock := &canonicalTestClock{now: time.Unix(5000, 0).UTC()}
+	p := &canonicalMemory{state: state}
+	s := newCanonicalWithTestClock(t, p, clock)
+	detached, err := copyCanonicalState(s.state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.state = detached
+	run := s.state.Runs["run-1"]
+	run.RoleSelection = nil
+	s.state.Runs[run.RunID] = run
+	before, err := copyCanonicalState(s.state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	diskBefore, err := copyCanonicalState(p.state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := taskid.ID("task_01ARZ3NDEKTSV4RRFFQ69G5FAV")
+	graphBefore, err := s.DiscussionGraph(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	frame := validAgentCommandFrame(state, "missing-role-selection")
+	called := false
+	_, replayed, err := s.ApplyAgentCommand(frame, id, state.Tasks[id].Revision, func(*CanonicalState, fsm.Run) (InboxReceipt, error) {
+		called = true
+		return InboxReceipt{}, nil
+	})
+	if !errors.Is(err, ErrAgentCommandWrongSession) || replayed || called {
+		t.Fatalf("missing RoleSelection err=%v replayed=%v handler=%v; want WrongSession before role-stage validation", err, replayed, called)
+	}
+	assertAgentCommandRejectionUnchanged(t, s, p, id, clock, before, diskBefore, graphBefore, 0)
+}
+
+func assertAgentCommandRejectionUnchanged(t *testing.T, s *CanonicalStore, p *canonicalMemory, id taskid.ID, clock *canonicalTestClock, before, diskBefore CanonicalState, graphBefore task.DiscussionGraph, saves int) {
+	t.Helper()
+	after, err := s.CanonicalSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(before.Tasks[id], after.Tasks[id]) {
+		t.Fatal("Task changed after rejected command")
+	}
+	if !reflect.DeepEqual(before.Events, after.Events) {
+		t.Fatal("Events changed after rejected command")
+	}
+	if !reflect.DeepEqual(before.Inbox, after.Inbox) {
+		t.Fatal("Inbox receipt changed after rejected command")
+	}
+	if !reflect.DeepEqual(before.Outbox, after.Outbox) {
+		t.Fatal("Outbox changed after rejected command")
+	}
+	if p.saveCalls != saves {
+		t.Fatalf("durable saves=%d, want %d", p.saveCalls, saves)
+	}
+	if !reflect.DeepEqual(before, after) {
+		t.Fatal("canonical memory state changed after rejected command")
+	}
+	diskAfter, err := copyCanonicalState(p.state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(diskBefore, diskAfter) {
+		t.Fatal("durable state changed after rejected command")
+	}
+	graphAfter, err := s.DiscussionGraph(id)
+	if err != nil || !reflect.DeepEqual(graphBefore, graphAfter) {
+		t.Fatalf("Discussion Graph changed after rejection: %v", err)
+	}
+	reopened := newCanonicalWithTestClock(t, &canonicalMemory{state: p.state}, clock)
+	reopenedState, err := reopened.CanonicalSnapshot()
+	if err != nil || !reflect.DeepEqual(diskBefore, reopenedState) {
+		t.Fatalf("reopened durable state differs: %v", err)
+	}
+	reopenedGraph, err := reopened.DiscussionGraph(id)
+	if err != nil || !reflect.DeepEqual(graphBefore, reopenedGraph) {
+		t.Fatalf("reopened Discussion Graph differs: %v", err)
+	}
+}

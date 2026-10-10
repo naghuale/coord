@@ -1,0 +1,49 @@
+decision: TD-issue-35
+class: TD
+issue: 35
+status: accepted
+recordedAt: 2026-10-10
+authority: R142
+
+context:
+  validateAgentCommandRoleStage содержит позднюю проверку RoleSelection == nil
+  (store/canonical_agent_command.go:209 до этого коммита). Единственный call site —
+  ApplyAgentCommand. До входа в helper ApplyAgentCommand проверяет условие
+  e.From != run.OwnerSession || run.RoleSelection == nil || run.RoleSelection.Session != e.From
+  (строка 114) и возвращает ErrAgentCommandWrongSession при nil RoleSelection.
+  Таким образом, helper никогда не получает nil RoleSelection при сохранении
+  ранней fail-closed проверки.
+
+applicableNorms:
+  - R142
+  - Agent command boundary (store/canonical_agent_command.go, AGENT-COMMAND-BOUNDARY.md)
+
+selectedOption:
+  Удалить недостижимый guard. Добавить комментарий поверх helper, объясняющий
+  инвариант. Добавить тест TestAgentCommandRejectsMissingRoleSelectionBeforeRoleStage,
+  фиксирующий точную ошибку и отсутствие побочных эффектов.
+
+rationale:
+  ApplyAgentCommand раньше проверяет RoleSelection и отклоняет nil с
+  ErrAgentCommandWrongSession. Helper не получает nil при сохранении ранней
+  fail-closed проверки. Поздний guard недостижим и не может быть убит тестом.
+  Удаление guard не меняет наблюдаемое поведение, но устраняет ложную
+  документацию о возможных путях исполнения.
+
+securityImpact:
+  Наблюдаемое fail-closed поведение и код ошибки не меняются.
+  ErrAgentCommandWrongSession возвращается раньше helper — как до, так и после изменения.
+  Никаких новых путей к validateAgentCommandRoleStage с nil RoleSelection.
+
+mutation:
+  removeLateGuard: equivalent
+    reason: helper недостижим с nil RoleSelection при сохранении ранней проверки;
+            эквивалентная мутация не обнаруживается тестом.
+  removeEarlyValidation: killed
+    reason: тест TestAgentCommandRejectsMissingRoleSelectionBeforeRoleStage
+            вызывает ApplyAgentCommand с nil RoleSelection и проверяет
+            ErrAgentCommandWrongSession; удаление ранней проверки позволяет
+            nil RoleSelection дойти до helper и вызвать panic или иную ошибку.
+
+rollback:
+  Обычный revert коммита до публикации зависимых изменений (#36, #30-residual).

@@ -205,10 +205,9 @@ func hasCommandAcknowledgement(messages []OutboxMessage, command envelope.Envelo
 	return false
 }
 
+// validateAgentCommandRoleStage is called after ApplyAgentCommand establishes
+// that RoleSelection is present and bound to the authenticated session.
 func validateAgentCommandRoleStage(t task.Task, run fsm.Run) error {
-	if run.RoleSelection == nil {
-		return ErrAgentCommandWrongRole
-	}
 	if run.RoleSelection.Profile.Role != run.RequiredRole.Role {
 		return ErrAgentCommandWrongRole
 	}

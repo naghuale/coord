@@ -1,5 +1,13 @@
 # История изменений
 
+## 2026-10-10 — Remove unreachable RoleSelection nil guard ([#35](https://github.com/naghuale/coord/issues/35))
+
+- (код) Удалён недостижимый nil `RoleSelection` guard из `validateAgentCommandRoleStage`;
+  boundary сохраняет отказ `ErrAgentCommandWrongSession` до входа в helper
+  (`TestAgentCommandRejectsMissingRoleSelectionBeforeRoleStage`).
+- (документация) TD решение R142 для #35 записано в
+  `docs/plans/p0-2-task/AGENT-COMMAND-BOUNDARY.md`; production path не подключён.
+
 ## 2026-10-10 — Discussion Graph core ([#30](https://github.com/naghuale/coord/issues/30))
 
 - (код) Добавлены типизированные Discussion nodes/edges и DomainEvents; Graph

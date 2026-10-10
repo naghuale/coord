@@ -214,6 +214,18 @@ Stage и принадлежность Run (см. §1.1 и итог под таб
 остаётся предметом P0-3 вместе с RT-06 в ADR-0004 и разделом «Task-wide Fence и
 ownership» TASK-MODEL.
 
+#### Журнал TD по R142: #35
+
+- **TD #35 (вариант a):** удалить мёртвую проверку `RoleSelection == nil` из
+  `validateAgentCommandRoleStage`. Единственный production call site —
+  `ApplyAgentCommand`, где проверка `run.RoleSelection == nil` входит в условие
+  принадлежности `RoleSelection.Session` аутентифицированной сессии и раньше
+  возвращает `ErrAgentCommandWrongSession`. `validateAgentCommandRoleStage`
+  вызывается только после этого условия. Публичное поведение сохраняется; тест
+  `TestAgentCommandRejectsMissingRoleSelectionBeforeRoleStage` закрепляет точную
+  ошибку и отсутствие побочных эффектов. Восстановление guard внутри helper —
+  эквивалентная мутация, поскольку helper недостижим с nil selection.
+
 ### 2.1. Как fencing отсекает старого writer
 
 Цепочка полностью опирается на существующие правила, новое правило здесь не
@@ -497,6 +509,7 @@ replay в начале `ApplyInboxCommand`),
 | 8 | `TestAgentCommandIgnoresActorIDFromBody` | actor берётся из тела команды |
 | 8 | `TestAgentCommandRejectsRoleStageMismatch` | проверка соответствия роли Stage отключена |
 | 8 | `TestAgentCommandRejectsMissingAgentIDForEveryRole` (R116) | непустой `AgentID` требуется только для Reviewer/Auditor |
+| порядок | `TestAgentCommandRejectsMissingRoleSelectionBeforeRoleStage` (TD #35) | nil RoleSelection доходит до role-stage helper (эквивалентное восстановление удалённого helper guard не меняет поведение; тест фиксирует отказ `WrongSession` до helper) |
 | 8 | `TestAgentCommandAppliesRoleIndependenceFromCommittedRun` | сверка `AgentID` с назначенной ролью отключена |
 | 9 | `TestAgentCommandReplayReturnsPriorReceiptWithoutWriting` | повторная доставка создаёт новый commit или второй event |
 | 9 | `TestAgentCommandReplayAfterRevisionGrowthReturnsPriorReceipt` | повтор уже применённой команды после роста `Task.Revision` отклоняется как устаревший вместо возврата прежнего receipt |
