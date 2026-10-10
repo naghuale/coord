@@ -13,7 +13,7 @@ sessionLaunchCwd:
 source:
   repository: https://github.com/naghuale/coord.git
   integrationBranch: p0-2-task
-  integrationHead: 3276e85
+  integrationHead: dea1fa4
   note: >
     p0-2-task @ 3276e85 includes:
     3b9322e (#30 Discussion Graph),
@@ -84,9 +84,13 @@ issues:
       status: BLOCKED
 
     - issue: 38
-      title: Fix system /tmp in sessions_test.go
-      status: BLOCKED
-      note: After fix → system tmp enforcement ACTIVE
+      title: Remove hardcoded /tmp in sessions_test.go
+      commits: [dea1fa4]
+      reviewer: codex:workspace-c9d
+      reviewVerdict: ACCEPTED
+      ci: PASS
+      state: COMPLETE
+      note: workspacePolicy.systemTmp enforcement now active — no hardcoded /tmp in tests
 
 workspaceModel:
   allAgentsLaunchFromGlobalRoot: true

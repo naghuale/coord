@@ -17,8 +17,15 @@ completedThisSession:
     state: COMPLETE
     commits: [6b07211, 3276e85]
     mergedTo: p0-2-task
-    p0-2-task-head: 3276e85
     ci: PASS
+
+  - issue: 38
+    state: COMPLETE
+    commit: dea1fa4
+    mergedTo: p0-2-task
+    p0-2-task-head: dea1fa4
+    ci: PASS
+    note: systemTmp enforcement now active
     files:
       - .coord/project.yaml
       - .coord/CONTEXT-INDEX.yaml
