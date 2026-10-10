@@ -38,6 +38,7 @@
 | Номер | Назначение | Где зарезервирован |
 |---|---|---|
 | ADR-0006 | API Contract: read-only API и Startup Card | ADR-0001 «Порядок реализации», шаг 12; ADR-0004 RT-05 |
+| ADR-0009 | Session Registry and Session Supervisor | RFC-0001 §9; R142 TD-R2; `docs/workspace/coord-workspace-policy.yaml` |
 
 Новый ADR получает следующий свободный номер после последнего файла или
 зарезервированного номера.

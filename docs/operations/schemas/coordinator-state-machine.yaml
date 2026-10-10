@@ -1,0 +1,521 @@
+apiVersion: coord.dev/v1alpha1
+kind: CoordinatorStateMachine
+metadata:
+  name: coordinator-state-machine
+  status: active for repository development process
+  authority: [R127, R142, R145, RFC-0001]
+  dependencies: [ADR-0001, ADR-0004, ADR-0005]
+  futureDependency: ADR-0009 for proposed session and process lifecycle
+  issue: "41"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DEVELOPMENT PROCESS (active — derived from R142, RFC-0001, Operations Ledger)
+# ─────────────────────────────────────────────────────────────────────────────
+
+developmentProcess:
+  status: active
+
+  # ── Executor verdicts ──────────────────────────────────────────────────────
+  executorVerdicts:
+    WORK_IN_PROGRESS:
+      action: monitor
+      coordinatorMustNot:
+        - accept work
+        - reassign without cause
+
+    READY_FOR_REVIEW:
+      action: assign_reviewer
+      coordinatorMust:
+        - verify file composition
+        - verify frozen version and hashes
+        - assign independent Reviewer
+        - for TD-R2 assign independent Auditor
+        - transition to REVIEW_IN_PROGRESS
+      ownerRequired: false
+
+    BLOCKED:
+      subtypes:
+        TECHNICAL_BLOCKER:
+          action: resolve_blocker
+          ownerRequired: false
+        DEPENDENCY_BLOCKER:
+          action: track_dependency
+          ownerRequired: false
+        MISSING_EVIDENCE:
+          action: obtain_evidence
+          ownerRequired: false
+        OWNER_REQUIRED:
+          action: present_to_owner
+          ownerRequired: true
+        EXTERNAL_ACTION_REQUIRED:
+          action: prepare exact command or action for authorized person (operator, sysadmin, credential owner)
+          ownerRequired: false
+          ownerRequiredIf: action is explicitly OWNER-reserved
+          note: EXTERNAL_ACTION_REQUIRED is not automatically OWNER_REQUIRED
+
+    STOPPED:
+      meaning: Executor stopped and does not claim result readiness
+      coordinatorMust:
+        - verify actual worktree state
+        - determine if useful work was saved
+        - classify reason
+        - choose one_of: [resume, handoff, cancellation]
+        - not treat process as EXITED
+        - not treat Task as complete
+      causes:
+        - TASK_COMPLETED_ELSEWHERE
+        - AGENT_UNAVAILABLE
+        - TECHNICAL_FAILURE
+        - SCOPE_CONFLICT
+        - CANCELLED_ASSIGNMENT
+        - UNKNOWN_STOP_REASON
+      UNKNOWN_STOP_REASON:
+        action: gather facts (not automatic OWNER)
+      ownerRequired: false
+
+    HANDOFF_REQUIRED:
+      coordinatorMust:
+        - verify actual disk state
+        - save work
+        - cancel old assignment
+        - create handoff record
+        - assign new executor
+        - not treat prior session as automatically completed
+      ownerRequired: false
+
+  # ── Reviewer verdicts ──────────────────────────────────────────────────────
+  reviewVerdicts:
+    ACCEPTED:
+      coordinatorMust:
+        - verify verdict applies to current tree or patch hash
+        - verify Reviewer independence
+        - verify no changes after verdict
+        - continue readiness
+      ownerRequired: false
+
+    CHANGES_REQUIRED:
+      coordinatorMust:
+        - classify each issue as defect/FD/TD/TD-R2
+        - return to Executor or run fix cycle
+        - require missing negative tests and mutations
+        - freeze new version
+        - repeat review
+        - for TD-R2 repeat audit
+        - continue until ACCEPTED or genuine OWNER boundary
+      ownerRequired: false
+      ownerRequiredIf: issue requires new norm or crosses R142 boundary
+
+    NOT_EVALUATED:
+      semantics:
+        notSameAs: [PASS, FAIL, "N/A"]
+      coordinatorMust:
+        - record exactly what was not checked
+        - if mandatory check: obtain evidence or assign another reviewer
+        - if optional check: record N/A with reason
+        - if evidence insufficient: leave NOT_EVALUATED
+        - never auto-convert to N/A or PASS
+      ownerRequired: false
+
+    INVALID_SUBMISSION:
+      causes:
+        - unknown base SHA
+        - tree changed after submission
+        - patch hash mismatch
+        - required files missing
+        - issues from different tasks mixed
+        - reviewer received wrong version
+      action: rebuild_frozen_submission
+      ownerRequired: false
+
+  # ── Auditor verdicts ──────────────────────────────────────────────────────
+  auditorVerdicts:
+    AUDIT_ACCEPTED:
+      action: continue_readiness
+      ownerRequired: false
+
+    CHANGES_REQUIRED:
+      classifiedAsTD_R2_if_touching:
+        - identity
+        - signing
+        - authorization
+        - AgentSession
+        - fencing
+        - replay
+        - canonical storage
+        - recovery
+        - containment
+        - process control
+        - credentials
+        - trust boundary
+      action: return_to_fix_cycle
+      ownerRequired: false
+
+    NOT_EVALUATED:
+      semantics:
+        notSameAs: ["N/A"]
+      action: obtain_evidence_or_tools
+      ownerRequired: false
+
+    "N/A":
+      requiresMandatoryReason: true
+      exampleSchema:
+        audit:
+          status: "N/A"
+          reason: "<why this check does not apply to this change>"
+
+    AUDIT_BLOCKED:
+      action: resolve_technical_blocker_first
+      ownerRequired: false
+      ownerRequiredIf: blocker crosses R142 boundary
+
+  # ── Readiness states ──────────────────────────────────────────────────────
+  readinessStates:
+    note: >-
+      Lists allowed states; not every task must visit every state. A TD (non-TD-R2)
+      task skips READY_FOR_AUDIT and AUDIT_IN_PROGRESS. A fix cycle re-enters
+      WORK_IN_PROGRESS from any state after CHANGES_REQUIRED.
+    sequence:
+      - NOT_READY
+      - WORK_IN_PROGRESS
+      - PRE_REVIEW_BLOCKED
+      - READY_FOR_REVIEW
+      - REVIEW_IN_PROGRESS
+      - READY_FOR_AUDIT
+      - AUDIT_IN_PROGRESS
+      - READY_FOR_COMMIT
+      - COMMITTED
+      - PUBLISHED
+      - CI_PENDING
+      - CI_PASS         # or CI_FAILED
+      - READY_FOR_INTEGRATION
+      - INTEGRATED
+      - COMPLETE
+
+    automaticTransitions:
+      READY_FOR_REVIEW:
+        trigger: readiness checks pass
+        action: assign Reviewer
+        next: REVIEW_IN_PROGRESS
+        ownerRequired: false
+
+      REVIEW_ACCEPTED_AUDIT_REQUIRED:
+        trigger: Reviewer returns ACCEPTED and work is TD-R2
+        action: prepare frozen audit submission
+        next: READY_FOR_AUDIT
+        ownerRequired: false
+
+      REVIEW_ACCEPTED_NO_AUDIT:
+        trigger: Reviewer returns ACCEPTED and work is not TD-R2
+        action: readiness checks
+        next: READY_FOR_COMMIT
+        ownerRequired: false
+
+      AUDIT_IN_PROGRESS:
+        trigger: Auditor assigned and received frozen submission
+        next: AUDIT_IN_PROGRESS
+        ownerRequired: false
+
+      AUDIT_ACCEPTED:
+        trigger: Auditor returns AUDIT_ACCEPTED
+        action: verify version unchanged; continue readiness
+        next: READY_FOR_COMMIT
+        ownerRequired: false
+
+      CHANGES_REQUIRED:
+        trigger: Reviewer or Auditor returns CHANGES_REQUIRED
+        next: WORK_IN_PROGRESS
+        then: fix → new freeze → READY_FOR_REVIEW
+        ownerRequired: false
+
+      READY_FOR_COMMIT:
+        trigger: all checks pass, review accepted, audit accepted or N/A
+        action: create local commit
+        next: COMMITTED
+        ownerRequired: false
+
+      COMMITTED:
+        action: push
+        next: PUBLISHED
+        then: CI_PENDING
+        ownerRequired: false
+
+      CI_PASS:
+        trigger: CI green on correct commit SHA
+        action: integration if permitted
+        next: INTEGRATED
+        ownerRequired: false
+
+      COMPLETE:
+        trigger: INTEGRATED + Completion Report published + Ledger updated + CURRENT/OPEN-WORK updated
+        action: close task
+        next: COMPLETE
+        ownerRequired: false
+
+      CI_FAILED_PRODUCT_TEST_DOCS:
+        trigger: CI_FAILED classified as PRODUCT_FAILURE, TEST_FAILURE, or DOCUMENTATION_FAILURE
+        action: fix code or test
+        next: WORK_IN_PROGRESS
+        ownerRequired: false
+
+      CI_FAILED_INFRASTRUCTURE:
+        trigger: CI_FAILED classified as INFRASTRUCTURE_FAILURE
+        action: retry per accepted retry policy
+        next: CI_PENDING
+        ownerRequired: false
+
+      CI_FAILED_WRONG_SHA:
+        trigger: CI_FAILED classified as WRONG_SUBJECT_SHA
+        action: run CI for correct commit SHA
+        next: CI_PENDING
+        ownerRequired: false
+
+  # ── Check results ─────────────────────────────────────────────────────────
+  checkResults:
+    PASS:
+      meaning: check confirmed specific property
+    FAIL:
+      meaning: property violated
+      action: start fix cycle
+    NOT_EVALUATED:
+      meaning: check not performed
+      mustNotConvertTo: [PASS, "N/A"]
+    "N/A":
+      requiresReason: true
+    INCONCLUSIVE:
+      meaning: check performed but evidence insufficient or ambiguous
+      coordinatorMust:
+        - not convert to PASS
+        - identify missing evidence
+        - repeat check or stop at genuine boundary
+
+  # ── Mutation results ──────────────────────────────────────────────────────
+  mutationResults:
+    KILLED:
+      meaning: tests detected meaningful break
+
+    SURVIVED:
+      coordinatorMust:
+        determine_one_of:
+          - real_test_gap:
+              action: add test
+          - equivalent_mutation:
+              action: record as EQUIVALENT with evidence
+      mustNotAutoAccept: true
+
+    EQUIVALENT:
+      requiresEvidence: true
+      schema:
+        mutation:
+          result: EQUIVALENT
+          observableBehaviorChanged: false
+          rationale: "<why behavior does not change>"
+          verifiedBy:
+            - reviewer
+      bareResultIsInsufficient: true
+
+    NOT_RUN:
+      successful: false
+
+    INVALID_MUTATION:
+      causes:
+        - does not compile
+        - breaks unrelated contract
+        - does not test claimed property
+      successful: false
+
+  # ── CI failure classification ─────────────────────────────────────────────
+  ciFailureClassification:
+    PRODUCT_FAILURE:
+      action: fix code
+    TEST_FAILURE:
+      action: fix test or code
+    DOCUMENTATION_FAILURE:
+      action: fix documentation
+    INFRASTRUCTURE_FAILURE:
+      action: retry per accepted retry policy
+      note: infrastructure failure must not mask product failure
+    FLAKY_TEST_SUSPECTED:
+      action: prove flakiness — do not retry until green blindly
+    WRONG_SUBJECT_SHA:
+      action: run CI for correct commit SHA
+
+  # ── Commit blocked reasons ────────────────────────────────────────────────
+  commitBlockedReasons:
+    - REVIEW_MISSING
+    - AUDIT_MISSING
+    - MANDATORY_CHECK_FAILED
+    - STAGED_DIFF_MISMATCH
+    - FILES_CHANGED_AFTER_REVIEW
+    - GATE_REVIEW_MISSING
+    - ISSUE_SCOPE_VIOLATION
+
+  # ── Context states ────────────────────────────────────────────────────────
+  contextStates:
+    CONTEXT_READY:
+      meaning: all 6 probes passed
+    CONTEXT_INCOMPLETE:
+      meaning: required fact missing
+      action: load only needed source via CONTEXT-INDEX
+    CONTEXT_STALE:
+      meaning: source changed after summary was created
+      action: re-read source
+      ownerRequired: false
+    CONTEXT_CONFLICT:
+      meaning: two loaded sources contradict each other
+      action: apply source hierarchy
+    RECOVERY_CONFLICT:
+      meaning: Operations Ledger, GitHub Issue, refs or CI diverge
+      action: block_and_reconcile_facts
+      ownerRequired: false
+      ownerRequiredIf: conflict cannot be resolved under applicable authority (R142 boundary)
+
+  # ── Decision states ───────────────────────────────────────────────────────
+  decisionStates:
+    FD:
+      meaning: direct deduction from active norm
+      action: coordinator applies and records
+    TD:
+      meaning: reversible technical decision in delegated domain
+      requires: independent review
+    TD_R2:
+      meaning: >-
+        technical decision in identity/signing/authorization/AgentSession/fencing/replay/
+        canonical storage/recovery/containment/process control/credentials/trust boundary
+      requires:
+        - Reviewer
+        - independent Auditor
+        - negative tests
+        - mutations
+    R:
+      meaning: new or changed norm
+      requires: OWNER only
+    OWNER_REQUIRED:
+      usage: only at proven R142 boundary
+    FORBIDDEN:
+      meaning: action violates active norm, cannot be authorized by ordinary technical decision
+    INSUFFICIENT_EVIDENCE:
+      action: gather facts first — not ask OWNER technical question
+    NORM_CONFLICT:
+      meaning: active norms give incompatible answers
+      action: show conflict and options to OWNER
+      ownerRequired: true
+
+  # ── Coordinator autonomy table ────────────────────────────────────────────
+  autonomyTable:
+    - result: READY_FOR_REVIEW
+      action: assign Reviewer
+      ownerRequired: false
+    - result: REVIEW_ACCEPTED
+      action: continue readiness (assign Auditor if TD-R2, else → READY_FOR_COMMIT)
+      ownerRequired: false
+    - result: AUDIT_ACCEPTED
+      action: continue readiness → READY_FOR_COMMIT
+      ownerRequired: false
+    - result: CI_PASS
+      action: integration if permitted → INTEGRATED
+      ownerRequired: false
+    - result: CHANGES_REQUIRED
+      action: fix and repeat review
+      ownerRequired: false
+    - result: NOT_EVALUATED
+      action: get evidence or another reviewer
+      ownerRequired: false
+    - result: CI_FAILED
+      action: classify then fix
+      ownerRequired: false
+    - result: SURVIVED
+      action: check gap or equivalence
+      ownerRequired: false
+    - result: CONTEXT_STALE
+      action: re-read source
+      ownerRequired: false
+    - result: HANDOFF_REQUIRED
+      action: save and transfer work
+      ownerRequired: false
+    - result: INSUFFICIENT_EVIDENCE
+      action: gather facts
+      ownerRequired: false
+    - result: NORM_CONFLICT
+      action: prepare options for OWNER
+      ownerRequired: true
+    - result: R
+      action: transmit exact question to OWNER
+      ownerRequired: true
+    - result: TRUST_BOUNDARY_CHANGE
+      action: present change and options to OWNER
+      ownerRequired: true
+    - result: AGENT_RIGHTS_CHANGE
+      action: present change and options to OWNER
+      ownerRequired: true
+    - result: IRREVERSIBLE_RISK
+      action: prepare options for OWNER
+      ownerRequired: true
+    - result: DIFFERENT_USER_CONSEQUENCES
+      action: prepare options for OWNER
+      ownerRequired: true
+    - result: OWNER_RESERVED_ACTION
+      action: transmit to OWNER
+      ownerRequired: true
+    - result: MFA_OR_PASSWORD_REQUIRED
+      action: prepare exact human action
+      ownerRequired: true
+    - result: FAIL_CLOSED_WEAKENING
+      action: do not execute without decision
+      ownerRequired: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SESSION LIFECYCLE (proposed — pending ADR-0009 Session Supervisor)
+# NOT normative for current product. Cannot be used as proof of current Coord
+# state, basis for process control, or current product capability claim.
+# ─────────────────────────────────────────────────────────────────────────────
+
+sessionLifecycle:
+  status: proposed
+  implementation: pending-ADR-0009
+  normativeForCurrentProduct: false
+  mayBeUsedFor:
+    - design examples
+    - threat modeling
+    - OpenAPI drafts
+    - future transitions
+    - classification of known incidents
+  mustNotBeUsedFor:
+    - proof of current Coord state
+    - basis for process control
+    - declaring a session REVOKED or process EXITED
+    - current product capability claim
+  states:
+    - DISCOVERED
+    - VERIFIED
+    - ADMITTED
+    - ACTIVE
+    - IDLE
+    - SUSPECT
+    - QUARANTINED
+    - REVOKED
+    - STALE
+  rules:
+    NO_RESPONSE_leads_to: SUSPECT
+    NO_RESPONSE_NOT: EXITED
+    OWNER_ATTESTED_SESSION:
+      allows: continued admission
+      doesNotAllow: revalidation of old Task assignment
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PROCESS LIFECYCLE (proposed — pending ADR-0009)
+# Process state must NOT mix with session state.
+# ─────────────────────────────────────────────────────────────────────────────
+
+processLifecycle:
+  status: proposed
+  implementation: pending-ADR-0009
+  normativeForCurrentProduct: false
+  note: >-
+    Process state (RUNNING/EXITED) must not mix with session state
+    (ACTIVE/REVOKED). Transport visibility is not readiness.
+    PID is not identity.
+  states:
+    - UNKNOWN
+    - RUNNING
+    - TERMINATION_PENDING
+    - EXITED
