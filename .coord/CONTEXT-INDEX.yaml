@@ -48,6 +48,10 @@ index:
     question: "Архитектурные решения, нормы (только Accepted = норма)"
     source: docs/adr/
 
+  processStandard:
+    question: "Нормы локального workspace, ролей, Operations Ledger, контекста и восстановления"
+    source: docs/rfc/RFC-0001-LOCAL-PROJECT-OPERATIONS.md
+
   defectPatterns:
     question: "Классы дефектов, как проверять"
     source: docs/DEFECT_PATTERNS.md

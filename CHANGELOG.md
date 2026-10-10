@@ -1,5 +1,15 @@
 # История изменений
 
+## 2026-10-10 — RFC-0001: Local Project Workspace, Operations Ledger and Context Management ([#39](https://github.com/naghuale/coord/issues/39))
+
+- (документация) `docs/rfc/RFC-0001-LOCAL-PROJECT-OPERATIONS.md`: зарегистрирован
+  Proposed RFC с нормами размещения проектов, ролей агентов, Operations Ledger,
+  временных файлов, управления контекстом, Completion Report и восстановления;
+  добавлено требование перезапускать активные сессии после обновления integration.
+- (документация) `.coord/project.yaml` и `.coord/CONTEXT-INDEX.yaml` ссылаются на RFC.
+- (документация) `AGENTS.md`: обновлённый Telepathy требует перезапуска затронутых
+  активных сессий; зафиксирован ожидаемый `Hook failed` в Codex до перезапуска.
+
 ## 2026-10-10 — Completion Report standard in Operations Ledger
 
 - (документация) `docs/operations/OPERATIONS-LEDGER.md`: добавлена секция

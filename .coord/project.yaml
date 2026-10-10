@@ -71,3 +71,4 @@ documents:
   targetArchitecture: docs/TARGET-ARCHITECTURE.md
   changelog: CHANGELOG.md
   decisions: docs/decisions/
+  rfc: docs/rfc/
