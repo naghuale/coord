@@ -6,7 +6,7 @@ project:
   id: coord
   source:
     branch: p0-2-task
-    commit: 1f12fe4
+    commit: 7c23875
 
 currentStage: workspace-migration
 
@@ -15,11 +15,11 @@ active: []
 completedThisSession:
   - issue: 37
     state: COMPLETE
-    commits: [8582d15, 180cac7, 1f12fe4]
+    commits: [8582d15, 180cac7, 1f12fe4, 7c23875]
     mergedTo: p0-2-task
     ci: PENDING
-    note: wrapper REVIEW_ACCEPTED (Codex); directory migrated to repositories/coord; make check PASS via wrapper
-    completionReport: "https://github.com/naghuale/coord/issues/37#issuecomment-6095103070"
+    note: wrapper REVIEW_ACCEPTED (Codex); directory migrated to repositories/coord; bootstrap file created; make check PASS
+    completionReport: "https://github.com/naghuale/coord/issues/37#issuecomment-6095154434"
 
   - issue: 41
     state: COMPLETE

@@ -13,7 +13,7 @@ sessionLaunchCwd:
 source:
   repository: https://github.com/naghuale/coord.git
   integrationBranch: p0-2-task
-  integrationHead: 1f12fe4
+  integrationHead: 7c23875
   note: >
     p0-2-task @ 1f12fe4 includes:
     3b9322e (#30 Discussion Graph),
@@ -36,7 +36,8 @@ source:
     837c5f0 (#41 arch sync kit 9 components),
     66a15ba (#41 CI fix PyYAML graceful),
     180cac7 (#37 fix socket path for wrapper),
-    1f12fe4 (docs: OwnerBoundaryCheck gate).
+    1f12fe4 (docs: OwnerBoundaryCheck gate),
+    7c23875 (docs: LOCAL_CONFIG_SYNC as FD).
 
 issues:
   completed:
