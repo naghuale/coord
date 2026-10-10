@@ -1,0 +1,162 @@
+#!/usr/bin/env bash
+# coord-project-tmp test harness — runs in a self-contained temporary tree
+# so it does not depend on the production workspace layout.
+#
+# Usage: bash scripts/coord-project-tmp-test
+#
+# Exit code: 0 all tests passed, 1 one or more tests failed.
+
+set -euo pipefail
+
+WRAPPER="$(cd "$(dirname "$0")" && pwd)/coord-project-tmp"
+PASS=0
+FAIL=0
+ERRORS=()
+
+# Override the hard-coded GLOBAL_ROOT in the wrapper so tests work anywhere.
+# We do this by writing a thin shim that re-exports GLOBAL_ROOT before calling
+# the real wrapper.  The shim lives next to the real wrapper.
+SHIM_ROOT="$(mktemp -d)"
+trap 'rm -rf "$SHIM_ROOT"' EXIT HUP INT TERM
+
+GLOBAL_ROOT="$SHIM_ROOT/workspace"
+mkdir -p "$GLOBAL_ROOT"
+PROJECT_DIR="$GLOBAL_ROOT/workspace-01"
+mkdir -p "$PROJECT_DIR" "$GLOBAL_ROOT/workspace-10"
+
+# Shim: a tiny wrapper that injects the test GLOBAL_ROOT into coord-project-tmp.
+# We patch the first assignment line via sed.
+SHIM="$SHIM_ROOT/coord-project-tmp-shim"
+sed "s|^GLOBAL_ROOT=.*|GLOBAL_ROOT=\"$GLOBAL_ROOT\"|" "$WRAPPER" > "$SHIM"
+chmod +x "$SHIM"
+
+pass() { PASS=$((PASS+1)); printf 'PASS  %s\n' "$1"; }
+fail() { FAIL=$((FAIL+1)); ERRORS+=("$1"); printf 'FAIL  %s\n' "$1"; }
+
+expect_fail() {
+  local label="$1"; shift
+  if "$SHIM" "$@" -- true 2>/dev/null; then
+    fail "$label (expected failure, got success)"
+  else
+    pass "$label"
+  fi
+}
+
+expect_pass() {
+  local label="$1"; shift
+  if "$SHIM" "$@" -- true 2>/dev/null; then
+    pass "$label"
+  else
+    fail "$label (expected success, got failure)"
+  fi
+}
+
+# ── Basic argument validation ─────────────────────────────────────────────────
+
+expect_fail "missing --project" \
+  --binding b1 --generation g1
+
+expect_fail "missing --binding" \
+  --project workspace-01 --generation g1
+
+expect_fail "missing --generation" \
+  --project workspace-01 --binding b1
+
+# "missing COMMAND" cannot use expect_fail (it appends -- true); test directly.
+if "$SHIM" --project workspace-01 --binding b1 --generation g1 -- 2>/dev/null; then
+  fail "missing COMMAND (expected failure, got success)"
+else
+  pass "missing COMMAND"
+fi
+
+expect_fail "invalid project name" \
+  --project workspace-99 --binding b1 --generation g1
+
+expect_fail "invalid project name (letters)" \
+  --project bad-name --binding b1 --generation g1
+
+expect_fail "invalid binding (slash)" \
+  --project workspace-01 --binding "a/b" --generation g1
+
+expect_fail "invalid generation (space)" \
+  --project workspace-01 --binding b1 --generation "a b"
+
+# ── Happy path ────────────────────────────────────────────────────────────────
+
+expect_pass "valid invocation" \
+  --project workspace-01 --binding test-bind --generation gen1
+
+# workspace-10 is the upper bound
+expect_pass "workspace-10 allowed" \
+  --project workspace-10 --binding test-bind --generation gen1
+
+# ── Path blocking — bare system temp argument ─────────────────────────────────
+
+BAD_ARG_TEST() {
+  local label="$1"; shift
+  if "$SHIM" --project workspace-01 --binding b1 --generation g1 -- true "$@" 2>/dev/null; then
+    fail "$label"
+  else
+    pass "$label"
+  fi
+}
+
+BAD_ARG_TEST "block /tmp/x bare arg"              /tmp/x
+BAD_ARG_TEST "block /private/tmp/x bare arg"      /private/tmp/x
+BAD_ARG_TEST "block /var/tmp/x bare arg"          /var/tmp/x
+BAD_ARG_TEST "block --flag=/tmp/x"                --flag=/tmp/x
+BAD_ARG_TEST "block --flag=/private/tmp/x"        --flag=/private/tmp/x
+BAD_ARG_TEST "block -o/tmp/x combined flag"       -o/tmp/x
+
+# ── Symlink escape — each critical directory component ────────────────────────
+# For each case: pre-create the target as a symlink pointing outside PROJECT_REAL.
+# The wrapper must refuse before writing to the external target.
+
+OUTSIDE="$SHIM_ROOT/outside"
+mkdir -p "$OUTSIDE"
+
+symlink_escape_test() {
+  local label="$1" link_path="$2"
+  # Remove whatever is there and plant a symlink to $OUTSIDE.
+  rm -rf "$link_path"
+  mkdir -p "$(dirname "$link_path")"
+  ln -s "$OUTSIDE" "$link_path"
+  if "$SHIM" --project workspace-01 --binding b1 --generation g1 -- true 2>/dev/null; then
+    fail "$label (symlink escape not detected)"
+  else
+    pass "$label"
+  fi
+  # Clean up for the next test.
+  rm -f "$link_path"
+}
+
+symlink_escape_test ".scratch symlink escape"     "$PROJECT_DIR/.scratch"
+symlink_escape_test ".scratch/tmp symlink escape" "$PROJECT_DIR/.scratch/tmp"
+# .scratch/tmp/s
+mkdir -p "$PROJECT_DIR/.scratch/tmp"
+symlink_escape_test ".scratch/tmp/s symlink escape" "$PROJECT_DIR/.scratch/tmp/s"
+# sessions dir
+mkdir -p "$PROJECT_DIR/.scratch/tmp"
+symlink_escape_test "sessions symlink escape"     "$PROJECT_DIR/.scratch/tmp/sessions"
+# binding level (sessions/b1)
+mkdir -p "$PROJECT_DIR/.scratch/tmp/sessions"
+symlink_escape_test "binding symlink escape"      "$PROJECT_DIR/.scratch/tmp/sessions/b1"
+# generation level (sessions/b1/g1)
+mkdir -p "$PROJECT_DIR/.scratch/tmp/sessions/b1"
+symlink_escape_test "generation symlink escape"   "$PROJECT_DIR/.scratch/tmp/sessions/b1/g1"
+# runs level
+mkdir -p "$PROJECT_DIR/.scratch/tmp/sessions/b1/g1"
+symlink_escape_test "runs symlink escape"         "$PROJECT_DIR/.scratch/tmp/sessions/b1/g1/runs"
+
+# ── Summary ──────────────────────────────────────────────────────────────────
+
+TOTAL=$((PASS+FAIL))
+printf '\n%d/%d passed\n' "$PASS" "$TOTAL"
+
+if ((FAIL > 0)); then
+  printf '\nFailed:\n'
+  for e in "${ERRORS[@]}"; do
+    printf '  - %s\n' "$e"
+  done
+  exit 1
+fi

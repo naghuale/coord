@@ -22,6 +22,20 @@
   только при изменении нормы класса R, trust boundary или fail-closed; обычные
   правки проходят ревью без OWNER (R127 + R142).
 
+## 2026-10-10 — Wrapper v2: symlink containment fix + test harness ([#37](https://github.com/naghuale/coord/issues/37))
+
+- (документация) `scripts/coord-project-tmp`: v2 — `_safe_mkdir` проверяет
+  каждый компонент до записи: symlink check → `mkdir` → `pwd -P` containment
+  → `chmod`; устраняет окно, в котором симлинк-атака могла записать файлы за
+  пределы `PROJECT_REAL` до срабатывания проверки.
+- (документация) `scripts/coord-project-tmp-test`: воспроизводимый test harness;
+  23/23 сценария: missing args, invalid project/binding/generation, path blocking
+  (`/tmp`, `--flag=/tmp/x`, `-o/tmp/x`), симлинк-escape для всех семи уровней
+  (`.scratch`, `tmp`, `tmp/s`, `sessions`, binding, generation, runs).
+- (документация) `AGENTS.md`: добавлены подразделы «Реакция на результаты
+  Reviewer и Auditor» и «Сценарии автономного продолжения» — фиксируют, когда
+  координатор продолжает цикл исправления автономно, а когда требуется OWNER.
+
 ## 2026-10-10 — Workspace Root (R143): wrapper v1, policy и AGENTS.md ([#37](https://github.com/naghuale/coord/issues/37))
 
 - (документация) `AGENTS.md`: добавлен раздел `Workspace Root (R143)` — норма запуска

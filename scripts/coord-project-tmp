@@ -1,20 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# coord-project-tmp v1: run a command with all conventional temporary directories
+# coord-project-tmp v2: run a command with all conventional temporary directories
 # anchored inside one approved project workspace.
 #
 # Prevents accidental use of /tmp, /private/tmp, and /var/tmp via environment
 # variables and command-line arguments. Cannot stop a child binary that ignores
 # the environment and opens a hard-coded system path.
 #
-# Changes from v0:
-#   - --session (optional) replaced by --binding (required, SessionBindingID)
-#   - --generation added (required)
-#   - temp layout: .scratch/tmp/sessions/<binding>/<generation>/runs/<random>
-#   - short socket root: .scratch/tmp/s
-#   - GOCACHE exported to .scratch/go-build (Go on macOS ignores XDG_CACHE_HOME)
-#   - arg blocking extended to --flag=/tmp/... and -X/tmp/... forms
+# Changes from v1:
+#   - _safe_mkdir: symlink check → mkdir → pwd -P containment → chmod for each
+#     directory component; eliminates window where symlink attack writes outside
+#     PROJECT_REAL before containment check fires
 
 GLOBAL_ROOT="/Users/andreybabenko/Downloads/workspace"
 PROJECT=""
@@ -92,7 +89,7 @@ PROJECT_ROOT="$GLOBAL_ROOT/$PROJECT"
 [[ -d "$GLOBAL_ROOT"  ]] || fail "global root does not exist: $GLOBAL_ROOT"
 [[ -d "$PROJECT_ROOT" ]] || fail "project root does not exist: $PROJECT_ROOT"
 
-# Resolve symlinks and enforce containment.
+# Resolve symlinks and enforce containment of the project root itself.
 GLOBAL_REAL="$(cd "$GLOBAL_ROOT" && pwd -P)"
 PROJECT_REAL="$(cd "$PROJECT_ROOT" && pwd -P)"
 case "$PROJECT_REAL/" in
@@ -100,14 +97,33 @@ case "$PROJECT_REAL/" in
   *) fail "project root escapes the approved global root" ;;
 esac
 
+# Create a directory safely: refuse if it already exists as a symlink, then
+# create it, then verify (via pwd -P) that the canonical path is still inside
+# PROJECT_REAL before setting permissions. Each level is checked independently.
+_safe_mkdir() {
+  local path="$1" label="$2"
+  [[ -L "$path" ]] && fail "$label must not be a symlink: $path"
+  mkdir -p "$path"
+  local real
+  real="$(cd "$path" && pwd -P)" || fail "cannot resolve $label: $path"
+  case "$real/" in
+    "$PROJECT_REAL/"*) ;;
+    *) fail "$label escapes project root: $real" ;;
+  esac
+  chmod 700 "$path"
+}
+
 SCRATCH_ROOT="$PROJECT_REAL/.scratch"
 TMP_ROOT="$SCRATCH_ROOT/tmp"
 SESSION_ROOT="$TMP_ROOT/sessions/$BINDING/$GENERATION"
 RUNS_ROOT="$SESSION_ROOT/runs"
 SOCKET_ROOT="$TMP_ROOT/s"
 
-mkdir -p "$RUNS_ROOT" "$SOCKET_ROOT"
-chmod 700 "$SCRATCH_ROOT" "$TMP_ROOT" "$SESSION_ROOT" "$RUNS_ROOT" "$SOCKET_ROOT"
+_safe_mkdir "$SCRATCH_ROOT" ".scratch"
+_safe_mkdir "$TMP_ROOT"     ".scratch/tmp"
+_safe_mkdir "$SOCKET_ROOT"  ".scratch/tmp/s"
+_safe_mkdir "$SESSION_ROOT" "sessions/$BINDING/$GENERATION"
+_safe_mkdir "$RUNS_ROOT"    "sessions/$BINDING/$GENERATION/runs"
 
 # mktemp receives an approved explicit template; does not consult /tmp.
 RUN_TMP="$(mktemp -d "$RUNS_ROOT/XXXXXXXX")"
@@ -169,22 +185,13 @@ export PIP_CACHE_DIR="$PROJECT_REAL/.scratch/pip-cache"
 export npm_config_cache="$PROJECT_REAL/.scratch/npm-cache"
 export YARN_CACHE_FOLDER="$PROJECT_REAL/.scratch/yarn-cache"
 
-mkdir -p \
-  "$XDG_RUNTIME_DIR" \
-  "$XDG_CACHE_HOME" \
-  "$GOCACHE" \
-  "$GOTMPDIR" \
-  "$PIP_CACHE_DIR" \
-  "$npm_config_cache" \
-  "$YARN_CACHE_FOLDER"
-chmod 700 \
-  "$XDG_RUNTIME_DIR" \
-  "$XDG_CACHE_HOME" \
-  "$GOCACHE" \
-  "$GOTMPDIR" \
-  "$PIP_CACHE_DIR" \
-  "$npm_config_cache" \
-  "$YARN_CACHE_FOLDER"
+_safe_mkdir "$XDG_RUNTIME_DIR"   ".scratch/runtime"
+_safe_mkdir "$XDG_CACHE_HOME"    ".scratch/cache"
+_safe_mkdir "$GOCACHE"           ".scratch/go-build"
+_safe_mkdir "$GOTMPDIR"          ".scratch/go-tmp"
+_safe_mkdir "$PIP_CACHE_DIR"     ".scratch/pip-cache"
+_safe_mkdir "$npm_config_cache"  ".scratch/npm-cache"
+_safe_mkdir "$YARN_CACHE_FOLDER" ".scratch/yarn-cache"
 
 export COORD_WORKSPACE_ROOT="$GLOBAL_REAL"
 export COORD_PROJECT_WORKSPACE="$PROJECT"
