@@ -2,7 +2,7 @@
 
 - **Статус:** Accepted
 - **Дата:** 2026-10-07
-- **Редакционная пометка:** 2026-10-08: добавлены идентификаторы правил, редакционно, без изменения смысла
+- **Редакционная пометка:** 2026-10-08: добавлены идентификаторы правил, редакционно, без изменения смысла; 2026-10-10: исправлены устаревшие статусы Discussion Graph (CM-10a, CM-11), разделены секции Owner identity и AgentSession, обновлён Порядок реализации и Последствия, добавлено разграничение Session/AgentSession, исправлена auto-эскалация CM-13, уточнён порядок проверок CM-15 — FD, без изменения принятых инвариантов
 - **Область:** целевая архитектура Coord и миграция к orchestration platform
 - **Связанные решения:** ADR-0002 Project Dependency Graph; ADR-0003 External Reference Model; ADR-0004 Runtime and Daemon Model
 
@@ -43,6 +43,11 @@ Runs в snapshot, а `internal/rooms` отдельно хранит комнат
 - `DiscussionEdge`
 - `DomainEvent`
 - `Artifact`
+
+`Session` представляет прикладную связь агента с Runs и наблюдаемое состояние
+сессии. `AgentSession` представляет зарегистрированную криптографическую
+привязку AgentID, transport address, generation и ключа. Эти сущности не
+взаимозаменяемы.
 
 - **CM-02 — Dashboard без FSM и БД.** Хранилище и runtime принадлежат production daemon Coord. Dashboard не получает
   собственную БД, FSM или workflow-состояние.
@@ -330,7 +335,9 @@ Discussion Graph фиксирует значимые факты и связи д
   не считается. Для P0-2 достаточно минимального Discussion Graph и ссылочной
   целостности: summary, рекомендации, автоматическое принятие решений и генерация новых
   Task из текста остаются вне этого среза.
-  Проверка: не реализовано
+  Проверка: частично — canonical Discussion Graph реализован и проверен; production
+  command path, canonical OWNER decisions, Conflict Events, Executor Result и
+  пользовательские проекции остаются открытыми.
 
 - **CM-11 — Discussion Graph не вторая истина.** Узлы и связи принадлежат Task, проходят проверку схемы и ссылочной целостности.
   Их авторитетная запись представляется типизированным доменным событием с
@@ -338,7 +345,8 @@ Discussion Graph фиксирует значимые факты и связи д
   запросов, но такая проекция должна восстанавливаться из канонической записи и не
   становиться второй изменяемой истиной. Пользовательская Timeline также является
   проекцией.
-  Проверка: не реализовано
+  Проверка: частично — projection восстанавливается из canonical Events и проверяется
+  тестами; production read-only projection и пользовательская Timeline не реализованы.
 
 - **CM-11a — Типизированная схема Discussion Graph (R138, R139).** Discussion Graph
   типизирован: тип узла — не свободная метка. Общие обязательные поля узла: `NodeID`,
@@ -380,6 +388,15 @@ Discussion Graph фиксирует значимые факты и связи д
   `TestDiscussionConflictFactRequiresR137References`, `TestDiscussionAgentCommandFailureDoesNotPublish`,
   `TestDiscussionRejectsCallerGeneratedIdentity`, `TestDiscussionEventCannotChangeTaskWorkflow`.
 
+Цепочки `FINDING → DECISION → ACTION → RESULT` описывают связи графа и не
+образуют отдельную FSM Discussion.
+
+Обычный временный обмен репликами остаётся в транспортном канале и не становится
+автоматически Discussion node или DomainEvent. В канонический Graph попадают
+типизированные факты, предложения, решения, действия, результаты и блокеры.
+
+### Owner identity and command authorization
+
 - **CM-12 — Owner identity подтверждается OwnerCredential (R110).** `OwnerCredential`
   — каноническая сущность Coord с собственным потоком событий. Каждая Owner-команда
   связывается с credential, проверенной Coord; trusted identity извлекается из
@@ -388,6 +405,8 @@ Discussion Graph фиксирует значимые факты и связи д
   Task-scoped capability в этой модели — подписанный challenge для одной команды
   одной Task (`docs/plans/p0-2-task/COMMAND-BOUNDARY.md`, §3.2; R110).
   Проверка: не реализовано
+
+### AgentSession and agent identity
 
 - **CM-13 — AgentSession связывает доверенную identity и транспортную сессию (R114).**
   Оператор регистрирует канонический `AgentSession`, связывающий стабильный
@@ -410,8 +429,10 @@ Discussion Graph фиксирует значимые факты и связи д
   заполняются задним числом (R123). До подключения канонического agent command
   path такие состояния не должны создаваться штатным путём; Owner recovery
   command (stop proof, завершение старого Run, новое назначение из свежей
-  `AgentSession`) остаётся запланированным продолжением P0-3 и требует
-  отдельного проекта и решения.
+  `AgentSession`) остаётся запланированным продолжением P0-3 и реализуется
+  отдельной Issue с независимым Review/Audit. Новое решение OWNER требуется
+  только при изменении принятой recovery semantics, trust boundary, прав
+  или пользовательских последствий.
   Ротация ключа или отзыв `AgentSession` при активном Run разрешены. Такой Run
   огорожен: его команды отклоняются до replay, readiness не блокируется, а
   переназначение идёт только через recovery transfer на текущую активную
@@ -431,13 +452,14 @@ Discussion Graph фиксирует значимые факты и связи д
   проверенного `AgentSession` и назначения Run.
   Проверка: частично — непустой устойчивый `AgentID` требуется для всех ролей на входящей агентской команде (`TestAgentCommandRejectsMissingAgentIDForEveryRole` — Executor, Reviewer и Auditor), значение из тела команды игнорируется (`TestAgentCommandIgnoresActorIDFromBody`), несовпадение `AgentSession.AgentID` и `Run.RoleSelection.AgentID` отклоняется до replay (`TestAgentCommandRejectsSessionAgentIDMismatchBeforeReplay`), actor и ключ Inbox строятся из проверенного назначения (`TestAgentCommandBoundaryResolvesActorInsideLock`, `TestAgentCommandBoundaryRejectsInboxKeyBuiltFromUnverifiedActor`, `TestAgentCommandAppliesRoleIndependenceFromCommittedRun`); на каноническом переходе назначение Task-scoped Run требует непустой `AgentID`, совпадающий с `AgentSession` (`validateRunAgentSessionBinding`; тест на несовпадение — `TestCanonicalAssignmentTakesCurrentActiveAgentSessionBinding`); не реализовано: отдельного теста на пустой `AgentID` при каноническом назначении нет; production-назначение идёт через legacy `Coordinator.Handle` (`coordinator.go`) и этой проверки не проходит; команд управления `AgentSession` в границе нет; `OwnerCredential` не реализован; Executor RESULT (#6) не подключён — P0-3
 
-- **CM-15 — Проверки агентской команды упорядочены (R121).** До replay Coord
-  аутентифицирует сессию, сверяет её с актуальными `AgentSession` и generation,
-  получает trusted `AgentID`, проверяет актуальность Run и `Task.Fence`, затем
-  проверяет соответствие роли и Stage команде. После этого выполняется replay и
-  дедупликация. Только для новой команды Coord проверяет допустимость перехода и
-  CAS по `Task.Revision`, затем фиксирует изменение durable. R121 не задаёт
-  внутренний порядок проверки перехода и CAS.
+- **CM-15 — Проверки агентской команды упорядочены (R121).** До replay
+  transport проверяет подпись кадра и локального получателя. Canonical command
+  boundary затем разрешает активную `AgentSession` по адресу, проверяет
+  generation и ключ, получает trusted `AgentID` из `AgentSession`, проверяет
+  assignment Run, `Task.Fence`, Attempt, роль и Stage команде. После этого
+  выполняется replay и дедупликация. Только для новой команды Coord проверяет
+  допустимость перехода и CAS по `Task.Revision`, затем фиксирует изменение
+  durable. R121 не задаёт внутренний порядок проверки перехода и CAS.
   Первые два шага детализированы: transport проверяет подпись и формирует
   `AuthenticatedFrame`, затем Coord ищет `AgentSession` по зарегистрированной
   привязке и отклоняет команду, если привязка отозвана, адрес, отпечаток ключа или
@@ -445,13 +467,6 @@ Discussion Graph фиксирует значимые факты и связи д
   продолжает проверки Run и `Task.Fence`. Это детализация CM-15, а не новый
   порядок (R122).
   Проверка: частично — канонический путь `ApplyAgentCommand` (`store/canonical_agent_command.go`) реализует порядок R121 на подписанном кадре: подпись и совпадение с телом (`TestAgentCommandRejectsUntrustedSignature`, `TestAgentCommandRejectsEnvelopeDifferentFromSignedBytes`, `TestAgentCommandRejectsFabricatedAuthenticatedFrame`, `TestAgentCommandRejectsMalformedEnvelope`), получатель (`TestAgentCommandRejectsWrongRecipient`, `TestAuthenticatedAdapterRejectsWrongRecipient`), сессия и поколение до replay (`TestAgentCommandRejectsOldSessionBeforeFenceCheckBypassedByKnownMessageID`, `TestAgentCommandRevokedSessionDoesNotReturnPriorReceipt`, `TestAgentCommandRejectsStaleGenerationBeforeReplay`, `TestAgentCommandRejectsSignedFrameFromDifferentKeyAtCurrentGeneration`), Run и эпоха (`TestAgentCommandRejectsUnknownTaskOrRun`, `TestAgentCommandRejectsNonCurrentWriter`, `TestAgentCommandRejectsStaleFence`, `TestAgentCommandRejectsSessionBeforeStaleFence`, `TestAgentCommandRejectsFutureFence`, `TestAgentCommandRejectsAttemptMismatch`), роль и Stage (`TestAgentCommandRejectsRoleStageMismatch`, `TestAgentCommandRoleStageMappingRejectsWrongRoleAndStage`), независимость роли проверяется до replay lookup без durable Save (`TestAgentCommandRejectsRoleIdentityCollisionBeforeReplay`, `TestAgentCommandRoleIdentityCollisionRejectsPriorReceiptBeforeReplay`, #26), затем replay и дедупликация без записи (`TestAgentCommandReplayReturnsPriorReceiptWithoutWriting`, `TestAgentCommandReplayWithDifferentExpectedRevisionRefused`, `TestAgentCommandReplayAfterRevisionGrowthReturnsPriorReceipt`), CAS для новой команды (`TestAgentCommandRejectsStaleRevision`) и durable commit вместе с переходом, событием, receipt и подтверждением в Outbox (`TestAgentCommandCommitsEventReceiptOutboxAtomically`, `TestAgentCommandRejectsForbiddenTransition`, `TestAgentCommandRejectsInboxWithoutCommittedAcknowledgement`); не реализовано: production command path не подключён — `ApplyAgentCommand` вызывается только из тестов, реальный вход остаётся legacy `Coordinator.Handle` (`coordinator.go`); `OwnerCredential` не реализован; команд управления `AgentSession` в границе нет; Executor RESULT (#6) не подключён — P0-3
-
-Цепочки `FINDING → DECISION → ACTION → RESULT` описывают связи графа и не
-образуют отдельную FSM Discussion.
-
-Обычный временный обмен репликами остаётся в транспортном канале и не становится
-автоматически Discussion node или DomainEvent. В канонический Graph попадают
-типизированные факты, предложения, решения, действия, результаты и блокеры.
 
 ### Domain Events и транзакция
 
@@ -697,44 +712,32 @@ generation checks и идемпотентность. Переноса тольк
 
 ## Порядок реализации
 
-1. Зафиксировать ADR-0001; заморозить развитие `internal/rooms`.
-2. До Task API и персистентной Task-модели определить формат и генерацию
-   `TaskID`, Task lifecycle и связь Task ↔ Run.
-   Формат `task_<ULID>` и генератор выделены в ADR-0003 и пакете `taskid`;
-   Task lifecycle и семантика связи Task ↔ Run определены в
-   `docs/TASK-MODEL.md`. Этот design-шаг закрыт; реализация Task aggregate ещё
-   впереди.
-3. Спроектировать Production Daemon по ADR-0004: single owner, command/read
-   boundaries, supervisor relationship и recovery/readiness model. Дизайн
-   принят. Библиотечный host для текущего Run coordinator реализован, но
-   самостоятельного production executable, process-kill recovery и canonical
-   Task runtime пока нет; это не закрывает P0 из ROADMAP.
-4. Зафиксировать backend-neutral transaction boundary; проверить текущую
-   `store.Persistence` и доказать семантику commit-or-reopen на snapshot.
-   Текущие Run-only persistence и commit-or-reopen не образуют ещё полной
-   канонической transaction boundary; её реализация остаётся открытой.
-5. Принять ADR-0005 Storage Model: первый single-daemon backend — единый
-   версионированный atomic snapshot. Дизайн миграций, import, locking и backup
-   принят; безопасное pre-migration backup и новая canonical State ещё должны
-   быть реализованы. Переход на SQLite зависит от измерений согласованных целей.
-6. Довести библиотечный host до production daemon skeleton: standalone
-   executable, process-level recovery, полная readiness и единый command path.
-   Никакие новые канонические writer paths не должны обходить daemon.
-7. Через daemon ввести Task aggregate, Task-wide Fence и атомарные переходы
-   State + DomainEvent + Outbox.
-8. Добавить структурированные ReviewResult и AuditResult.
-9. Добавить Discussion Graph как типизированные факты и связи в каноническом
-   event log; не вести вторую авторитетную копию nodes/edges.
-10. Провести ограниченную Shadow Validation.
-11. Проверить существующий Telepathy adapter и подключить агентский write path
-    к Task/Run; transport не переписывать без необходимости.
-12. Реализовать ADR-0006 API Contract, read-only API и Startup Card после
-    проверки daemon readiness и канонического write path.
-13. Реализовать Dashboard и Project Map поверх API.
-14. Перевести нужные сценарии с rooms, сохранив capability scope, generations и
-    идемпотентность всех используемых операций.
-15. При необходимости выполнить отдельный проверяемый импорт legacy данных.
-16. Удалить legacy только после критериев миграции и отдельного одобрения.
+Реализованы основные canonical срезы P0-2:
+
+- Task aggregate и Task.Fence;
+- canonical persistence (atomic snapshot, commit-or-reopen);
+- standalone `coordd` skeleton;
+- AgentSession projection, history и Run binding;
+- authenticated canonical command boundary (`ApplyAgentCommand`);
+- ReviewResult и AuditResult (canonical record + Domain Event);
+- canonical Discussion Graph core.
+
+Следующий шаг — ограниченная Shadow Validation и приёмка границы этапа (P0-2 выполнен).
+
+Следующий этап — P0-3:
+
+- production Executor RESULT path (#6);
+- production CLI и Telepathy callers для canonical command boundary;
+- Owner recovery command (#7);
+- production assignment path;
+- удаление оставшихся независимых writer paths.
+
+Затем выполняются executor lifecycle, supervisor, deployment и OS isolation
+согласно ROADMAP. Read-only API и Dashboard реализуются после проверки
+daemon readiness и canonical write path. Переход на SQL не является
+обязательным; решение требуется только если текущий backend перестанет
+удовлетворять требованиям. Legacy удаляется только после критериев
+миграции и отдельного одобрения OWNER.
 
 ## Последствия
 
@@ -748,9 +751,13 @@ generation checks и идемпотентность. Переноса тольк
 
 Стоимость и ограничения:
 
-- production daemon, Task model, event journal, SQL/storage choice и Dashboard API
-  являются будущей работой, а не завершёнными возможностями;
-- миграция требует отдельной политики совместимости и переноса данных;
+- canonical daemon skeleton, Task model, Domain Events и atomic snapshot
+  persistence реализованы частично;
+- production command integration, полный scheduler, supervisor recovery,
+  read-only API и Dashboard остаются будущей работой;
+- переход на SQL не является обязательным и требует отдельного решения,
+  если текущий backend перестанет удовлетворять требованиям;
+- миграция legacy runtime требует отдельной политики совместимости;
 - структурированные Review/Audit и Discussion Graph расширяют доменную схему и
   требуют версионирования;
 - транзакционный storage и event journal требуют тестирования crash/recovery,

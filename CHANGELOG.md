@@ -1,5 +1,23 @@
 # История изменений
 
+## 2026-10-10 — ADR-0001 normative cleanup: stale status, section split, OWNER escalation fix (документация)
+
+- (документация) ADR-0001-CANONICAL-COORDINATION-MODEL.md: редакционная пометка
+  обновлена; исправления строго FD — принятые инварианты не затронуты.
+  - CM-10a и CM-11: «не реализовано» → «частично» с конкретными ограничениями.
+  - Discussion Graph section: добавлены закрывающие параграфы о FINDING-цепочках
+    и transport-обмене; секции CM-12 и CM-13–15 вынесены в отдельные подразделы
+    «Owner identity and command authorization» и «AgentSession and agent identity».
+  - CM-13: убрана автоматическая эскалация «требует отдельного проекта и решения»;
+    заменено на «реализуется отдельной Issue; новое решение OWNER — только при
+    изменении принятой semantics, trust boundary или прав».
+  - CM-15: уточнён порядок — явно разделены шаг transport (подпись кадра) и шаг
+    canonical command boundary (AgentSession, generation, Run, Fence, роль).
+  - CM-01: добавлено разграничение `Session` и `AgentSession`.
+  - Порядок реализации: обновлён на фактическое состояние P0-2 COMPLETE + P0-3 plan.
+  - Последствия: исправлены ложные утверждения о «будущей работе» для уже
+    реализованных canonical daemon skeleton, Task model, Domain Events, storage.
+
 ## 2026-10-10 — Shadow Validation: read-only canonical vs legacy comparison, ADR-0001 step 10 ([#42](https://github.com/naghuale/coord/issues/42))
 
 - (документация) TARGET-ARCHITECTURE.md: строка Shadow Validation обновлена.
