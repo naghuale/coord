@@ -1,6 +1,7 @@
 # ADR-0007: Project Brief и Task Brief
 
 - **Статус:** Proposed
+- **Редакционная пометка:** 2026-10-10: исправлено противоречие BR-02/BR-07, уточнён источник Live Brief и briefSource контракт, Archived Brief явно вынесен из MVP без определённых contracts, BR-04 ограничен до Task/Run для MVP, BR-08 разделён на write readiness и Brief endpoint, BR-09 отделяет политику от ADR-0006 механизма; заменена хрупкая дата и line references; OWNER унифицирован — FD, принятые инварианты не затронуты; документ остаётся Proposed
 - **Область:** производные представления уровня проекта и задачи, отдаваемые по запросу
 - **Связанные решения:** ADR-0001 Canonical Coordination Model (производные представления); ADR-0004 Runtime and Daemon Model (RT-03); ADR-0005 Storage Model (ST-01)
 - **Ближайшее решение:** Startup Card и read-only API определяются в ADR-0006 API
@@ -18,18 +19,14 @@
    («только вычисляемое представление для человека»), у которой собственная
    аннотация «Проверка: не реализовано». Coord не отдаёт такой проекции ни во
    внутреннем API, ни наружу.
-2. **Что вычисляется на лету фактически.** В legacy rooms вычисляется проекция
-   сессии, а не Run: `internal/rooms/sessions.go` собирает `State`, `Attachment`,
-   `Reachability`, `Readiness`, `Processing`, `LastActivity` и
-   `ProviderAvailability` из сохранённых фактов, включая различение поколений по
-   `latestCredentialGeneration` (`:315-335`, набор полей `:265-274`); проверки —
-   `TestSessionRecoveryFencesAndScopesContext`,
-   `TestAvailabilitySeparatesStaleGeneration`. В daemon вычисляется причина
-   not-ready из transport-готовности и наличия recovery
-   (`daemon/daemon.go:107-115`, проверка `TestDaemonReadinessLifecycle`), а
-   control endpoint `/runs` фильтрует stalled-результаты по сохранённому Run без
-   вычисляемой проекции (`control.go:27-36`). Ни одно из этих наблюдений не
-   является `RunViewStatus` и не подтверждает его существование.
+2. **Что вычисляется на лету фактически.** В legacy `internal/rooms` вычисляется
+   session projection, а не Run: поля State, Attachment, Reachability, Readiness,
+   Processing, LastActivity и ProviderAvailability с разделением по generation
+   (`latestCredentialGeneration`). В daemon вычисляется причина not-ready из
+   transport-готовности и recovery presence. Control endpoint `/runs` возвращает
+   только stalled-результаты для supervisor recovery без вычисляемой проекции Task.
+   Ни одно из этих наблюдений не является `RunViewStatus` и не подтверждает его
+   существование. Evidence ведётся в architecture component registry.
 3. **Отсутствие read interface для Task и будущий Task Brief.** Read-only API
    Task не написан (статус — в [TARGET-ARCHITECTURE.md](TARGET-ARCHITECTURE.md),
    строка «Startup Card, read-only API, Dashboard»), и ни один endpoint не отдаёт
@@ -54,28 +51,32 @@ Brief продолжает линию вычисляемых по запросу
 ревизии state результат детерминирован: тот же вход даёт тот же выход, поэтому
 два чтения без изменения state дают одинаковый Brief.
 
-**Archived Brief** — неизменяемая запись того, что было показано: ревизия
-источника, версия генератора и хеш содержимого. Воспроизводимость задним числом
-не обещается: по ST-01 журнал не пересобирает состояние, поэтому повторная генерация
-Archived Brief для той же ревизии может дать иной текст при изменившемся генераторе.
-Archive фиксирует факт показа, а не воспроизводимость.
+**Archived Brief** — не входит в MVP и не является действующей capability.
+
+Этот ADR резервирует только семантику: archive фиксирует представленный контент, не
+становится источником workflow или recovery, не заменяет canonical facts, должен
+ссылаться на source revision, Brief schema и generator version. Storage, authorization,
+retention, redaction, integrity и deletion policy Archived Brief требуют отдельного
+решения до реализации. Из Критериев соответствия обязательное требование к Archived
+Brief исключено, поскольку Proposed-функция вне MVP не имеет полного контракта.
 
 ## MVP
 
 В MVP только **Task Brief** в форме Live Brief, и только из данных Task и Run.
 Требования, без которых его не на чем построить: TaskID adoption, production
-daemon по ADR-0004 и Task aggregate по ADR-0001. Состояние реализации
-зависимостей Brief — TaskID adoption, канонический Task aggregate со связью
-Task ↔ Run, `Task.Fence`, история DomainEvent и standalone daemon с незакрытой
-приёмкой — приведено в [TARGET-ARCHITECTURE.md](TARGET-ARCHITECTURE.md) по
-состоянию на 2026-10-08; здесь оно не дублируется.
+daemon по ADR-0004 и Task aggregate по ADR-0001. Актуальное состояние
+зависимостей Brief ведётся в `docs/architecture/COMPONENT-STATUS.yaml` и
+`docs/TARGET-ARCHITECTURE.md`; здесь оно не дублируется.
 
-Поэтому MVP Brief остаётся контрактом, а не функцией, но по другой причине, чем
-указано в ранней редакции этого документа: данных Task и Run теперь достаточно,
-а отсутствует read-only API для Task (статус ADR-0006 — в
-[TARGET-ARCHITECTURE.md](TARGET-ARCHITECTURE.md)), и ни одна проекция уровня
-Brief не выдаётся ни одним существующим endpoint. Статус этого ADR остаётся
-Proposed, и зрелость Brief не повышается.
+Поэтому MVP Brief остаётся контрактом, а не функцией: данных Task и Run теперь
+достаточно, а отсутствует read-only API для Task (статус ADR-0006 приведён в
+[TARGET-ARCHITECTURE.md](TARGET-ARCHITECTURE.md)), и ни одна проекция уровня Brief
+не выдаётся ни одним существующим endpoint. Статус этого ADR остаётся Proposed.
+
+Live Brief MUST быть детерминирован функцией: canonical source revision + Brief
+schema version + generator version + access projection. Текущее время, transport
+reachability, process presence и иные недолговечные runtime observations MUST NOT
+влиять на Live Brief, если они не сохранены как отдельный канонический факт источника.
 
 ## Вне MVP
 
@@ -97,15 +98,20 @@ Proposed, и зрелость Brief не повышается.
 - **BR-01 — только проекция.** Brief вычисляется из канонического состояния и
   никогда не становится его источником.
   Проверка: не реализовано
-- **BR-02 — нет уникальных данных.** Brief не содержит сведений, которых нет в
-  источнике. Всё, чего нет в источнике, отсутствует и в Brief.
+- **BR-02 — нет уникальных данных.** Brief не добавляет факты, которых нет в
+  канонических источниках. Необязательный элемент, отсутствующий в источнике и не
+  требуемый схемой, не включается. Обязательный элемент схемы, значение которого
+  невозможно достоверно определить, включается со значением `UNKNOWN` и
+  структурированной причиной согласно BR-07.
   Проверка: не реализовано
 - **BR-03 — не используется для recovery и replay.** Ни один переход, проверка
   инварианта и восстановление не читают Brief. Journal не переигрывает его.
   Проверка: не реализовано
 - **BR-04 — ссылка на источник у каждого элемента.** Каждый пункт Brief несёт
-  ссылку на конкретный факт, из которого он получен: Task, Run, Discussion node
-  или edge. Пункт без ссылки не попадает в Brief.
+  ссылку на конкретный факт, из которого он получен. В MVP допустимыми источниками
+  являются только Task и Run. Discussion nodes/edges становятся допустимыми
+  источниками в следующей версии Brief schema после отдельного расширения. Пункт
+  без ссылки не попадает в Brief.
   Проверка: не реализовано
 - **BR-05 — детерминированный порядок.** Порядок задаётся правилом, а не
   выбором реализации. Один и тот же набор источников даёт один и тот же порядок.
@@ -113,23 +119,32 @@ Proposed, и зрелость Brief не повышается.
 - **BR-06 — нет прогнозов.** Brief не содержит предсказаний, оценок сроков и
   рекомендаций. Только факты текущего состояния.
   Проверка: не реализовано
-- **BR-07 — UNKNOWN при недостоверности.** Если источник недостоверен, устарел или
-  отсутствует, элемент получает явное значение UNKNOWN с причиной. Молчаливое
-  отсутствие недопустимо: читатель должен отличать «факта нет» от «факт есть и
-  равен UNKNOWN».
+- **BR-07 — UNKNOWN для обязательного недостоверного значения.** Если обязательное
+  поле предусмотрено схемой Brief, но его источник отсутствует, устарел,
+  противоречив или недоступен, поле получает значение `UNKNOWN` с reason code и
+  ссылкой на источник проблемы. Молчаливое отсутствие обязательного поля
+  недопустимо: читатель должен отличать «необязательное поле отсутствует» от
+  «обязательное поле недостоверно».
   Проверка: не реализовано
-- **BR-08 — генерация вне транзакции.** Brief строится вне command boundary
-  fencing и вне транзакций recovery по RT-03. Отказ генерации Brief не влияет на
-  прохождение recovery, readiness и публикацию нового состояния: Brief —
-  читаемое представление, а не условие записи.
+- **BR-08 — генерация вне транзакции.** Brief строится вне command boundary fencing
+  и вне транзакций recovery по RT-03. Отказ генерации Brief MUST NOT блокировать
+  canonical writes, recovery или общую write readiness daemon. Запрос конкретного
+  Brief при таком отказе завершается структурированной ошибкой. Readiness или health
+  проекция MAY отдельно сообщать деградацию Brief/read API, не переводя canonical
+  write path в not-ready.
   Проверка: не реализовано
-- **BR-09 — доступ по текущему назначению.** Task Brief читают OWNER и сессии с
-  действующей Task-scoped capability текущего назначения: актуальная generation,
-  capability не отозвана. Исторический владелец Run и отозванная сессия доступа
-  не получают Task Brief.
+- **BR-09 — доступ по текущему назначению.** BR-09 задаёт целевое правило доступа.
+  Task Brief читают OWNER и сессии с действующей Task-scoped capability текущего
+  назначения: актуальная generation, capability не отозвана. Исторический владелец
+  Run и отозванная сессия доступа не получают Task Brief. Конкретный read capability
+  contract, способ проверки generation и revocation определяются ADR-0006 и, если
+  применимо, ADR-0009. До реализации этих контрактов Task Brief MUST NOT выдаваться
+  агентским сессиям.
   Проверка: не реализовано
-- **BR-10 — Project Brief только для OWNER.** Ни один агент и ни одна сессия Task
-  не читают Project Brief.
+- **BR-10 — Project Brief только для OWNER.** Project Brief выдаётся через внешний
+  read interface только аутентифицированному OWNER. Внутренние функции Coord не
+  являются потребителями Project Brief и работают с canonical state или
+  специализированными внутренними проекциями.
   Проверка: не реализовано
 - **BR-11 — ORCHESTRATOR не принципал доступа.** ORCHESTRATOR — внутренняя
   функция Coord: она читает каноническое состояние напрямую и не запрашивает
@@ -160,6 +175,10 @@ localchat: агент с действующим `Auth` получал 403 на o
 OWNER получает Project Brief через авторизованный read path daemon (ADR-0004
 RT-05; контракт — ADR-0006, статус которого приведён в
 [TARGET-ARCHITECTURE.md](TARGET-ARCHITECTURE.md)).
+
+> Конкретный capability contract, generation check и revocation определяются
+> ADR-0006 и ADR-0009. До реализации этих контрактов Task Brief MUST NOT
+> выдаваться агентским сессиям.
 
 **Startup Card агента** ссылается только на Task Brief. Это не ограничение
 удобства, а следствие границы доступа: карточка передаётся агенту и не должна
@@ -206,8 +225,6 @@ Summary — не более трёх пунктов. Пункт попадает
 - OWNER получает Project Brief через авторизованный read path daemon, а не через
   внутренний доступ (BR-10);
 - генерация Brief идёт вне транзакции fencing и recovery (BR-08);
-- отказ генерации Brief не влияет на recovery и readiness (BR-08);
+- отказ генерации Brief не блокирует canonical writes, recovery или write readiness (BR-08);
 - Summary не генерируется до принятия правила ранжирования;
-- Live Brief не хранится и детерминирован для одной ревизии state;
-- Archived Brief фиксирует ревизию источника, версию генератора и хеш
-  содержимого и не обещает воспроизводимости задним числом.
+- Live Brief не хранится и детерминирован для одной ревизии state.

@@ -1,5 +1,27 @@
 # История изменений
 
+## 2026-10-10 — ADR-0007 normative cleanup: BR-02/BR-07 contradiction, Archived Brief, BR-09 access (документация)
+
+- (документация) ADR-0007-PROJECT-BRIEF.md: редакционная пометка добавлена;
+  FD — документ остаётся Proposed, принятые инварианты BR-01–BR-11 не изменены.
+  - BR-02: разделены необязательные поля (не включаются) и обязательные
+    недостоверные поля (UNKNOWN с причиной согласно BR-07).
+  - BR-07: переименован в «обязательное недостоверное значение»; добавлен reason
+    code и ссылка на источник проблемы.
+  - BR-04: ограничен до Task/Run для MVP; Discussion nodes/edges — будущее расширение.
+  - BR-08: разделены write readiness и Brief endpoint readiness.
+  - BR-09: явно обозначен как целевое правило; конкретный механизм — ADR-0006 и
+    ADR-0009; до реализации: Task Brief MUST NOT выдаваться агентским сессиям.
+  - BR-10: уточнено — «только OWNER через external read interface»; внутренние
+    функции Coord не являются потребителями Brief.
+  - Archived Brief: перемещён из «Виды Brief» в явный non-MVP без определённых
+    contracts; убрано обязательное требование к нему из Критериев соответствия.
+  - MVP: добавлена норма детерминизма (canonical revision + schema + generator +
+    access projection); заменена хрупкая дата «по состоянию на 2026-10-08» ссылкой
+    на COMPONENT-STATUS.yaml.
+  - Legacy rooms раздел: заменены line references символами и component registry.
+  - OWNER/Owner → OWNER унифицированы.
+
 ## 2026-10-10 — ADR-0005 normative cleanup: CanonicalState composition, ST-02/ST-07 status, migration manifest (документация)
 
 - (документация) ADR-0005-STORAGE-MODEL.md: редакционная пометка добавлена;
