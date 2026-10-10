@@ -1,14 +1,13 @@
 apiVersion: coord.dev/v1alpha1
 kind: CoordinatorContextManifest
-sessionId: claude-workspace-10
-createdAt: 2026-10-10
+updatedAt: 2026-10-10
 
 project:
   id: coord
 
 source:
   branch: p0-2-task
-  commit: c8f2fda
+  commit: 2ec0468
 
 session:
   cwd:
@@ -18,29 +17,43 @@ loaded:
   permanent:
     - .coord/project.yaml
     - AGENTS.md
+    - .coord/CONTEXT-INDEX.yaml
 
   current:
     - operations/project/CURRENT.yaml
     - operations/project/OPEN-WORK.yaml
     - operations/project/CONTEXT-MANIFEST.yaml
+    - operations/context/current.yaml
 
   taskSpecific:
-    - operations/assignments/issue-36.yaml
-    - docs/decisions/TD-36.yaml
+    - source: docs/rfc/RFC-0001-LOCAL-PROJECT-OPERATIONS.md
+      sections:
+        - global-root
+        - project-layout
+        - temporary-storage
 
 notLoaded:
-  - completed task history (archive)
+  - issue-39 discussion history
+  - issue-39 review details
+  - full RFC acceptance process
+  - completed task command logs
   - legacy-qwen workspace
   - workspace-2-codex, workspace-2-opencode
   - full mutation test outputs
   - old session transcripts
   - unrelated ADRs
 
+archivedReferences:
+  - issue: 39
+    purpose: "Восстановить доказательства принятия RFC-0001"
+    completionReport: "https://github.com/naghuale/coord/issues/39#issuecomment-6093268487"
+
 compacted:
-  - issue-35 full diff
-  - issue-35 review details (summary: ACCEPTED, SHA: 92e6e94)
+  - issue-35 full diff (summary: ACCEPTED, SHA: 92e6e94)
   - ops/ledger-bootstrap spec content (summary: merged to p0-2-task @ ee71f2e)
+  - issue-39 full history (summary: RFC-0001 ACCEPTED @ 2ec0468)
 
 nextSafeAction:
-  begin_portability_bootstrap_task
-  then_address_issue_38_wrapper
+  issue: 37
+  action: "Продолжить миграцию coordinator → repositories/coord по RFC-0001"
+  ownerRequired: false

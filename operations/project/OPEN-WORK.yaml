@@ -6,11 +6,15 @@ project:
   id: coord
   source:
     branch: p0-2-task
-    commit: c8f2fda
+    commit: 2ec0468
 
-currentStage: post-completion-report
+currentStage: workspace-migration
 
-active: []
+active:
+  - issue: 37
+    title: Migrate coordinator → repositories/coord
+    state: ACTIVE
+    note: COORD_REPOSITORY_ROOT transitional = workspace-01/coordinator; target = workspace-01/repositories/coord
 
 completedThisSession:
   - id: portability-bootstrap
@@ -35,37 +39,19 @@ completedThisSession:
     note: Completion Report standard added to OPERATIONS-LEDGER; GitHub Issue publishing rule; close conditions
 
   - issue: 39
-    state: COMPLETE
-    commit: f192b69
+    state: CLOSED
+    result: RFC-0001_ACCEPTED
+    commit: 2ec0468
     mergedTo: p0-2-task
-    p0-2-task-head: f192b69
+    p0-2-task-head: 2ec0468
     ci: PENDING
-    note: RFC-0001 Proposed registered; Accepted status requires OWNER decision
-    files:
-      - .coord/project.yaml
-      - .coord/CONTEXT-INDEX.yaml
-      - docs/operations/
-      - CHANGELOG.md
-    note: >
-      Replace macOS-specific note in .coord/project.yaml with sessionCwdVariable.
-      Add CONTEXT-INDEX.yaml. Define four context layers. Separate from #36.
+    ownerDecision: "OWNER (naghuale) accepted 2026-10-10"
+    completionReport: "https://github.com/naghuale/coord/issues/39#issuecomment-6093268487"
+    detailsLoaded: false
 
 blocked:
   - issue: 34
     reason: WAITING_FOR_S0
-
-  - issue: 38
-    title: Fix system /tmp in cmd/coord/sessions_test.go
-    reason: PROJECT_LOCAL_TMP_NOT_READY
-    note: After fix, system tmp enforcement becomes active
-
-  - issue: 37
-    title: Migrate coordinator → repositories/coord (COORD_REPOSITORY_ROOT)
-    reason: AFTER_36_COMPLETION
-    note: >
-      COORD_REPOSITORY_ROOT currently = workspace-01/coordinator (transitional).
-      Target = workspace-01/repositories/coord.
-      Migrate after all active worktrees clean.
 
 openDecisions:
   - id: telepathy-update

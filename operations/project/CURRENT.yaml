@@ -13,9 +13,9 @@ sessionLaunchCwd:
 source:
   repository: https://github.com/naghuale/coord.git
   integrationBranch: p0-2-task
-  integrationHead: f192b69
+  integrationHead: 2ec0468
   note: >
-    p0-2-task @ 908af6e includes:
+    p0-2-task @ 2ec0468 includes:
     3b9322e (#30 Discussion Graph),
     92e6e94 (#35 unreachable guard removed),
     ee71f2e (ops/ledger-bootstrap R145),
@@ -27,7 +27,9 @@ source:
     dea1fa4 (#38 remove hardcoded /tmp),
     603761c (completion-report: Completion Report standard),
     a13957c (completion-report v2: GitHub Issue publishing + text fields),
-    908af6e (completion-report v3: READY_FOR_INTEGRATION in schema).
+    908af6e (completion-report v3: READY_FOR_INTEGRATION in schema),
+    f192b69 (#39 RFC-0001 Proposed registered),
+    2ec0468 (#39 RFC-0001 Accepted by OWNER).
 
 issues:
   completed:
@@ -90,14 +92,18 @@ issues:
       reviewer: opencode:workspace-o73
       reviewVerdict: REVIEW_ACCEPTED
       auditor: N/A — not TD-R2 (docs only)
-      commit: f192b69
+      commit: 2ec0468
       ci: PENDING
-      state: COMPLETE
-      note: Status Proposed; Accepted requires OWNER decision
+      state: CLOSED
+      result: RFC-0001_ACCEPTED
+      ownerDecision: "OWNER (naghuale) accepted 2026-10-10"
+      completionReport: "https://github.com/naghuale/coord/issues/39#issuecomment-6093268487"
+      detailsLoaded: false
 
+  active:
     - issue: 37
       title: Migrate coordinator → repositories/coord
-      state: QUEUED
+      state: ACTIVE
       note: COORD_REPOSITORY_ROOT transitional = workspace-01/coordinator
 
   blocked:

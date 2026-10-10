@@ -1,95 +1,60 @@
 apiVersion: coord.dev/v1alpha1
 kind: ContextCheck
-sessionId: claude-workspace-10
-checkAt: 2026-10-10T03:15:00Z
+checkAt: 2026-10-10T00:00:00Z
 result: PASS
 probes: 6/6
 
-# ── HAND-OFF: записано перед перезапуском сессии ─────────────────────────────
+# ── HAND-OFF: записано после закрытия #39 (RFC-0001 Accepted) ────────────────
 
 project:
   id: coord
   repository: https://github.com/naghuale/coord.git
   integrationBranch: p0-2-task
-  integrationHead: f192b69
-  stage: post-rfc-0001
+  integrationHead: 2ec0468
+  stage: workspace-migration
 
-activeTask: none
-blockers:
-  - issue: 34
-    reason: WAITING_FOR_S0 (Proposed ADR-0009)
+standards:
+  RFC-0001:
+    status: ACCEPTED
+    commit: 2ec0468
+    acceptedBy: "OWNER (naghuale) 2026-10-10"
+    source: docs/rfc/RFC-0001-LOCAL-PROJECT-OPERATIONS.md
+
+activeTask:
+  issue: 37
+  title: Migrate coordinator → repositories/coord
+  state: ACTIVE
+  ownerRequired: false
 
 nextSafeAction: >
-  OWNER принимает RFC-0001 (переводит статус Proposed → Accepted) или открывает
-  issues с замечаниями. После — начать #37 (миграция coordinator → repositories/coord).
+  Продолжить #37 (миграция coordinator → repositories/coord).
+  Следовать RFC-0001 §4–§6 (global-root, project-layout, temporary-storage).
+  Решение OWNER не требуется.
 
 ownerDecisionRequired:
-  - id: rfc-0001-acceptance
+  - id: telepathy-update
     description: >
-      RFC-0001 зарегистрирован как Proposed в p0-2-task@f192b69.
-      Перевод в Accepted — только OWNER (не координатор, не агент).
-      Issue #39 остаётся OPEN до OWNER acceptance.
+      telepathy 0.9.0 установлен на диске; текущая версия 0.8.0.
+      Команда обновления:
+      node /Users/andreybabenko/.claude/plugins/cache/telepathy/telepathy/0.8.0/dist/update-all.mjs
+      После запуска перезапустить все активные сессии агентов.
+      Требует явного OWNER approval.
+
+blockers:
+  - issue: 34
+    reason: WAITING_FOR_S0
 
 # ── ЧТО СДЕЛАНО В ЭТОЙ СЕССИИ ────────────────────────────────────────────────
 
 completedThisSession:
-  - id: portability-bootstrap
-    commits: [6b07211, 3276e85]
-    note: CONTEXT-INDEX + 4-layer contextModel + context-check schema
-
-  - issue: 38
-    commit: dea1fa4
-    note: Удалён hardcoded /tmp в sessions_test.go → os.MkdirTemp("","coord-")
-
-  - id: completion-report
-    commits: [603761c, a13957c, 908af6e]
-    note: >
-      Completion Report standard в OPERATIONS-LEDGER: формат, GitHub Issue
-      publishing, 7 close conditions, READY_FOR_INTEGRATION в schema enum.
-      #36 и #38 закрыты в GitHub с опубликованными Completion Reports.
-
   - issue: 39
-    commit: f192b69
-    note: >
-      RFC-0001-LOCAL-PROJECT-OPERATIONS.md зарегистрирован (Proposed).
-      Executor: codex:workspace-c9d. Reviewer: opencode:workspace-o73 ACCEPTED.
-      AGENTS.md: раздел «Обновление Telepathy» добавлен.
-      CI: ожидается.
-
-  - id: repo-visibility
-    note: naghuale/coord переведён в PUBLIC (GitHub Actions minutes = unlimited)
-
-# ── ЗАКРЫТЫЕ ISSUES ───────────────────────────────────────────────────────────
-
-closedThisSession:
-  - issue: 36   # ApplyAgentCommand whitespace AgentID — COMPLETE
-  - issue: 38   # hardcoded /tmp — COMPLETE
-  - issue: 32   # AGENTS.md R142 draft — STALE (workspace-2-opencode не существует)
-
-# ── НЕЗАКРЫТЫЕ ISSUES (для новой сессии) ─────────────────────────────────────
-
-openIssues:
-  - issue: 39
-    title: RFC-0001 Local Project Workspace
-    state: READY_FOR_INTEGRATION  # commit есть, CI pending, OWNER acceptance pending
-    ownerRequired: true
-
-  - issue: 37
-    title: Migrate coordinator → repositories/coord
-    state: QUEUED
-    note: COORD_REPOSITORY_ROOT = workspace-01/coordinator (transitional)
-
-  - issue: 31
-    title: Telepathy 0.9.0 compatibility check
-    state: BLOCKED
-    note: >
-      0.9.0 уже установлен на диске. OpenCode перезапущен как opencode:workspace-o57.
-      Требуется: node /Users/andreybabenko/.claude/plugins/cache/telepathy/telepathy/0.8.0/dist/update-all.mjs
-      После запуска — перезапустить все активные сессии.
-
-  - issue: 34
-    state: BLOCKED
-    reason: WAITING_FOR_S0
+    state: CLOSED
+    result: RFC-0001_ACCEPTED
+    commit: 2ec0468
+    ownerDecision: "OWNER (naghuale) accepted 2026-10-10"
+    completionReport: "https://github.com/naghuale/coord/issues/39#issuecomment-6093268487"
+    ci: PENDING
+    detailsLoaded: false
 
 # ── ТЕХНИЧЕСКИЕ ДЕТАЛИ ДЛЯ НОВОЙ СЕССИИ ─────────────────────────────────────
 
@@ -99,8 +64,6 @@ technicalContext:
     installedVersion: "0.9.0"
     updateCommand: "node /Users/andreybabenko/.claude/plugins/cache/telepathy/telepathy/0.8.0/dist/update-all.mjs"
     requiresOwnerApproval: true
-    openCodeNewSession: "opencode:workspace-o57 [opencode-64235]"
-    codexSession: "codex:workspace-c70 [codex-01a12344-2437-7d52-943f-2ad62486a7a4]"
 
   workspacePolicy:
     systemTmp: deny
@@ -117,35 +80,33 @@ technicalContext:
     - do not weaken fail-closed behavior
     - do not accept new product norms as OWNER
 
-  opsCheckpoint:
-    branch: ops/coord/project
-    commit: 33d55f0
-
 # ── PROBES ───────────────────────────────────────────────────────────────────
 
 probeResults:
   - probe: project-and-head
     result: PASS
-    evidence: p0-2-task@f192b69, ops/coord/project@33d55f0
+    evidence: p0-2-task@2ec0468
 
   - probe: active-task
     result: PASS
-    evidence: active=[], no task in progress
+    evidence: "Issue #37: Migrate coordinator → repositories/coord"
 
   - probe: blockers
     result: PASS
-    evidence: "#34 WAITING_FOR_S0; #39 needs OWNER acceptance"
+    evidence: "#34 WAITING_FOR_S0; #37 не заблокирован"
 
   - probe: next-safe-action
     result: PASS
-    evidence: OWNER принимает RFC-0001 или открывает issues; затем #37
+    evidence: "Продолжить #37 по RFC-0001; OWNER не требуется"
 
   - probe: owner-boundary
     result: PASS
-    evidence: RFC-0001 status=Proposed; Accepted — только OWNER
+    evidence: >
+      RFC-0001 Accepted (OWNER решение выполнено).
+      Открытое OWNER-решение: только telepathy-update.
 
   - probe: evidence-recovery
     result: PASS
     evidence: >
-      Все задачи имеют commit SHA, pushed, Completion Reports в GitHub Issues.
-      ops/coord/project checkpoint актуален.
+      #39: commit 2ec0468, Completion Report на GitHub Issues.
+      Детали в архиве, восстанавливаются по ссылке.
