@@ -1,0 +1,8 @@
+assignmentId: assignment-001
+baseSha: REPLACE_WITH_GIT_HEAD
+assignedWorktree: REPLACE_WITH_PROJECT_LOCAL_WORKTREE
+session: {role: COORDINATOR, agentId: agent-coordinator-01}
+tools:
+  allowedExecutables: [python3]
+realSideEffects:
+  allowed: false

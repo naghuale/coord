@@ -118,6 +118,7 @@ State Machine и принятыми процессными нормами.
 - [ActionContext Schema](schemas/action-context.schema.yaml), [EvidenceRecord Schema](schemas/evidence-record.schema.yaml) — JSON Schema (proposed)
 - [AI Agent Governance Work Plan](plans/ai-agent-governance/GITLAB-WORK-PLAN.md) — initiative, milestones, AIAG-01..AIAG-18, dependency graph, board columns (`proposed`); issues в `docs/plans/ai-agent-governance/issues/`
 - [Priority and Estimation](plans/ai-agent-governance/PRIORITY-AND-ESTIMATION.md) — priority rules and relative complexity estimates for AIAG issues (`proposed`)
+- [ActionContext Resolver + Launcher](operations/ACTION-MAP.yaml) — машиночитаемая YAML-проекция ACTION-MAP.md (`proposed`); используется `scripts/resolve-action-context` и `scripts/launch-agent`
 
 ## Приоритет источников
 

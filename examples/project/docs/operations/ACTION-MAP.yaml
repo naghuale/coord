@@ -1,0 +1,13 @@
+apiVersion: coord.dev/v1alpha1
+kind: ActionMap
+events:
+  SESSION_STARTED:
+    requiredDocuments: [agents, current, open-work]
+    allowedActions: [verify_project_id, verify_head, derive_next_transition]
+    forbiddenActions: [load_historical_by_default, ask_owner_what_to_do_next]
+    expectedResults: [CONTINUE_AUTONOMOUSLY, BLOCKED, OWNER_REQUIRED]
+  REVIEW_CHANGES_REQUIRED:
+    requiredDocuments: [agents, review-result]
+    allowedActions: [classify_findings, assign_fix, freeze_new_revision, repeat_review]
+    forbiddenActions: [ask_owner_whether_to_fix, start_unrelated_issue]
+    expectedResults: [QUESTION_SUPPRESSED, OWNER_REQUIRED]

@@ -1,6 +1,6 @@
 GO_FILES := $(shell git ls-files -co --exclude-standard '*.go' | while read f; do test -f "$$f" && echo "$$f"; done)
 
-.PHONY: help fmt check-format vet cross-vet test build demo roles check test-telepathy lint test-telepathy-host check-architecture-sync
+.PHONY: help fmt check-format vet cross-vet test build demo roles check test-telepathy lint test-telepathy-host check-architecture-sync check-defect-patterns check-document-registry check-action-map check-resolver-launcher
 
 help:
 	@echo 'make demo   — полный цикл задачи в локальном транспорте'
@@ -47,7 +47,26 @@ check-architecture-sync:
 		echo "PyYAML not installed; architecture sync check skipped (run: pip3 install pyyaml)"; \
 	fi
 
-check: check-format vet cross-vet test lint check-architecture-sync
+check-defect-patterns:
+	python3 scripts/check-defect-patterns
+	python3 scripts/check-defect-patterns-test
+
+check-document-registry:
+	python3 scripts/check-document-registry
+	python3 scripts/check-document-registry-test
+
+check-action-map:
+	python3 scripts/check-action-map
+	python3 scripts/check-action-map-test
+	python3 scripts/check-action-map-results-test
+	python3 scripts/check-action-map-threshold-policy
+	python3 scripts/check-action-map-baseline-store
+	python3 scripts/check-action-map-baseline-test
+
+check-resolver-launcher:
+	PYTHONPATH=scripts python3 -m unittest discover -s tests -p 'test_resolver_launcher.py' -v
+
+check: check-document-registry check-action-map check-resolver-launcher check-architecture-sync check-format vet cross-vet test lint check-defect-patterns
 	go build ./...
 	go mod tidy -diff
 

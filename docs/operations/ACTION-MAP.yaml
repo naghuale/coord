@@ -1,0 +1,311 @@
+apiVersion: coord.dev/v1alpha1
+kind: ActionMap
+metadata:
+  status: proposed
+  note: >
+    Machine-readable projection of docs/operations/ACTION-MAP.md.
+    Both must be kept in sync (Architecture Sync process).
+    readWhen values in DOCUMENT-REGISTRY.yaml will be aligned as part of AIAG-03.
+
+events:
+  SESSION_STARTED:
+    requiredDocuments:
+      - project-config
+      - agents
+      - context-index
+      - project-current
+      - project-open-work
+    allowedActions:
+      - verify_project_id
+      - verify_integration_head
+      - verify_active_issue
+      - verify_blockers
+      - verify_workspace_binding
+      - derive_next_transition
+    forbiddenActions:
+      - load_historical_by_default
+      - ask_owner_what_to_do_next
+    expectedResults:
+      - CONTINUE_AUTONOMOUSLY
+      - BLOCKED
+      - OWNER_REQUIRED
+
+  CONTEXT_STALE:
+    requiredDocuments:
+      - project-current
+      - project-open-work
+    allowedActions:
+      - verify_integration_head
+      - reload_active_work
+      - update_current_yaml
+      - derive_next_transition
+    forbiddenActions:
+      - continue_without_checking_staleness
+    expectedResults:
+      - CONTINUE_AUTONOMOUSLY
+      - BLOCKED
+
+  ISSUE_CREATED:
+    requiredDocuments:
+      - agents
+      - project-current
+      - project-open-work
+    allowedActions:
+      - record_issue
+      - set_labels
+      - assign_executor
+      - write_assignment
+    forbiddenActions:
+      - start_work_without_assignment
+      - ask_owner_whether_to_create
+    expectedResults:
+      - CONTINUE_AUTONOMOUSLY
+
+  ASSIGNMENT_STARTED:
+    requiredDocuments:
+      - agents
+      - project-current
+      - project-open-work
+    allowedActions:
+      - verify_workspace_binding
+      - verify_base_sha
+      - load_owning_norms
+      - begin_implementation
+    forbiddenActions:
+      - load_all_documents
+      - start_without_workspace_binding
+    expectedResults:
+      - CONTINUE_AUTONOMOUSLY
+      - BLOCKED
+
+  CODE_OR_DOCUMENT_CHANGED:
+    requiredDocuments:
+      - agents
+      - project-current
+    allowedActions:
+      - run_make_check
+      - check_git_diff
+      - check_staged_diff
+      - evaluate_commit_readiness
+    forbiddenActions:
+      - commit_without_make_check
+    expectedResults:
+      - CONTINUE_AUTONOMOUSLY
+      - READY_FOR_REVIEW
+      - READY_FOR_COMMIT
+
+  ARCHITECTURE_IMPACT_DETECTED:
+    requiredDocuments:
+      - agents
+      - component-status
+      - architecture-current
+      - architecture-sync-process
+    allowedActions:
+      - classify_impact
+      - update_component_status
+      - update_architecture_md
+      - run_architecture_sync_check
+    forbiddenActions:
+      - commit_without_architecture_sync
+    expectedResults:
+      - CONTINUE_AUTONOMOUSLY
+
+  REVIEW_REQUESTED:
+    requiredDocuments:
+      - agents
+      - project-current
+    allowedActions:
+      - assign_independent_reviewer
+      - freeze_subject
+      - record_review_assignment
+    forbiddenActions:
+      - author_reviews_own_work
+    expectedResults:
+      - CONTINUE_AUTONOMOUSLY
+      - BLOCKED
+
+  REVIEW_CHANGES_REQUIRED:
+    requiredDocuments:
+      - agents
+      - project-current
+    allowedActions:
+      - classify_findings
+      - assign_fix
+      - add_negative_tests
+      - add_mutation_evidence
+      - freeze_new_revision
+      - repeat_review
+      - repeat_audit_if_required
+    forbiddenActions:
+      - ask_owner_whether_to_fix
+      - start_unrelated_issue
+    expectedResults:
+      - QUESTION_SUPPRESSED
+      - OWNER_REQUIRED
+
+  AUDIT_REQUESTED:
+    requiredDocuments:
+      - agents
+      - project-current
+    allowedActions:
+      - assign_independent_auditor
+      - freeze_subject_for_audit
+      - record_audit_assignment
+    forbiddenActions:
+      - author_audits_own_work
+      - skip_audit_for_td_r2
+    expectedResults:
+      - CONTINUE_AUTONOMOUSLY
+      - BLOCKED
+
+  OWNER_QUESTION_CANDIDATE:
+    requiredDocuments:
+      - agents
+      - project-current
+    allowedActions:
+      - run_owner_boundary_check
+      - suppress_question_if_no_boundary
+      - record_decision_trace
+      - escalate_if_boundary_confirmed
+    forbiddenActions:
+      - ask_owner_without_boundary_check
+    expectedResults:
+      - QUESTION_SUPPRESSED
+      - OWNER_REQUIRED
+
+  HUMAN_ACTION_NEEDED:
+    requiredDocuments:
+      - agents
+    allowedActions:
+      - prepare_exact_command
+      - record_expected_result
+      - wait_for_human_confirmation
+    forbiddenActions:
+      - convert_to_owner_required
+    expectedResults:
+      - HUMAN_ACTION_REQUIRED
+
+  MIGRATION_COMPLETED:
+    requiredDocuments:
+      - agents
+      - project-current
+    allowedActions:
+      - update_local_config
+      - verify_new_path
+      - verify_no_legacy_references
+      - update_operations_ledger
+    forbiddenActions:
+      - ask_owner_for_local_config_sync
+    expectedResults:
+      - CONTINUE_AUTONOMOUSLY
+      - OWNER_NOTIFICATION
+
+  COMMIT_READINESS_REQUESTED:
+    requiredDocuments:
+      - agents
+      - project-current
+      - project-open-work
+    allowedActions:
+      - run_make_check
+      - run_git_diff_check
+      - verify_review_verdict
+      - verify_audit_verdict_or_na
+      - verify_architecture_sync
+      - compute_readiness
+    forbiddenActions:
+      - commit_without_independent_review
+      - commit_with_not_evaluated_audit
+    expectedResults:
+      - READY_FOR_COMMIT
+      - BLOCKED
+
+  READY_FOR_COMMIT:
+    requiredDocuments:
+      - agents
+      - project-current
+    allowedActions:
+      - create_local_commit
+      - record_sha
+      - update_operations_ledger
+      - report_to_owner
+    forbiddenActions:
+      - push_without_commit_readiness
+      - force_push
+    expectedResults:
+      - CONTINUE_AUTONOMOUSLY
+      - OWNER_NOTIFICATION
+
+  INTEGRATION_COMPLETED:
+    requiredDocuments:
+      - agents
+      - project-current
+      - project-open-work
+    allowedActions:
+      - update_integration_head
+      - close_issue
+      - publish_completion_report
+      - update_changelog
+    forbiddenActions:
+      - close_without_completion_report
+    expectedResults:
+      - COMPLETE
+
+  CI_FAILED:
+    requiredDocuments:
+      - agents
+      - project-current
+    allowedActions:
+      - diagnose_failure
+      - fix_and_rerun
+      - record_blocker_if_external
+    forbiddenActions:
+      - bypass_ci
+      - force_push_to_resolve
+    expectedResults:
+      - CONTINUE_AUTONOMOUSLY
+      - BLOCKED
+
+  BLOCKER_DETECTED:
+    requiredDocuments:
+      - agents
+      - project-current
+      - project-open-work
+    allowedActions:
+      - classify_blocker
+      - record_blocker
+      - determine_unblocking_action
+    forbiddenActions:
+      - continue_past_blocker
+    expectedResults:
+      - BLOCKED
+      - OWNER_REQUIRED
+
+  INCIDENT_DETECTED:
+    requiredDocuments:
+      - agents
+      - project-current
+    allowedActions:
+      - classify_incident
+      - record_incident
+      - apply_containment
+      - prepare_correction
+    forbiddenActions:
+      - continue_without_incident_record
+    expectedResults:
+      - BLOCKED
+      - OWNER_REQUIRED
+      - CONTINUE_AUTONOMOUSLY
+
+  HISTORICAL_INVESTIGATION:
+    requiredDocuments:
+      - agents
+    allowedActions:
+      - load_specific_historical_evidence
+      - verify_subject_revision
+      - note_transferability_limits
+    forbiddenActions:
+      - treat_historical_as_current
+      - load_all_historical_by_default
+    expectedResults:
+      - CONTINUE_AUTONOMOUSLY
+      - NOT_EVALUATED

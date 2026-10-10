@@ -1,0 +1,10 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+import argparse
+from pathlib import Path
+from governance_lib import *
+p=argparse.ArgumentParser();p.add_argument("--assignment",required=True);p.add_argument("--context",required=True);p.add_argument("--workspace-binding",required=True);p.add_argument("--output",required=True);a=p.parse_args()
+assignment=load_data(Path(a.assignment));context=load_data(Path(a.context));binding=load_data(Path(a.workspace_binding))
+result="ADMITTED" if context.get("admission",{}).get("result")=="ADMITTED" else "INVALID_ADMISSION"
+out={"apiVersion":"coord.dev/v1alpha1","kind":"AgentBootstrap","metadata":{"bootstrapId":assignment.get("assignmentId")},"session":assignment.get("session",{}),"assignment":assignment,"workspaceBinding":binding,"actionContext":context,"bootstrapValidation":{"result":result}}
+dump_json(Path(a.output),out);print(result);raise SystemExit(0 if result=="ADMITTED" else 1)

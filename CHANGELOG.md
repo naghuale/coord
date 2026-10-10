@@ -1,5 +1,9 @@
 # История изменений
 
+## 2026-10-10 — ActionContext resolver и fail-closed launcher (AIAG-03 prototype)
+
+- Добавлены `scripts/governance_lib.py`, `scripts/resolve-action-context`, `scripts/check-action-context`, `scripts/build-agent-bootstrap`, `scripts/launch-agent` — рабочий прототип resolver и fail-closed launcher из coord-resolver-launcher-kit; `config/CONTEXT-BUDGETS.yaml` (operational budgets); `docs/operations/ACTION-MAP.yaml` (машиночитаемая YAML-проекция ACTION-MAP.md, proposed); `tests/test_resolver_launcher.py` (5 тестов); `examples/project/` (test fixtures); `examples/*.yaml`; `.gitlab/ci/resolver-launcher.yml`; `action-map-yaml` зарегистрирован в DOCUMENT-REGISTRY.yaml (141 документ); Makefile target `check-resolver-launcher` добавлен в `check`; launcher enforcement не реализован до AIAG-04. (`TestCurrentChangelogEntriesHaveEvidence`)
+
 ## 2026-10-10 — AI Agent Governance work plan: docs/plans/ai-agent-governance и .github/ISSUE_TEMPLATE
 
 - Добавлены 18 Issue-описаний AIAG-01..AIAG-18 (`docs/plans/ai-agent-governance/issues/`), work plan (`GITLAB-WORK-PLAN.md`), приоритеты и оценки (`PRIORITY-AND-ESTIMATION.md`), `README.md`, `labels.txt`, `issues.csv`; 6 GitHub Issue templates `.github/ISSUE_TEMPLATE/` (AI_Agent_Implementation, AI_Agent_Decision_R, AI_Agent_TD_R2, AI_Agent_External_Dependency, AI_Agent_Baseline_Promotion, AI_Agent_Incident); все 21 документ зарегистрированы в DOCUMENT-REGISTRY.yaml (140 документов); статус `proposed`; нормативные только после принятия RFC-0002. (`TestCurrentChangelogEntriesHaveEvidence`)

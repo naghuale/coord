@@ -1,0 +1,6 @@
+kind: AgentContextBudgets
+budgets:
+  COORDINATOR: {maxDocuments: 7, maxHistoricalDocuments: 0, maxInputTokens: 24000}
+  EXECUTOR: {maxDocuments: 6, maxHistoricalDocuments: 0, maxInputTokens: 20000}
+  REVIEWER: {maxDocuments: 8, maxHistoricalDocuments: 0, maxInputTokens: 28000}
+  AUDITOR: {maxDocuments: 10, maxHistoricalDocuments: 1, maxInputTokens: 32000}

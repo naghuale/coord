@@ -1,0 +1,19 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+import argparse, sys
+from pathlib import Path
+from governance_lib import *
+
+def main():
+    p=argparse.ArgumentParser();p.add_argument("context");p.add_argument("--project-root",required=True);a=p.parse_args();root=Path(a.project_root).resolve();c=load_data(Path(a.context));errors=[]
+    if c.get("kind")!="ActionContext": errors.append("kind")
+    if c.get("admission",{}).get("result")!="ADMITTED": errors.append("admission")
+    if c.get("documents",{}).get("missing"): errors.append("missing_documents")
+    if c.get("documents",{}).get("rejectedAsAuthority"): errors.append("authority_rejections")
+    for d in [c.get("registry"),c.get("actionMap")]+c.get("documents",{}).get("required",[]):
+        if not d: continue
+        path=require_within(root/d["path"],root)
+        if not path.is_file() or sha256_file(path)!=d["digest"]: errors.append(f"digest:{d['path']}")
+    if errors: print("ACTION_CONTEXT_INVALID: "+", ".join(errors),file=sys.stderr);return 1
+    print("ACTION_CONTEXT_VALID");return 0
+if __name__=="__main__": raise SystemExit(main())

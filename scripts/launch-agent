@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+import argparse, os, subprocess, sys
+from pathlib import Path
+from governance_lib import *
+
+def main():
+    p=argparse.ArgumentParser(description="Fail-closed launcher. Dry-run unless --execute.")
+    p.add_argument("--bootstrap",required=True);p.add_argument("--execute",action="store_true");p.add_argument("--receipt",required=True);p.add_argument("command",nargs=argparse.REMAINDER);a=p.parse_args()
+    b=load_data(Path(a.bootstrap)); errors=[]
+    if b.get("kind")!="AgentBootstrap": errors.append("BOOTSTRAP_KIND_INVALID")
+    if b.get("bootstrapValidation",{}).get("result")!="ADMITTED": errors.append("BOOTSTRAP_NOT_ADMITTED")
+    ctx=b.get("actionContext",{}); assign=b.get("assignment",{}); wb=b.get("workspaceBinding",{})
+    if ctx.get("admission",{}).get("result")!="ADMITTED": errors.append("ACTION_CONTEXT_NOT_ADMITTED")
+    project_root=Path(wb.get("projectRoot","")).resolve(); repo_root=Path(wb.get("repositoryRoot","")).resolve(); worktree=Path(assign.get("assignedWorktree","")).resolve()
+    if not project_root.is_dir(): errors.append("PROJECT_ROOT_INVALID")
+    if not within(repo_root,project_root): errors.append("REPOSITORY_OUTSIDE_PROJECT")
+    if not within(worktree,project_root): errors.append("WORKTREE_OUTSIDE_PROJECT")
+    if Path.cwd().resolve()!=project_root: errors.append("LAUNCH_CWD_MUST_EQUAL_PROJECT_ROOT")
+    base=assign.get("baseSha"); observed=None
+    if repo_root.is_dir():
+        cp=subprocess.run(["git","-C",str(repo_root),"rev-parse","HEAD"],text=True,capture_output=True)
+        if cp.returncode==0: observed=cp.stdout.strip()
+    if not observed or observed!=base: errors.append("BASE_SHA_MISMATCH")
+    cmd=a.command[1:] if a.command and a.command[0]=="--" else a.command
+    if not cmd: errors.append("COMMAND_MISSING")
+    allowed=assign.get("tools",{}).get("allowedExecutables",[])
+    if cmd and Path(cmd[0]).name not in allowed and cmd[0] not in allowed: errors.append("EXECUTABLE_NOT_ALLOWED")
+    if assign.get("realSideEffects",{}).get("allowed") is not False: errors.append("SIDE_EFFECT_POLICY_NOT_FALSE")
+    for d in [ctx.get("registry"),ctx.get("actionMap")]+ctx.get("documents",{}).get("required",[]):
+        if not d: continue
+        path=require_within(project_root/d["path"],project_root)
+        if not path.is_file() or sha256_file(path)!=d["digest"]: errors.append("DOCUMENT_DIGEST_MISMATCH:"+d["path"])
+    receipt={"kind":"AgentLaunchReceipt","bootstrapId":b.get("metadata",{}).get("bootstrapId"),"command":cmd,"projectRoot":str(project_root),"repositoryRoot":str(repo_root),"assignedWorktree":str(worktree),"baseShaExpected":base,"baseShaObserved":observed,"executed":False,"errors":errors}
+    if errors: dump_json(Path(a.receipt),receipt);print("LAUNCH_REJECTED: "+", ".join(errors),file=sys.stderr);return 1
+    if not a.execute: dump_json(Path(a.receipt),receipt);print("LAUNCH_DRY_RUN_PASS");return 0
+    env=os.environ.copy();env.update({"COORD_PROJECT_ROOT":str(project_root),"COORD_REPOSITORY_ROOT":str(repo_root),"COORD_ASSIGNED_WORKTREE":str(worktree),"COORD_ACTION_CONTEXT":str(Path(a.bootstrap).resolve())})
+    cp=subprocess.run(cmd,cwd=project_root,env=env,shell=False)
+    receipt.update({"executed":True,"exitCode":cp.returncode});dump_json(Path(a.receipt),receipt);return cp.returncode
+if __name__=="__main__":
+    try: raise SystemExit(main())
+    except GovernanceError as e: print(f"{e.code}: {e.message}",file=sys.stderr);raise SystemExit(2)

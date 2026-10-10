@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+import argparse, sys
+from pathlib import Path
+from governance_lib import *
+
+def main():
+    ap=argparse.ArgumentParser(description="Resolve a fail-closed ActionContext")
+    ap.add_argument("--project-root",required=True); ap.add_argument("--request",required=True)
+    ap.add_argument("--registry",default="docs/DOCUMENT-REGISTRY.yaml")
+    ap.add_argument("--action-map",default="docs/operations/ACTION-MAP.yaml")
+    ap.add_argument("--budgets",default="config/CONTEXT-BUDGETS.yaml")
+    ap.add_argument("--output",required=True)
+    a=ap.parse_args(); root=Path(a.project_root).resolve(); errors=[]
+    request=load_data(Path(a.request)); registry_path=require_within(root/a.registry,root); map_path=require_within(root/a.action_map,root); budgets_path=Path(a.budgets).resolve()
+    registry=load_data(registry_path); amap=load_data(map_path); budgets=load_data(budgets_path); idx=registry_index(registry)
+    event=request.get("event"); role=request.get("role")
+    if not event: errors.append({"code":"EVENT_MISSING","message":"request.event is required"})
+    events=amap.get("events",{}); spec=events.get(event)
+    if not spec: errors.append({"code":"UNKNOWN_EVENT","message":str(event)}); spec={"requiredDocuments":[],"allowedActions":[],"forbiddenActions":[],"expectedResults":["UNKNOWN_EVENT"]}
+    budget=budgets.get("budgets",{}).get(role)
+    if not budget: errors.append({"code":"ROLE_BUDGET_MISSING","message":str(role)}); budget={"maxDocuments":0,"maxHistoricalDocuments":0}
+    required_ids=[]
+    for x in spec.get("requiredDocuments",[])+request.get("owningDocumentIds",[])+request.get("additionalDocumentIds",[]):
+        if x not in required_ids: required_ids.append(x)
+    selected=[]; rejected=[]; missing=[]; historical=0
+    for doc_id in required_ids:
+        doc=idx.get(doc_id)
+        if not doc: missing.append(doc_id); errors.append({"code":"DOCUMENT_UNREGISTERED","message":doc_id}); continue
+        reason=authority_check(doc,event,request)
+        if reason:
+            rejected.append({"id":doc_id,"path":doc["path"],"reason":reason}); errors.append({"code":"AUTHORITY_VIOLATION","message":f"{doc_id}: {reason}"}); continue
+        p=require_within(root/doc["path"],root)
+        if not p.is_file(): missing.append(doc_id); errors.append({"code":"REQUIRED_DOCUMENT_MISSING","message":str(p)}); continue
+        if doc.get("status")=="historical": historical+=1
+        selected.append({"id":doc_id,"path":doc["path"],"digest":sha256_file(p),"sections":doc.get("sections",[]),"reason":"required_by_event" if doc_id in spec.get("requiredDocuments",[]) else "owning_or_additional"})
+    if len(selected)>int(budget.get("maxDocuments",0)): errors.append({"code":"CONTEXT_BUDGET_EXCEEDED","message":f"documents={len(selected)} max={budget.get('maxDocuments')}"})
+    if historical>int(budget.get("maxHistoricalDocuments",0)): errors.append({"code":"HISTORICAL_BUDGET_EXCEEDED","message":f"historical={historical}"})
+    subject=request.get("subject",{})
+    for key in ("projectId","assignmentId","baseSha"):
+        if not subject.get(key): errors.append({"code":"SUBJECT_BINDING_MISSING","message":key})
+    result="ADMITTED" if not errors else "INVALID_ADMISSION"
+    ctx={"apiVersion":"coord.dev/v1alpha1","kind":"ActionContext","event":event,"role":role,"subject":subject,
+         "registry":{"id":"document-registry","path":a.registry,"digest":sha256_file(registry_path)},
+         "actionMap":{"id":"action-map","path":a.action_map,"digest":sha256_file(map_path)},
+         "documents":{"required":selected,"conditional":[],"rejectedAsAuthority":rejected,"missing":missing},
+         "transition":{"allowedActions":spec.get("allowedActions",[]),"forbiddenActions":spec.get("forbiddenActions",[]),"expectedResults":spec.get("expectedResults",[])},
+         "contextBudget":budget,"admission":{"result":result,"authorityViolations":len(rejected),"errors":errors}}
+    dump_json(Path(a.output),ctx); print(result)
+    return 0 if result=="ADMITTED" else 1
+if __name__=="__main__":
+    try: raise SystemExit(main())
+    except GovernanceError as e: print(f"{e.code}: {e.message}",file=sys.stderr); raise SystemExit(2)

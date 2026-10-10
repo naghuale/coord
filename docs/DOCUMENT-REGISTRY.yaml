@@ -3066,6 +3066,34 @@ documents:
       reviewer: required
       auditor: conditional_if_TD_R2
       owner: false_until_rfc_accepted
+  - id: action-map-yaml
+    path: docs/operations/ACTION-MAP.yaml
+    class: process
+    status: proposed
+    purpose:
+      - machine-readable YAML projection of ACTION-MAP.md; used by resolve-action-context and check-action-context scripts
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - ISSUE_PLANNING
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: false
+      owner: false
   - id: aiag-work-plan
     path: docs/plans/ai-agent-governance/GITLAB-WORK-PLAN.md
     class: design

@@ -1,0 +1,8 @@
+apiVersion: coord.dev/v1alpha1
+kind: DocumentRegistry
+documents:
+  - {id: agents, path: AGENTS.md, class: process, status: active, readWhen: [SESSION_STARTED, REVIEW_CHANGES_REQUIRED], currentOperationalAuthority: true}
+  - {id: current, path: operations/project/CURRENT.yaml, class: active_context, status: active, readWhen: [SESSION_STARTED], currentOperationalAuthority: true}
+  - {id: open-work, path: operations/project/OPEN-WORK.yaml, class: active_context, status: active, readWhen: [SESSION_STARTED], currentOperationalAuthority: true}
+  - {id: review-result, path: operations/project/REVIEW-RESULT.yaml, class: active_context, status: active, readWhen: [REVIEW_CHANGES_REQUIRED], currentOperationalAuthority: true}
+  - {id: history, path: docs/HISTORY.md, class: historical, status: historical, readWhen: [HISTORICAL_INVESTIGATION], currentOperationalAuthority: false}

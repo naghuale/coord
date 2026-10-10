@@ -1,0 +1,15 @@
+resolver-launcher:
+  stage: verify
+  image: python:3.12-slim
+  before_script:
+    - python -m pip install PyYAML
+  script:
+    - make check
+  rules:
+    - changes:
+        - scripts/**
+        - schemas/**
+        - config/**
+        - tests/**
+        - .gitlab/ci/resolver-launcher.yml
+    - when: never
