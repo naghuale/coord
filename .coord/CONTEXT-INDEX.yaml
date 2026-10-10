@@ -22,7 +22,7 @@ index:
 
   sessionManifest:
     question: "Что конкретная сессия загрузила / что compacted?"
-    source: ops/coord/coordinator/operations/sessions/<sessionId>/CONTEXT-MANIFEST.yaml
+    source: ops/coord/project/operations/sessions/<sessionId>/CONTEXT-MANIFEST.yaml
 
   agentRules:
     question: "Правила работы агентов, источники истины, autonomy, commit readiness"
@@ -66,7 +66,8 @@ index:
 
   taskAssignment:
     question: "Полная история задачи N, решения, SHA"
-    source: ops/coord/coordinator/operations/assignments/<issue>.yaml
+    source: ops/coord/project/operations/assignments/issue-<N>.yaml
+    also: ops/coord/coordinator/operations/assignments/<taskId>/assignment.yaml
 
   changelog:
     question: "Что изменилось и в каком issue"

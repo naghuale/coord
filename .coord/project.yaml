@@ -53,7 +53,8 @@ contextModel:
       name: currentTaskContext
       loadOnDemand: true
       files:
-        - ops/coord/coordinator/operations/assignments/<task>.yaml
+        - ops/coord/project/operations/assignments/issue-<N>.yaml
+        - ops/coord/coordinator/operations/assignments/<taskId>/assignment.yaml
     - layer: 4
       name: archive
       loadOnDemand: true
