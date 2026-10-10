@@ -6,17 +6,21 @@ project:
   id: coord
   source:
     branch: p0-2-task
-    commit: 66a15ba
+    commit: 1f12fe4
 
 currentStage: workspace-migration
 
-active:
-  - issue: 37
-    title: Migrate coordinator → repositories/coord
-    state: ACTIVE
-    note: directory migrated to workspace-01/repositories/coord; COORD_REPOSITORY_ROOT updated; make check PASS via wrapper
+active: []
 
 completedThisSession:
+  - issue: 37
+    state: COMPLETE
+    commits: [8582d15, 180cac7, 1f12fe4]
+    mergedTo: p0-2-task
+    ci: PENDING
+    note: wrapper REVIEW_ACCEPTED (Codex); directory migrated to repositories/coord; make check PASS via wrapper
+    completionReport: "https://github.com/naghuale/coord/issues/37#issuecomment-6095103070"
+
   - issue: 41
     state: COMPLETE
     commits: [9863dbd, 837c5f0, 66a15ba]
