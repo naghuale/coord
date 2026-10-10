@@ -2,6 +2,7 @@
 
 - **Статус:** Accepted
 - **Дата:** 2026-10-07
+- **Редакционная пометка:** 2026-10-10: заменён устаревший inline-блок реализации ссылкой на COMPONENT-STATUS.yaml; исправлены статусы RT-02, RT-03, RT-04, RT-06 — sync с принятым кодом; уточнена readiness; добавлен маркер ADR-0009 в Process Ownership; диаграмма RT-04 в code block; терминология Task.Fence/Run.Fence унифицирована — FD, принятые нормы не затронуты
 - **Область:** runtime ownership и процессный контракт production daemon Coord
 - **Связанные решения:** ADR-0001 Canonical Coordination Model; ADR-0002 Project Dependency Graph; ADR-0003 External Reference Model
 
@@ -12,20 +13,19 @@ Production daemon и единый runtime write path реализованы не
 Storage должен выбираться с учётом требований daemon к ownership, fencing,
 durable transitions, recovery и готовности API.
 
-Этот ADR задаёт целевое поведение, а не описание текущей реализации. Состояние
-реализации на 2026-10-08:
+Этот ADR задаёт целевую нормативную модель.
 
-- каркас daemon реализован: `cmd/coordd`, ownership namespace, readiness и
-  recovery (RT-01, RT-03). P0-1 остаётся в работе, его полная приёмка не закрыта
-  (ROADMAP, R82);
-- Task-wide Fence реализован частично: storage transition и startup validation
-  проверяют цепочку Fence (RT-06);
-- write path реализован частично: canonical store фиксирует Inbox receipt вместе
-  с Task и Domain Event в одном commit (RT-04). Единый API/CLI/agent command
-  path через daemon не реализован.
+Текущее состояние реализации, доказательства и незакрытые части компонентов
+ведутся в:
 
-Изменено решением OWNER R119 (2026-10-08): обновлены только сведения о
-реализации. Статус и нормы ADR не менялись.
+- `docs/architecture/COMPONENT-STATUS.yaml`;
+- `docs/ARCHITECTURE.md`;
+- `docs/TARGET-ARCHITECTURE.md`.
+
+Наличие canonical core не означает подключения production caller path.
+
+Решением OWNER R119 (2026-10-08) был обновлён только статус реализации;
+нормативные требования ADR не менялись.
 
 Нельзя допустить, чтобы CLI, Dashboard, Telepathy adapter или второй daemon
 получили независимые пути записи в одно состояние.
@@ -64,7 +64,7 @@ CLI, Dashboard, API handlers, agent adapters и Telepathy не владеют о
 жизненный цикл процесса daemon и подтверждение остановки старого writer; он не
 становится владельцем Task workflow.
 
-Проверка: не реализовано
+Проверка: частично — `TestCoorddSecondProcessCannotOpenOwnedNamespace`, `TestCanonicalFileRoundTripsTaskEventAndExplicitRunRelation`; не реализовано: единый production write path, Project Dependency Graph, External References, scheduler, Artifacts model.
 
 ### RT-03 — Recovery и readiness
 
@@ -81,17 +81,20 @@ CLI, Dashboard, API handlers, agent adapters и Telepathy не владеют о
    старого writer, через supervisor.
 
 Если целостность или durability не подтверждены, daemon остаётся not-ready и
-отказывает в обычных изменяющих операциях. Пока transport receive не
-инициализирован, control API закрыт; после инициализации supervisor recovery
-endpoints остаются доступны при not-ready, поскольку только они могут завершить
-ожидание stop proof. Неопределённая ошибка durable commit требует
-остановить дальнейшие записи и reopen/recovery согласно ADR-0001.
+отказывает в обычных изменяющих операциях. До инициализации transport receive
+обычные изменяющие endpoints закрыты. При состоянии not-ready обычные workflow
+mutations остаются закрыты; минимальные supervisor recovery endpoints MAY быть
+доступны только после инициализации их authentication и transport boundary,
+поскольку они нужны для получения stop proof и завершения recovery. Доступность
+recovery endpoints не означает общую readiness daemon. Неопределённая ошибка
+durable commit требует остановить дальнейшие записи и reopen/recovery согласно
+ADR-0001.
 
 Crash/restart сохраняет каноническое состояние: daemon восстанавливает его из
 durable storage и продолжает только после повторной проверки ownership и
 инвариантов. Временная память daemon не является источником истины.
 
-Проверка: частично — `TestDaemonReadinessKeepsMutationsClosedDuringRecovery`, `TestCoorddProcessRestartRestoresAndReplaysOutboxBeforeReady`; не реализовано: проверки схемы и инвариантов Task (шаг 2) и Task.Fence (шаг 5)
+Проверка: частично — `TestDaemonReadinessKeepsMutationsClosedDuringRecovery`, `TestCoorddProcessRestartRestoresAndReplaysOutboxBeforeReady`; не реализовано: полная проверка схемы и Task-инвариантов (шаг 2), полный Task.Fence startup check (шаг 5), production recovery, supervisor stop proof, readiness охватывающая весь набор RT-03.
 
 ### RT-04 — Write Path
 
@@ -120,9 +123,18 @@ Domain Event и необходимые Outbox records согласно ADR-0001.
 в ту же транзакцию. Публикация нового состояния в памяти происходит только после
 durable commit.
 
-Проверка: частично — `TestApplyInboxCommandCommitsReceiptWithTaskEventAndDeduplicates`, `TestApplyInboxCommandRejectsStaleExpectedRevision`, `TestApplyInboxCommandRequiresSameCommitEventAndPreservesStateOnFailure`; не реализовано: command interface daemon, проверки подписи, субъекта, capability, Session generation и Task.Fence входящей команды, единый путь записи для всех writer (localchat host пишет runs.json напрямую)
+Canonical command boundary реализована на store model и проверяет: authenticated
+signed frame; AgentSession, generation и ключ; Run assignment; Task.Fence и Attempt;
+role и Stage; replay и ExpectedRevision; атомарную запись transition, DomainEvent,
+Inbox receipt и Outbox. `ApplyAgentCommand` пока вызывается только из тестов.
+Проверка: частично — `TestApplyInboxCommandCommitsReceiptWithTaskEventAndDeduplicates`, `TestApplyInboxCommandRejectsStaleExpectedRevision`; не реализовано: production daemon endpoint, production CLI/Telepathy caller, OwnerCredential, Executor RESULT path, единый write path для всех legacy writers.
 
 ### RT-05 — Read Path
+
+> **RT-05 задаёт целевую read boundary.** Read-only Task API, Startup Card и
+> Dashboard API не являются текущими product capabilities до принятия ADR-0006
+> и их реализации. Существующий recovery-oriented control endpoint не является
+> реализацией RT-05.
 
 CLI, Dashboard, API и диагностические клиенты читают каноническое состояние и
 проекции через read interface daemon. Они не читают и не модифицируют storage
@@ -150,9 +162,18 @@ Assign/rework не допускает два активных writer Runs на T
 не передаёт владение, пока внешний supervisor не подтвердил остановку старого
 writer. Детальные состояния и переходы зафиксированы ADR-0001.
 
-Проверка: частично — `TestFenceValidationPrecedesOwnerAndDeduplication`, `TestRecoveryCASAndOldOwnerRejected`, `TestCanonicalTransitionRejectsOwnerChangeWithoutTaskFenceBump`, `TestCanonicalTransitionRejectsFenceBumpWithoutOwnershipTransfer`, `TestCanonicalTransitionRejectsFenceJump`, `TestCanonicalTransitionRequiresOwnershipTransferEvent`, `TestCanonicalTransitionRequiresRunFenceToMatchTaskFence`, `TestCanonicalTransitionRejectsSecondActiveWriter`, `TestCanonicalTransitionRejectsRecoveryWithoutStalledRecoveryClaim`, `TestCanonicalTransitionRejectsFenceOverflow`; не реализовано: incoming write и recovery CAS против текущего `Task.Fence` в production command path, stop proof supervisor до передачи владения
+Canonical `ApplyAgentCommand` проверяет Task.Fence, Run.Fence и current writer до
+durable transition. Полный список evidence — component `task-wide-fencing` в
+`docs/architecture/COMPONENT-STATUS.yaml`.
+Проверка: частично — `TestFenceValidationPrecedesOwnerAndDeduplication`, `TestRecoveryCASAndOldOwnerRejected`; не реализовано: production caller path, production supervisor recovery CAS, stop proof, ownership transfer через canonical daemon command path.
 
 ## Process Ownership
+
+Этот ADR задаёт разделение ответственности daemon и внешнего supervisor. Конкретные
+Session Registry, process identity, admission и termination-plan контракты
+определяются ADR-0009. До принятия и реализации ADR-0009 proposed session/process
+states не являются доказательством текущего состояния процесса и не разрешают
+process control.
 
 Coord daemon не запускает и не останавливает процессы агентов самостоятельно.
 Это обязанность внешнего supervisor. Daemon запрашивает действия supervisor и

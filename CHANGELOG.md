@@ -1,5 +1,23 @@
 # История изменений
 
+## 2026-10-10 — ADR-0004 normative cleanup: stale implementation status, readiness clarification, ADR-0009 boundary (документация)
+
+- (документация) ADR-0004-RUNTIME-AND-DAEMON-MODEL.md: редакционная пометка
+  добавлена; все правки FD — принятые нормы RT-01–RT-06 не затронуты.
+  - Заменён устаревший inline-блок реализации ссылкой на COMPONENT-STATUS.yaml.
+  - RT-02: исправлен статус — «не реализовано» → «частично» с test evidence;
+    daemon ownership и canonical persistence реализованы частично.
+  - RT-03: обновлён статус с оставшимися пробелами (production recovery, stop proof);
+    уточнена readiness — явно разделены ordinary mutations, supervisor recovery
+    endpoints и diagnostics.
+  - RT-04: обновлён статус — canonical command boundary реализована на store model,
+    production caller path не подключён; диаграмма оставлена в code block.
+  - RT-05: добавлен маркер «целевая read boundary, не product capability до ADR-0006».
+  - RT-06: укорочен список тестов — два ключевых + ссылка на component registry;
+    добавлено явное упоминание `ApplyAgentCommand`.
+  - Process Ownership: добавлен маркер ADR-0009 для Session Registry и process identity.
+  - Task.Fence / Run.Fence: унифицированы термины везде в документе.
+
 ## 2026-10-10 — ADR-0003 normative cleanup: PriorStatus, EXT-11, provider evidence, TID-01a fix (документация)
 
 - (документация) ADR-0003-EXTERNAL-REFERENCE-MODEL.md: редакционная пометка
