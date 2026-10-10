@@ -403,6 +403,111 @@ developmentProcess:
         - update_operations_ledger
       ownerRequired: false
 
+  # ── Next-action states ───────────────────────────────────────────────────
+  nextActionStates:
+    NEXT_ACTION_REQUIRED:
+      action: derive_next_action_from_state_machine_norms_roadmap_ledger
+      next:
+        autonomous: EXECUTION_CONTINUES
+        uncertain: OWNER_BOUNDARY_CHECK
+      ownerRequired: false
+
+    OWNER_BOUNDARY_CHECK:
+      action: verify_r142_boundary_with_decision_trace
+      next:
+        boundaryConfirmed: OWNER_REQUIRED
+        boundaryNotConfirmed: QUESTION_SUPPRESSED
+      ownerRequired: false
+
+    QUESTION_SUPPRESSED:
+      action: execute_derived_autonomous_transition
+      ownerRequired: false
+
+    ISSUE_CLOSURE_REQUIRED:
+      action:
+        - verify_completion_report
+        - verify_ci_and_integration_sha
+        - close_issue
+        - update_current_yaml
+        - update_open_work_yaml
+      next: CONTEXT_SYNC_REQUIRED
+      ownerRequired: false
+
+    CONTEXT_SYNC_REQUIRED:
+      action:
+        - compact_completed_work
+        - activate_next_task
+        - run_context_probes
+      next: CONTEXT_READY
+      ownerRequired: false
+
+    OWNER_NOTIFICATION:
+      action: post_brief_completion_fact_to_owner
+      ownerDecisionRequired: false
+      note: OWNER_NOTIFICATION MUST NOT convert to OWNER_REQUIRED
+
+  # ── Coordinator priority order ────────────────────────────────────────────
+  coordinatorPriorityOrder:
+    - securityOrFailClosedDefect
+    - changesRequired
+    - completeActiveReviewOrAudit
+    - completeActiveIssue
+    - closeConfirmedCompleteIssue
+    - eliminateNearestBlocker
+    - executeNextRoadmapStep
+    - selectNewReadyTask
+    - ownerRequiredOnlyAtConfirmedR142Boundary
+
+  # ── Prohibited OWNER question reasons ────────────────────────────────────
+  prohibitedOwnerQuestionReasons:
+    - coordinator uncertain without prior source lookup
+    - no active Reviewer or Auditor
+    - Reviewer or Auditor returned CHANGES_REQUIRED
+    - CI failed
+    - evidence missing
+    - context stale or incomplete
+    - need to create worktree, branch, Issue or assignment
+    - need to commit, push or perform approved integration
+    - need to install already-accepted local tool
+    - local path changed after accepted migration
+    - file is outside Git repo but inside approved root
+    - need to update projects.yaml, environment or context files
+    - need to close a confirmed-complete Issue
+    - multiple technical approaches with same observable result
+    - no literal instruction but decision follows from active norms
+    - need to select next task by accepted ROADMAP
+
+  # ── Behavior metrics ──────────────────────────────────────────────────────
+  behaviorMetrics:
+    unnecessaryOwnerQuestions: 0
+    suppressedOwnerQuestions: 0
+    ownerQuestionsWithBoundaryEvidence: 0
+    ownerQuestionsWithoutBoundaryEvidence: 0
+    gates:
+      - ownerQuestionsWithoutBoundaryEvidence > 0: ContextCheck FAIL
+      - unnecessaryOwnerQuestions > 0: CoordinatorAutonomyScenario FAIL
+
+  # ── Behavioral scenarios ──────────────────────────────────────────────────
+  behavioralScenarios:
+    scenario_1_active_issue_not_complete:
+      given: {issue: active, nextStepKnown: true, anotherMilestoneAvailable: true}
+      expect: {ownerQuestion: false, action: complete_active_issue}
+    scenario_2_changes_required:
+      given: {verdict: CHANGES_REQUIRED, findingsWithinScope: true, newNormRequired: false}
+      expect: {ownerQuestion: false, action: fix_and_repeat_review}
+    scenario_3_path_changed_after_migration:
+      given: {migrationAccepted: true, repositoryPathChanged: true}
+      expect: {ownerQuestion: false, action: sync_local_configuration}
+    scenario_4_human_launch_required:
+      given: {commandPrepared: true, productDecisionMade: true, physicalLaunchRequiresHuman: true}
+      expect: {result: HUMAN_ACTION_REQUIRED, ownerDecisionRequired: false}
+    scenario_5_next_milestone_defined:
+      given: {currentMilestoneComplete: true, nextMilestoneDefined: true, entryGatesCheckable: true}
+      expect: {ownerQuestion: false, action: evaluate_entry_readiness}
+    scenario_6_genuine_norm_conflict:
+      given: {acceptedNormA: present, acceptedNormB: incompatible, technicalResolutionPossible: false}
+      expect: {result: OWNER_REQUIRED, action: present_conflict_and_options}
+
   # ── Scenarios ─────────────────────────────────────────────────────────────
   scenarios:
     repository_path_changed_after_accepted_migration:

@@ -222,6 +222,63 @@ Infrastructure failure must not mask product failure.
 Local file operations, environment changes, installation of an already-accepted
 tool, and launching an already-approved session are not new OWNER decisions.
 
+### Next-action derivation
+
+| State | Action | Next | OWNER |
+|---|---|---|---|
+| `NEXT_ACTION_REQUIRED` | Derive next action from State Machine, norms, ROADMAP and ledger | Autonomous: `EXECUTION_CONTINUES`; uncertain: `OWNER_BOUNDARY_CHECK` | No |
+| `OWNER_BOUNDARY_CHECK` | Verify R142 boundary with full Decision Trace | Confirmed: `OWNER_REQUIRED`; not confirmed: `QUESTION_SUPPRESSED` | No |
+| `QUESTION_SUPPRESSED` | Execute derived autonomous transition | — | No |
+| `ISSUE_CLOSURE_REQUIRED` | Verify Completion Report, CI, integration SHA; close issue; update CURRENT + OPEN-WORK | `CONTEXT_SYNC_REQUIRED` | No |
+| `CONTEXT_SYNC_REQUIRED` | Compact completed work; activate next task; run context probes | `CONTEXT_READY` | No |
+| `OWNER_NOTIFICATION` | Post brief completion fact to OWNER (no reply required) | Continue | No |
+
+**Coordinator priority order** (choose next work in this sequence):
+
+1. Security or fail-closed defect
+2. `CHANGES_REQUIRED` from Reviewer or Auditor
+3. Complete active Review or Audit
+4. Complete active Issue
+5. Close confirmed-complete Issue and sync context
+6. Eliminate nearest blocker
+7. Execute next ROADMAP step
+8. Select new ready task in current milestone
+9. `OWNER_REQUIRED` only at confirmed R142 boundary
+
+**Prohibited false-choice questions to OWNER**: coordinator MUST NOT offer OWNER a
+choice between variants when at least one variant is ordinary execution of an
+accepted norm and the other is blocked, requires separate OWNER decision, belongs
+to a later stage, does not close the active Issue, or creates additional
+unfinished work.
+
+### Behavioral scenarios
+
+```yaml
+scenario_1_active_issue_not_complete:
+  given: {issue: active, nextStepKnown: true, anotherMilestoneAvailable: true}
+  expect: {ownerQuestion: false, action: complete_active_issue}
+
+scenario_2_changes_required:
+  given: {verdict: CHANGES_REQUIRED, findingsWithinScope: true, newNormRequired: false}
+  expect: {ownerQuestion: false, action: fix_and_repeat_review}
+
+scenario_3_path_changed_after_migration:
+  given: {migrationAccepted: true, repositoryPathChanged: true}
+  expect: {ownerQuestion: false, action: sync_local_configuration}
+
+scenario_4_human_launch_required:
+  given: {commandPrepared: true, productDecisionMade: true, physicalLaunchRequiresHuman: true}
+  expect: {result: HUMAN_ACTION_REQUIRED, ownerDecisionRequired: false}
+
+scenario_5_next_milestone_defined:
+  given: {currentMilestoneComplete: true, nextMilestoneDefined: true, entryGatesCheckable: true}
+  expect: {ownerQuestion: false, action: evaluate_entry_readiness}
+
+scenario_6_genuine_norm_conflict:
+  given: {acceptedNormA: present, acceptedNormB: incompatible, technicalResolutionPossible: false}
+  expect: {result: OWNER_REQUIRED, action: present_conflict_and_options}
+```
+
 ### Decision states
 
 | State | Meaning | Requires |
