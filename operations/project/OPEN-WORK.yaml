@@ -14,7 +14,7 @@ active:
   - issue: 37
     title: Migrate coordinator → repositories/coord
     state: ACTIVE
-    note: COORD_REPOSITORY_ROOT transitional = workspace-01/coordinator; target = workspace-01/repositories/coord
+    note: directory migrated to workspace-01/repositories/coord; COORD_REPOSITORY_ROOT updated; make check PASS via wrapper
 
 completedThisSession:
   - issue: 41
