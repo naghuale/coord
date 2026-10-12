@@ -309,3 +309,189 @@ events:
     expectedResults:
       - CONTINUE_AUTONOMOUSLY
       - NOT_EVALUATED
+
+  SESSION_INTERRUPTED:
+    requiredDocuments:
+      - agent-session-recovery-regulation
+      - agents
+    allowedActions:
+      - verify_workspace_binding
+      - take_git_snapshot
+      - load_authoritative_sources
+      - classify_working_tree
+    forbiddenActions:
+      - modify_files
+      - commit_changes
+      - reset_or_clean
+      - delete_unknown_files
+      - ask_owner_what_to_do_next
+    expectedResults:
+      - RECOVER_SESSION
+
+  SESSION_RESUMED:
+    requiredDocuments:
+      - agent-session-recovery-regulation
+      - agents
+      - project-config
+      - context-index
+      - document-registry
+      - action-map
+      - project-current
+      - project-open-work
+    allowedActions:
+      - verify_workspace_binding
+      - take_git_snapshot
+      - restore_assignment_context
+      - classify_working_tree
+      - verify_subject_binding
+      - run_safe_checks
+      - select_recovery_transition
+    forbiddenActions:
+      - modify_files_before_recovery_complete
+      - start_new_issue
+      - reuse_stale_review_verdict
+    expectedResults:
+      - RESUME_ASSIGNMENT
+      - FREEZE_FOR_REVIEW
+      - PREPARE_CORRECTION
+      - PRESERVE_AND_STOP
+      - BLOCKED_EXTERNAL
+      - HUMAN_ACTION_REQUIRED
+      - OWNER_REQUIRED
+
+  SESSION_REPLACED:
+    requiredDocuments:
+      - agent-session-recovery-regulation
+      - agents
+      - project-current
+      - project-open-work
+    allowedActions:
+      - verify_workspace_binding
+      - take_git_snapshot
+      - restore_assignment_context
+      - classify_working_tree
+      - fence_previous_session
+    forbiddenActions:
+      - modify_files_before_recovery_complete
+      - assume_prior_session_stopped_writing
+    expectedResults:
+      - RESUME_ASSIGNMENT
+      - PRESERVE_AND_STOP
+      - BLOCKED_EXTERNAL
+
+  CONTEXT_LOST:
+    requiredDocuments:
+      - agent-session-recovery-regulation
+      - agents
+      - project-current
+      - project-open-work
+    allowedActions:
+      - verify_workspace_binding
+      - take_git_snapshot
+      - search_operations_ledger
+      - search_git_history
+      - classify_working_tree
+    forbiddenActions:
+      - start_new_work_without_assignment
+      - ask_owner_what_to_do_next
+    expectedResults:
+      - RESUME_ASSIGNMENT
+      - PREPARE_CORRECTION
+      - PRESERVE_AND_STOP
+
+  WORKTREE_STATE_UNKNOWN:
+    requiredDocuments:
+      - agent-session-recovery-regulation
+      - agents
+    allowedActions:
+      - classify_working_tree
+      - identify_ownership
+      - preserve_unknown_changes
+    forbiddenActions:
+      - modify_unknown_files
+      - commit_unclassified_changes
+      - reset_or_clean
+    expectedResults:
+      - PRESERVE_AND_STOP
+      - RESUME_ASSIGNMENT
+
+  REQUIRED_SOURCE_MISSING:
+    requiredDocuments:
+      - agents
+    allowedActions:
+      - check_document_registry
+      - check_git_history
+      - classify_missing_source
+      - prepare_correction
+    forbiddenActions:
+      - use_examples_as_authority
+      - use_scratch_as_authority
+      - declare_owner_required_automatically
+    expectedResults:
+      - PREPARE_CORRECTION
+      - OWNER_REQUIRED
+
+  SUBJECT_DRIFT_DETECTED:
+    requiredDocuments:
+      - agent-session-recovery-regulation
+      - agents
+    allowedActions:
+      - freeze_new_subject
+      - rerun_required_checks
+      - invalidate_stale_verdicts
+    forbiddenActions:
+      - reuse_stale_review_verdict
+      - reuse_stale_audit_verdict
+      - resume_without_new_review
+    expectedResults:
+      - FREEZE_FOR_REVIEW
+
+  RECOVER_COORDINATION_STATE:
+    requiredDocuments:
+      - agent-session-recovery-regulation
+      - agents
+      - project-config
+      - context-index
+      - document-registry
+      - action-map
+      - project-current
+      - project-open-work
+    allowedActions:
+      - read_git_and_files
+      - compute_digests
+      - run_safe_checks
+      - classify_working_tree_readonly
+      - separate_independently_reviewable_subjects
+      - create_exact_subject_review_assignment
+      - create_read_only_classification_assignment
+      - prepare_correction_plan_for_stale_state
+      - restore_operational_coordination_state
+    forbiddenActions:
+      - modify_unknown_files
+      - stage_unknown_files
+      - commit_unknown_batch
+      - delete_caches_without_proof
+      - mix_unknown_batch_with_committed_review_subject
+      - declare_ownership_without_evidence
+    expectedResults:
+      - FREEZE_FOR_REVIEW
+      - PREPARE_CORRECTION
+      - BLOCKED_EXTERNAL
+
+recoveryTransitions:
+  RESUME_ASSIGNMENT:
+    when: assignment recovered, workspace binding valid, no unknown changes, no OWNER/HUMAN boundary
+  FREEZE_FOR_REVIEW:
+    when: implementation complete, exact subject determined, checks passed
+  RECOVER_COORDINATION_STATE:
+    when: missing assignment or stale operational state or unknown batch present but read-only analysis is safe
+  PREPARE_CORRECTION:
+    when: mandatory source missing, event not in action map, document drift found
+  BLOCKED_EXTERNAL:
+    when: external Registry, provider, artifact or runner required
+  HUMAN_ACTION_REQUIRED:
+    when: credential, MFA, protected runner or physical action required
+  OWNER_REQUIRED:
+    when: new norm required, norm conflict, reserved decision
+  PRESERVE_AND_STOP:
+    when: invalid workspace binding, evidence damage risk, unknown staged changes, or real authority conflict

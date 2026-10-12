@@ -1,6 +1,6 @@
 GO_FILES := $(shell git ls-files -co --exclude-standard '*.go' | while read f; do test -f "$$f" && echo "$$f"; done)
 
-.PHONY: help fmt check-format vet cross-vet test build demo roles check test-telepathy lint test-telepathy-host check-architecture-sync check-defect-patterns check-document-registry check-action-map check-resolver-launcher check-sandbox-session-registry check-supervisor-seccomp-registry
+.PHONY: help fmt check-format vet cross-vet test build demo roles check test-telepathy lint test-telepathy-host check-architecture-sync check-defect-patterns check-document-registry check-action-map check-resolver-launcher check-sandbox-session-registry check-supervisor-seccomp-registry check-recovery
 
 help:
 	@echo 'make demo   — полный цикл задачи в локальном транспорте'
@@ -72,7 +72,19 @@ check-sandbox-session-registry:
 check-supervisor-seccomp-registry:
 	PYTHONPATH=scripts python3 -m unittest discover -s tests -p 'test_supervisor_seccomp_registry.py' -v
 
-check: check-document-registry check-action-map check-resolver-launcher check-sandbox-session-registry check-supervisor-seccomp-registry check-architecture-sync check-format vet cross-vet test lint check-defect-patterns
+check-recovery:
+	@if python3 -c "import yaml, jsonschema" 2>/dev/null; then \
+		bash tests/test_recovery_checks.sh && \
+		python3 scripts/check-recovery-governance.py \
+			--registry docs/DOCUMENT-REGISTRY.yaml \
+			--action-map docs/operations/ACTION-MAP.yaml \
+			--agents AGENTS.md \
+			--regulation-path docs/operations/AGENT-SESSION-RECOVERY-REGULATION.md; \
+	else \
+		echo "PyYAML or jsonschema not installed; recovery check skipped (run: pip3 install pyyaml jsonschema)"; \
+	fi
+
+check: check-document-registry check-action-map check-resolver-launcher check-sandbox-session-registry check-supervisor-seccomp-registry check-architecture-sync check-format vet cross-vet test lint check-defect-patterns check-recovery
 	go build ./...
 	go mod tidy -diff
 

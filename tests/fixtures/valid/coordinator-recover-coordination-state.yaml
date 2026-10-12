@@ -1,0 +1,400 @@
+apiVersion: coord.dev/v1alpha1
+kind: AgentSessionRecoveryReport
+
+metadata:
+  reportId: recovery-coord-20261012-001
+  createdAt: "2026-10-12T22:45:00Z"
+  agentRole: COORDINATOR
+  agentId: coordinator-recovery-01
+  event: WORKTREE_STATE_UNKNOWN
+
+recovery:
+  projectId: coord
+  globalRoot: /Users/andreybabenko/Downloads/workspace
+  projectRoot: /Users/andreybabenko/Downloads/workspace/workspace-01
+  repositoryRoot: /Users/andreybabenko/Downloads/workspace/workspace-01/repositories/coord
+  assignedWorktree: /Users/andreybabenko/Downloads/workspace/workspace-01/repositories/coord
+  requiredLaunchCwd: /Users/andreybabenko/Downloads/workspace/workspace-01
+  scratchRoot: /Users/andreybabenko/Downloads/workspace/workspace-01/.scratch/tmp
+  branch: p0-2-task
+  head: 51793b3da4597aa91f5a805cb02bbba1f099f44b
+  expectedHead: 51793b3da4597aa91f5a805cb02bbba1f099f44b
+  headMatchesExpected: true
+  workspaceBindingValid: true
+
+workingTree:
+  clean: false
+  stagedFiles: []
+  modifiedFiles:
+    - .github/workflows/ci.yml
+    - .gitignore
+    - AGENTS.md
+    - README.md
+    - cmd/coord/bootstrap.md
+    - cmd/coord/sessions_test.go
+    - docs/AGENT_INSTRUCTIONS.md
+    - docs/DEFECT_PATTERNS.md
+    - docs/DEVELOPMENT.md
+    - docs/EXPERIMENTS.md
+    - docs/OPERATIONS.md
+    - docs/QUICKSTART.md
+    - docs/ROADMAP.md
+    - docs/ROLE_PROMPTS.md
+    - docs/ROLE_SESSIONS.md
+    - docs/SESSION_CLI.md
+    - docs/TARGET-ARCHITECTURE.md
+    - docs/TASK-MODEL.md
+    - docs/TELEPATHY_HOST.md
+    - docs/TRANSPORT.md
+    - docs/UX_AUDIT.md
+    - docs/VERIFICATION.md
+    - docs/architecture/COMPONENT-STATUS.yaml
+    - docs/operations/ARCHITECTURE-SYNC-PROCESS.md
+    - scripts/check-architecture-sync-test
+  untrackedFiles:
+    - .github/workflows/action-map.yml
+    - .gitlab-ci.example.yml
+    - .gitlab/ci/action-map-metrics.yml
+    - .gitlab/ci/action-map.yml
+    - GITLAB-CI-INTEGRATION.md
+    - ci/baselines/action-map/.gitkeep
+    - docs/operations/ACTION-MAP.md
+    - docs/operations/CI-GATES-AND-METRICS.md
+    - docs/operations/evaluation/README.md
+    - docs/operations/scenarios/README.md
+    - docs/rfc/RFC-0002-AI-AGENT-ENGINEERING-GOVERNANCE.md
+    - docs/templates/RECOVERY-REPORT-TEMPLATE.yaml
+    - scripts/activate-action-map-baseline
+    - scripts/check-action-map
+    - scripts/check-action-map-metrics
+    - scripts/check-defect-patterns
+    - scripts/check-document-registry
+    - scripts/collect-action-map-metrics
+    - scripts/compare-action-map-baseline
+    - scripts/promote-action-map-baseline
+    - scripts/run-action-map-behavior
+    - scripts/store-action-map-run
+    - scripts/__pycache__/check_action_map.cpython-312.pyc
+    - tests/__pycache__/test_action_map.cpython-312.pyc
+  totalChangedFiles: 49
+  ownershipKnown: false
+  preservationRisk: LOW
+  destructiveActionsPerformed: false
+
+sources:
+  projectConfig:
+    path: .coord/project.yaml
+    found: true
+    status: ACTIVE
+    authority: PROJECT_IDENTITY
+    digest: sha256:1111111111111111111111111111111111111111111111111111111111111111
+  agents:
+    path: AGENTS.md
+    found: true
+    status: MODIFIED_IN_WORKING_TREE
+    authority: PROCESS
+    digest: sha256:2222222222222222222222222222222222222222222222222222222222222222
+  contextIndex:
+    path: .coord/CONTEXT-INDEX.yaml
+    found: true
+    status: ACTIVE
+    authority: CONTEXT_ROUTING
+    digest: sha256:3333333333333333333333333333333333333333333333333333333333333333
+  documentRegistry:
+    path: DOCUMENT-REGISTRY.yaml
+    found: true
+    status: INVALID_EMPTY
+    authority: DOCUMENT_AUTHORITY
+    digest: sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  actionMap:
+    path: docs/operations/ACTION-MAP.md
+    found: true
+    status: UNTRACKED_PROPOSED
+    authority: NONE_AS_CURRENT
+    digest: sha256:4444444444444444444444444444444444444444444444444444444444444444
+  current:
+    path: ops/coord/project/operations/project/CURRENT.yaml
+    found: true
+    status: ACTIVE_BUT_STALE
+    authority: ACTIVE_CONTEXT
+    digest: sha256:5555555555555555555555555555555555555555555555555555555555555555
+  openWork:
+    path: ops/coord/project/operations/project/OPEN-WORK.yaml
+    found: true
+    status: STALE_AT_E6573FF
+    authority: ACTIVE_CONTEXT
+    digest: sha256:6666666666666666666666666666666666666666666666666666666666666666
+  assignment:
+    path: ops/coord/coordinator/issue-36.yaml
+    found: true
+    status: LAST_RECORDED_COMPLETE
+    authority: ASSIGNMENT_HISTORY
+    digest: sha256:7777777777777777777777777777777777777777777777777777777777777777
+  operationsLedger:
+    path: docs/operations/OPERATIONS-LEDGER.md
+    found: true
+    status: ACTIVE
+    authority: OPERATIONS_STATE
+    digest: sha256:8888888888888888888888888888888888888888888888888888888888888888
+  missingRequired:
+    - usable DOCUMENT-REGISTRY.yaml
+    - active assignment for uncommitted documentation and CI batch
+    - OPEN-WORK state synchronized with HEAD 51793b3da4597aa91f5a805cb02bbba1f099f44b
+  rejectedAsCurrentAuthority:
+    - docs/operations/ACTION-MAP.md
+
+assignment:
+  recovered: false
+  id: ""
+  goal: classify and preserve the unassigned documentation and CI batch
+  role: COORDINATOR
+  baseSha: 51793b3da4597aa91f5a805cb02bbba1f099f44b
+  status: NONE_RECORDED_FOR_UNCOMMITTED_BATCH
+  allowedPaths: []
+  readOnlyPaths:
+    - .github/workflows/ci.yml
+    - AGENTS.md
+    - README.md
+    - docs/operations/ACTION-MAP.md
+    - docs/rfc/RFC-0002-AI-AGENT-ENGINEERING-GOVERNANCE.md
+  prohibitedPaths: []
+  expectedOutputs:
+    - exact-subject Review assignment for committed Go slice
+    - read-only classification report for unknown batch
+    - proposed work units
+    - operational-state correction plan
+  requiredChecks:
+    - make check
+    - go test -race ./...
+    - git diff --check HEAD
+  stopConditions:
+    - do not modify, stage, commit, stash, reset, restore, clean or delete unknown files
+    - stop on real OWNER or HUMAN boundary
+  reviewRequired: true
+  auditRequired: true
+
+subjectBinding:
+  reviewSubjectSha: ""
+  auditSubjectSha: ""
+  ciSubjectSha: ""
+  workingTreeMatchesReview: false
+  workingTreeMatchesAudit: false
+  ciMatchesHead: false
+  documentDigestDrift:
+    - AGENTS.md
+    - DOCUMENT-REGISTRY.yaml
+    - ops/coord/project/operations/project/OPEN-WORK.yaml
+  subjectDriftDetected: true
+
+verification:
+  subject: 51793b3da4597aa91f5a805cb02bbba1f099f44b
+  checks:
+    - name: project-check
+      command: make check
+      status: PASS
+      subject: 51793b3da4597aa91f5a805cb02bbba1f099f44b
+      evidenceRef: recovery-session:make-check
+    - name: race-tests
+      command: go test -race ./...
+      status: PASS
+      subject: 51793b3da4597aa91f5a805cb02bbba1f099f44b
+      evidenceRef: recovery-session:go-test-race
+    - name: diff-check
+      command: git diff --check HEAD
+      status: PASS
+      subject: working-tree-at-51793b3da4597aa91f5a805cb02bbba1f099f44b
+      evidenceRef: recovery-session:git-diff-check
+  evidenceRefs:
+    - recovery-session:make-check
+    - recovery-session:go-test-race
+    - recovery-session:git-diff-check
+  reportedClaims: []
+  unknownClaims:
+    - origin of the uncommitted documentation and CI batch
+    - ownership of the uncommitted documentation and CI batch
+
+classification:
+  committedAccepted: []
+  currentAssignmentUncommitted: []
+  postAssignmentSync: []
+  foreignOrUnknown:
+    - .github/workflows/ci.yml
+    - .gitignore
+    - AGENTS.md
+    - README.md
+    - cmd/coord/bootstrap.md
+    - cmd/coord/sessions_test.go
+    - docs/AGENT_INSTRUCTIONS.md
+    - docs/DEFECT_PATTERNS.md
+    - docs/DEVELOPMENT.md
+    - docs/EXPERIMENTS.md
+    - docs/OPERATIONS.md
+    - docs/QUICKSTART.md
+    - docs/ROADMAP.md
+    - docs/ROLE_PROMPTS.md
+    - docs/ROLE_SESSIONS.md
+    - docs/SESSION_CLI.md
+    - docs/TARGET-ARCHITECTURE.md
+    - docs/TASK-MODEL.md
+    - docs/TELEPATHY_HOST.md
+    - docs/TRANSPORT.md
+    - docs/UX_AUDIT.md
+    - docs/VERIFICATION.md
+    - docs/architecture/COMPONENT-STATUS.yaml
+    - docs/operations/ARCHITECTURE-SYNC-PROCESS.md
+    - scripts/check-architecture-sync-test
+    - .github/workflows/action-map.yml
+    - .gitlab-ci.example.yml
+    - .gitlab/ci/action-map-metrics.yml
+    - .gitlab/ci/action-map.yml
+    - GITLAB-CI-INTEGRATION.md
+    - ci/baselines/action-map/.gitkeep
+    - docs/operations/ACTION-MAP.md
+    - docs/operations/CI-GATES-AND-METRICS.md
+    - docs/operations/evaluation/README.md
+    - docs/operations/scenarios/README.md
+    - docs/rfc/RFC-0002-AI-AGENT-ENGINEERING-GOVERNANCE.md
+    - docs/templates/RECOVERY-REPORT-TEMPLATE.yaml
+    - scripts/activate-action-map-baseline
+    - scripts/check-action-map
+    - scripts/check-action-map-metrics
+    - scripts/check-defect-patterns
+    - scripts/check-document-registry
+    - scripts/collect-action-map-metrics
+    - scripts/compare-action-map-baseline
+    - scripts/promote-action-map-baseline
+    - scripts/run-action-map-behavior
+    - scripts/store-action-map-run
+  generated:
+    - scripts/__pycache__/check_action_map.cpython-312.pyc
+    - tests/__pycache__/test_action_map.cpython-312.pyc
+  scratch: []
+
+coordinationRecovery:
+  committedSubjects:
+    - sha: 51793b3da4597aa91f5a805cb02bbba1f099f44b
+      purpose: independent Review of GO-02, GO-03, GO-06, GO-10 and GO-11 committed slice
+      reviewRequired: true
+      auditRequired: true
+  classificationAssignmentId: recovery-classify-doc-ci-batch
+  proposedWorkUnits:
+    - id: action-map-governance-batch
+      paths:
+        - .github/workflows/action-map.yml
+        - .gitlab/ci/action-map-metrics.yml
+        - .gitlab/ci/action-map.yml
+        - GITLAB-CI-INTEGRATION.md
+        - ci/baselines/action-map/.gitkeep
+        - docs/operations/ACTION-MAP.md
+        - docs/operations/CI-GATES-AND-METRICS.md
+        - docs/operations/evaluation/README.md
+        - docs/operations/scenarios/README.md
+        - docs/rfc/RFC-0002-AI-AGENT-ENGINEERING-GOVERNANCE.md
+        - scripts/activate-action-map-baseline
+        - scripts/check-action-map
+        - scripts/check-action-map-metrics
+        - scripts/collect-action-map-metrics
+        - scripts/compare-action-map-baseline
+        - scripts/promote-action-map-baseline
+        - scripts/run-action-map-behavior
+        - scripts/store-action-map-run
+      ownershipConfidence: MEDIUM
+      proposedDecisionClass: TD-R2
+    - id: architecture-document-sync-batch
+      paths:
+        - AGENTS.md
+        - README.md
+        - docs/AGENT_INSTRUCTIONS.md
+        - docs/DEFECT_PATTERNS.md
+        - docs/DEVELOPMENT.md
+        - docs/OPERATIONS.md
+        - docs/ROADMAP.md
+        - docs/TARGET-ARCHITECTURE.md
+        - docs/architecture/COMPONENT-STATUS.yaml
+        - docs/operations/ARCHITECTURE-SYNC-PROCESS.md
+      ownershipConfidence: LOW
+      proposedDecisionClass: FD
+  operationalCorrections:
+    - populate or restore usable DOCUMENT-REGISTRY.yaml under its owning authority
+    - synchronize OPEN-WORK with committed HEAD after unknown batch ownership is established
+    - create assignments for each accepted logical work unit before mutation or commit
+
+boundaries:
+  ownerRequired: false
+  ownerReason: ""
+  humanActionRequired: false
+  humanActionReason: ""
+  blockedExternal:
+    - GO-04 canonical AgentSession OpenAPI absent
+    - GO-07 and GO-08 require protected Linux runner
+    - GO-12 requires separate OWNER provider decision
+
+recoveryCard:
+  eligibleToResume: false
+  selectedTransition: RECOVER_COORDINATION_STATE
+  reason: committed Go subject is independently reviewable, while the uncommitted documentation and CI batch has no recorded assignment or proven ownership
+  filesAllowedToChange: []
+  preservedUnknownChanges:
+    - .github/workflows/ci.yml
+    - .gitignore
+    - AGENTS.md
+    - README.md
+    - cmd/coord/bootstrap.md
+    - cmd/coord/sessions_test.go
+    - docs/AGENT_INSTRUCTIONS.md
+    - docs/DEFECT_PATTERNS.md
+    - docs/DEVELOPMENT.md
+    - docs/EXPERIMENTS.md
+    - docs/OPERATIONS.md
+    - docs/QUICKSTART.md
+    - docs/ROADMAP.md
+    - docs/ROLE_PROMPTS.md
+    - docs/ROLE_SESSIONS.md
+    - docs/SESSION_CLI.md
+    - docs/TARGET-ARCHITECTURE.md
+    - docs/TASK-MODEL.md
+    - docs/TELEPATHY_HOST.md
+    - docs/TRANSPORT.md
+    - docs/UX_AUDIT.md
+    - docs/VERIFICATION.md
+    - docs/architecture/COMPONENT-STATUS.yaml
+    - docs/operations/ARCHITECTURE-SYNC-PROCESS.md
+    - scripts/check-architecture-sync-test
+    - .github/workflows/action-map.yml
+    - .gitlab-ci.example.yml
+    - .gitlab/ci/action-map-metrics.yml
+    - .gitlab/ci/action-map.yml
+    - GITLAB-CI-INTEGRATION.md
+    - ci/baselines/action-map/.gitkeep
+    - docs/operations/ACTION-MAP.md
+    - docs/operations/CI-GATES-AND-METRICS.md
+    - docs/operations/evaluation/README.md
+    - docs/operations/scenarios/README.md
+    - docs/rfc/RFC-0002-AI-AGENT-ENGINEERING-GOVERNANCE.md
+    - docs/templates/RECOVERY-REPORT-TEMPLATE.yaml
+    - scripts/activate-action-map-baseline
+    - scripts/check-action-map
+    - scripts/check-action-map-metrics
+    - scripts/check-defect-patterns
+    - scripts/check-document-registry
+    - scripts/collect-action-map-metrics
+    - scripts/compare-action-map-baseline
+    - scripts/promote-action-map-baseline
+    - scripts/run-action-map-behavior
+    - scripts/store-action-map-run
+    - scripts/__pycache__/check_action_map.cpython-312.pyc
+    - tests/__pycache__/test_action_map.cpython-312.pyc
+  stopConditions:
+    - do not mutate, stage, commit, stash, reset, restore, clean or delete unknown files
+    - stop if classification reveals a real OWNER or HUMAN boundary
+    - do not include the unknown batch in Review of committed SHA
+
+attestation:
+  examplesUsedAsCurrentAuthority: false
+  scratchUsedAsCurrentAuthority: false
+  historicalUsedAsCurrentAuthority: false
+  oldReviewReusedAfterDrift: false
+  systemTmpUsedForProjectData: false
+  credentialsPresentInReport: false
+  unknownFilesModified: false
+  unknownFilesCommitted: false

@@ -31,6 +31,8 @@ vocabulary:
     - OPERATOR
   readEvents:
     - SESSION_START
+    - SESSION_INTERRUPTED
+    - RECOVER_SESSION
     - CONTEXT_RECOVERY
     - ISSUE_PLANNING
     - ASSIGNMENT_START
@@ -3735,6 +3737,152 @@ documents:
       updates: COORDINATOR
       accountable: OWNER
     acceptance: {reviewer: required, auditor: false, owner: false}
+  - id: agent-session-recovery-regulation
+    path: docs/operations/AGENT-SESSION-RECOVERY-REGULATION.md
+    class: process
+    status: proposed
+    purpose:
+      - fail-closed session recovery algorithm
+      - Recovery Report format and schema
+      - working tree classification categories
+      - subject drift and exact-subject discipline
+      - resume conditions and PRESERVE_AND_STOP rule
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_INTERRUPTED
+      - RECOVER_SESSION
+      - CONTEXT_RECOVERY
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+      - WORKSPACE_POLICY_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: conditional_if_TD_R2
+      owner: required_for_normative_acceptance
+  - id: recovery-report-schema
+    path: docs/schemas/recovery-report.schema.json
+    class: process
+    status: proposed
+    purpose:
+      - machine-readable schema for AgentSessionRecoveryReport
+      - fail-closed validation gate for recovery reports
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+    readWhen:
+      - RECOVER_SESSION
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: false, owner: false}
+  - id: recovery-report-template
+    path: docs/templates/RECOVERY-REPORT-TEMPLATE.yaml
+    class: process
+    status: proposed
+    purpose:
+      - blank template for AgentSessionRecoveryReport
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+    readWhen:
+      - RECOVER_SESSION
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: false, owner: false}
+  - id: recovery-prompt-short
+    path: docs/templates/RECOVERY-PROMPT-SHORT.md
+    class: process
+    status: proposed
+    purpose:
+      - short universal recovery prompt for new sessions after interruption
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+    readWhen:
+      - SESSION_INTERRUPTED
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: false, owner: false}
+  - id: coordinator-recovery-prompt
+    path: docs/templates/COORDINATOR-RECOVERY-PROMPT.md
+    class: process
+    status: proposed
+    purpose:
+      - coordinator-specific recovery prompt with RECOVER_COORDINATION_STATE transition
+      - fail-closed session recovery instructions for COORDINATOR role
+    usedBy:
+      - COORDINATOR
+    readWhen:
+      - SESSION_INTERRUPTED
+      - RECOVER_SESSION
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: false, owner: false}
+  - id: recovery-report-coordinator-schema
+    path: docs/schemas/recovery-report.coordinator.schema.yaml
+    class: process
+    status: proposed
+    purpose:
+      - coordinator-specific YAML schema for AgentSessionRecoveryReport
+      - enforces agentRole COORDINATOR, RECOVER_COORDINATION_STATE transition, coordinationRecovery section
+    usedBy:
+      - COORDINATOR
+    readWhen:
+      - RECOVER_SESSION
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance: {reviewer: required, auditor: false, owner: false}
 unregisteredDocumentPolicy:
   action: fail
   code: DOCUMENT_NOT_REGISTERED
@@ -3783,4 +3931,20 @@ changeMatrix:
       - Operations Ledger
       - Completion Report
       - Issue status
+    ownerBoundaryCheck: false
+  SESSION_INTERRUPTED:
+    mustRead:
+      - docs/operations/AGENT-SESSION-RECOVERY-REGULATION.md
+      - docs/operations/ACTION-MAP.yaml
+    ownerBoundaryCheck: false
+  RECOVER_SESSION:
+    mustRead:
+      - docs/operations/AGENT-SESSION-RECOVERY-REGULATION.md
+      - .coord/project.yaml
+      - AGENTS.md
+      - .coord/CONTEXT-INDEX.yaml
+      - docs/DOCUMENT-REGISTRY.yaml
+      - docs/operations/ACTION-MAP.yaml
+      - operations/project/CURRENT.yaml
+      - operations/project/OPEN-WORK.yaml
     ownerBoundaryCheck: false

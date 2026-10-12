@@ -1,0 +1,155 @@
+apiVersion: coord.dev/v1alpha1
+kind: AgentSessionRecoveryReport
+
+metadata:
+  reportId: "<recovery-report-id>"
+  createdAt: "<RFC3339 timestamp>"
+  agentRole: "COORDINATOR | EXECUTOR | REVIEWER | AUDITOR"
+  agentId: "<agent-id>"
+  event: "SESSION_INTERRUPTED | SESSION_RESUMED | SESSION_REPLACED | CONTEXT_LOST | WORKTREE_STATE_UNKNOWN | REQUIRED_SOURCE_MISSING | SUBJECT_DRIFT_DETECTED"
+
+recovery:
+  projectId: "<project-id>"
+  globalRoot: "<absolute global root>"
+  projectRoot: "<absolute project root>"
+  repositoryRoot: "<absolute repository root>"
+  assignedWorktree: "<absolute worktree or repository root>"
+  requiredLaunchCwd: "<absolute project root>"
+  scratchRoot: "<projectRoot>/.scratch/tmp"
+  branch: "<branch>"
+  head: "<full commit SHA>"
+  expectedHead: "<full commit SHA or empty when unavailable>"
+  headMatchesExpected: false
+  workspaceBindingValid: false
+
+workingTree:
+  clean: false
+  stagedFiles: []
+  modifiedFiles: []
+  untrackedFiles: []
+  totalChangedFiles: 0
+  ownershipKnown: false
+  preservationRisk: "NONE | LOW | MEDIUM | HIGH"
+  destructiveActionsPerformed: false
+
+sources:
+  projectConfig:
+    path: ".coord/project.yaml"
+    found: false
+    status: "UNKNOWN"
+    authority: "PROJECT_IDENTITY"
+    digest: ""
+  agents:
+    path: "AGENTS.md"
+    found: false
+    status: "UNKNOWN"
+    authority: "PROCESS"
+    digest: ""
+  contextIndex:
+    path: ".coord/CONTEXT-INDEX.yaml"
+    found: false
+    status: "UNKNOWN"
+    authority: "CONTEXT_ROUTING"
+    digest: ""
+  documentRegistry:
+    path: "<registry path>"
+    found: false
+    status: "UNKNOWN"
+    authority: "DOCUMENT_AUTHORITY"
+    digest: ""
+  actionMap:
+    path: "<action map path>"
+    found: false
+    status: "UNKNOWN"
+    authority: "TRANSITION_AUTHORITY"
+    digest: ""
+  current:
+    path: "<canonical CURRENT path>"
+    found: false
+    status: "UNKNOWN"
+    authority: "ACTIVE_CONTEXT"
+    digest: ""
+  openWork:
+    path: "<canonical OPEN-WORK path>"
+    found: false
+    status: "UNKNOWN"
+    authority: "ACTIVE_CONTEXT"
+    digest: ""
+  assignment:
+    path: "<assignment path>"
+    found: false
+    status: "UNKNOWN"
+    authority: "ASSIGNMENT"
+    digest: ""
+  operationsLedger:
+    path: "<ledger path>"
+    found: false
+    status: "UNKNOWN"
+    authority: "OPERATIONS_STATE"
+    digest: ""
+  missingRequired: []
+  rejectedAsCurrentAuthority: []
+
+assignment:
+  recovered: false
+  id: ""
+  goal: ""
+  role: ""
+  baseSha: ""
+  status: "UNKNOWN"
+  allowedPaths: []
+  readOnlyPaths: []
+  prohibitedPaths: []
+  expectedOutputs: []
+  requiredChecks: []
+  stopConditions: []
+  reviewRequired: false
+  auditRequired: false
+
+subjectBinding:
+  reviewSubjectSha: ""
+  auditSubjectSha: ""
+  ciSubjectSha: ""
+  workingTreeMatchesReview: false
+  workingTreeMatchesAudit: false
+  ciMatchesHead: false
+  documentDigestDrift: []
+  subjectDriftDetected: false
+
+verification:
+  subject: "<full commit SHA or frozen tree digest>"
+  checks: []
+  evidenceRefs: []
+  reportedClaims: []
+  unknownClaims: []
+
+classification:
+  committedAccepted: []
+  currentAssignmentUncommitted: []
+  postAssignmentSync: []
+  foreignOrUnknown: []
+  generated: []
+  scratch: []
+
+boundaries:
+  ownerRequired: false
+  ownerReason: ""
+  humanActionRequired: false
+  humanActionReason: ""
+  blockedExternal: []
+
+recoveryCard:
+  eligibleToResume: false
+  selectedTransition: "RESUME_ASSIGNMENT | FREEZE_FOR_REVIEW | PREPARE_CORRECTION | BLOCKED_EXTERNAL | HUMAN_ACTION_REQUIRED | OWNER_REQUIRED | PRESERVE_AND_STOP"
+  reason: ""
+  filesAllowedToChange: []
+  preservedUnknownChanges: []
+  stopConditions: []
+
+attestation:
+  examplesUsedAsCurrentAuthority: false
+  scratchUsedAsCurrentAuthority: false
+  historicalUsedAsCurrentAuthority: false
+  oldReviewReusedAfterDrift: false
+  systemTmpUsedForProjectData: false
+  credentialsPresentInReport: false

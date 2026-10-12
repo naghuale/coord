@@ -188,6 +188,41 @@ Credentials, private keys, session tokens, sockets, runtime leases, содерж
 
 Работу, доделанную после передачи, принимает не тот, кто её доделал.
 
+## Восстановление сессии
+
+После обрыва, перезапуска или потери контекста агент выполняет `RECOVER_SESSION`
+по регламенту [`docs/operations/AGENT-SESSION-RECOVERY-REGULATION.md`].
+
+Для роли Coordinator используй промт
+[`docs/templates/COORDINATOR-RECOVERY-PROMPT.md`].
+
+Алгоритм: проверить WorkspaceBinding → снять Git snapshot → восстановить
+authoritative sources → восстановить assignment → классифицировать рабочее
+дерево → проверить subject drift → выбрать безопасный переход.
+
+Доступные переходы:
+
+- `RESUME_ASSIGNMENT` — assignment восстановлен, ownership доказана, нет
+  OWNER/HUMAN boundary.
+- `FREEZE_FOR_REVIEW` — implementation завершена, exact committed subject
+  готов к независимому Review.
+- `RECOVER_COORDINATION_STATE` — implementation нельзя продолжить из-за
+  отсутствующего assignment, stale operational state или unknown batch, но
+  read-only анализ безопасен. Coordinator сохраняет unknown changes, отделяет
+  committed subject, создаёт exact-subject Review/Audit и classification
+  assignments, не изменяя unknown files.
+- `PREPARE_CORRECTION` — missing source, Registry drift или document drift.
+- `PRESERVE_AND_STOP` — invalid WorkspaceBinding, риск повреждения evidence,
+  unknown staged changes или реальный конфликт authority.
+
+Одно лишь наличие FOREIGN_OR_UNKNOWN изменений не является достаточной
+причиной для `PRESERVE_AND_STOP`: Coordinator переходит в
+`RECOVER_COORDINATION_STATE` и проводит read-only classification.
+
+Нельзя изменять, удалять или коммитить файлы неизвестного происхождения.
+Recovery не расширяет scope assignment и не разрешает начинать новую Issue
+без нового assignment.
+
 ## Автономия координатора
 
 Вопрос OWNER задаётся не для выполнения решения, а только для принятия

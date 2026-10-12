@@ -1,0 +1,403 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://coord.dev/schemas/agent-session-recovery-report.schema.yaml
+title: Agent Session Recovery Report
+type: object
+additionalProperties: false
+required:
+  - apiVersion
+  - kind
+  - metadata
+  - recovery
+  - workingTree
+  - sources
+  - assignment
+  - subjectBinding
+  - verification
+  - classification
+  - boundaries
+  - recoveryCard
+  - attestation
+properties:
+  apiVersion:
+    const: coord.dev/v1alpha1
+  kind:
+    const: AgentSessionRecoveryReport
+  metadata:
+    type: object
+    additionalProperties: false
+    required: [reportId, createdAt, agentRole, agentId, event]
+    properties:
+      reportId: {type: string, minLength: 1}
+      createdAt: {type: string, format: date-time}
+      agentRole:
+        const: COORDINATOR
+      agentId: {type: string, minLength: 1}
+      event:
+        enum:
+          - SESSION_INTERRUPTED
+          - SESSION_RESUMED
+          - SESSION_REPLACED
+          - CONTEXT_LOST
+          - WORKTREE_STATE_UNKNOWN
+          - REQUIRED_SOURCE_MISSING
+          - SUBJECT_DRIFT_DETECTED
+  recovery:
+    type: object
+    additionalProperties: false
+    required:
+      - projectId
+      - globalRoot
+      - projectRoot
+      - repositoryRoot
+      - assignedWorktree
+      - requiredLaunchCwd
+      - scratchRoot
+      - branch
+      - head
+      - expectedHead
+      - headMatchesExpected
+      - workspaceBindingValid
+    properties:
+      projectId: {type: string, minLength: 1}
+      globalRoot: {$ref: '#/$defs/absolutePath'}
+      projectRoot: {$ref: '#/$defs/absolutePath'}
+      repositoryRoot: {$ref: '#/$defs/absolutePath'}
+      assignedWorktree: {$ref: '#/$defs/absolutePath'}
+      requiredLaunchCwd: {$ref: '#/$defs/absolutePath'}
+      scratchRoot: {$ref: '#/$defs/absolutePath'}
+      branch: {type: string, minLength: 1}
+      head: {$ref: '#/$defs/fullSha'}
+      expectedHead:
+        anyOf:
+          - {$ref: '#/$defs/fullSha'}
+          - {const: ''}
+      headMatchesExpected: {type: boolean}
+      workspaceBindingValid: {type: boolean}
+  workingTree:
+    type: object
+    additionalProperties: false
+    required:
+      - clean
+      - stagedFiles
+      - modifiedFiles
+      - untrackedFiles
+      - totalChangedFiles
+      - ownershipKnown
+      - preservationRisk
+      - destructiveActionsPerformed
+    properties:
+      clean: {type: boolean}
+      stagedFiles: {$ref: '#/$defs/pathArray'}
+      modifiedFiles: {$ref: '#/$defs/pathArray'}
+      untrackedFiles: {$ref: '#/$defs/pathArray'}
+      totalChangedFiles: {type: integer, minimum: 0}
+      ownershipKnown: {type: boolean}
+      preservationRisk: {enum: [NONE, LOW, MEDIUM, HIGH]}
+      destructiveActionsPerformed: {const: false}
+  sources:
+    type: object
+    additionalProperties: false
+    required:
+      - projectConfig
+      - agents
+      - contextIndex
+      - documentRegistry
+      - actionMap
+      - current
+      - openWork
+      - assignment
+      - operationsLedger
+      - missingRequired
+      - rejectedAsCurrentAuthority
+    properties:
+      projectConfig: {$ref: '#/$defs/source'}
+      agents: {$ref: '#/$defs/source'}
+      contextIndex: {$ref: '#/$defs/source'}
+      documentRegistry: {$ref: '#/$defs/source'}
+      actionMap: {$ref: '#/$defs/source'}
+      current: {$ref: '#/$defs/source'}
+      openWork: {$ref: '#/$defs/source'}
+      assignment: {$ref: '#/$defs/source'}
+      operationsLedger: {$ref: '#/$defs/source'}
+      missingRequired: {$ref: '#/$defs/stringArray'}
+      rejectedAsCurrentAuthority: {$ref: '#/$defs/pathArray'}
+  assignment:
+    type: object
+    additionalProperties: false
+    required:
+      - recovered
+      - id
+      - goal
+      - role
+      - baseSha
+      - status
+      - allowedPaths
+      - readOnlyPaths
+      - prohibitedPaths
+      - expectedOutputs
+      - requiredChecks
+      - stopConditions
+      - reviewRequired
+      - auditRequired
+    properties:
+      recovered: {type: boolean}
+      id: {type: string}
+      goal: {type: string}
+      role: {type: string}
+      baseSha:
+        anyOf:
+          - {$ref: '#/$defs/fullSha'}
+          - {const: ''}
+      status: {type: string}
+      allowedPaths: {$ref: '#/$defs/pathArray'}
+      readOnlyPaths: {$ref: '#/$defs/pathArray'}
+      prohibitedPaths: {$ref: '#/$defs/pathArray'}
+      expectedOutputs: {$ref: '#/$defs/stringArray'}
+      requiredChecks: {$ref: '#/$defs/stringArray'}
+      stopConditions: {$ref: '#/$defs/stringArray'}
+      reviewRequired: {type: boolean}
+      auditRequired: {type: boolean}
+  subjectBinding:
+    type: object
+    additionalProperties: false
+    required:
+      - reviewSubjectSha
+      - auditSubjectSha
+      - ciSubjectSha
+      - workingTreeMatchesReview
+      - workingTreeMatchesAudit
+      - ciMatchesHead
+      - documentDigestDrift
+      - subjectDriftDetected
+    properties:
+      reviewSubjectSha: {$ref: '#/$defs/optionalSha'}
+      auditSubjectSha: {$ref: '#/$defs/optionalSha'}
+      ciSubjectSha: {$ref: '#/$defs/optionalSha'}
+      workingTreeMatchesReview: {type: boolean}
+      workingTreeMatchesAudit: {type: boolean}
+      ciMatchesHead: {type: boolean}
+      documentDigestDrift: {$ref: '#/$defs/pathArray'}
+      subjectDriftDetected: {type: boolean}
+  verification:
+    type: object
+    additionalProperties: false
+    required: [subject, checks, evidenceRefs, reportedClaims, unknownClaims]
+    properties:
+      subject: {type: string, minLength: 1}
+      checks:
+        type: array
+        items: {$ref: '#/$defs/check'}
+      evidenceRefs: {$ref: '#/$defs/stringArray'}
+      reportedClaims: {$ref: '#/$defs/stringArray'}
+      unknownClaims: {$ref: '#/$defs/stringArray'}
+  classification:
+    type: object
+    additionalProperties: false
+    required:
+      - committedAccepted
+      - currentAssignmentUncommitted
+      - postAssignmentSync
+      - foreignOrUnknown
+      - generated
+      - scratch
+    properties:
+      committedAccepted: {$ref: '#/$defs/pathArray'}
+      currentAssignmentUncommitted: {$ref: '#/$defs/pathArray'}
+      postAssignmentSync: {$ref: '#/$defs/pathArray'}
+      foreignOrUnknown: {$ref: '#/$defs/pathArray'}
+      generated: {$ref: '#/$defs/pathArray'}
+      scratch: {$ref: '#/$defs/pathArray'}
+  coordinationRecovery:
+    type: object
+    additionalProperties: false
+    properties:
+      committedSubjects:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [sha, purpose, reviewRequired, auditRequired]
+          properties:
+            sha: {$ref: '#/$defs/fullSha'}
+            purpose: {type: string, minLength: 1}
+            reviewRequired: {type: boolean}
+            auditRequired: {type: boolean}
+      classificationAssignmentId: {type: string}
+      proposedWorkUnits:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [id, paths, ownershipConfidence, proposedDecisionClass]
+          properties:
+            id: {type: string, minLength: 1}
+            paths: {$ref: '#/$defs/pathArray'}
+            ownershipConfidence: {enum: [LOW, MEDIUM, HIGH]}
+            proposedDecisionClass: {enum: [FD, TD, TD-R2, R]}
+      operationalCorrections: {$ref: '#/$defs/stringArray'}
+  boundaries:
+    type: object
+    additionalProperties: false
+    required:
+      - ownerRequired
+      - ownerReason
+      - humanActionRequired
+      - humanActionReason
+      - blockedExternal
+    properties:
+      ownerRequired: {type: boolean}
+      ownerReason: {type: string}
+      humanActionRequired: {type: boolean}
+      humanActionReason: {type: string}
+      blockedExternal: {$ref: '#/$defs/stringArray'}
+  recoveryCard:
+    type: object
+    additionalProperties: false
+    required:
+      - eligibleToResume
+      - selectedTransition
+      - reason
+      - filesAllowedToChange
+      - preservedUnknownChanges
+      - stopConditions
+    properties:
+      eligibleToResume: {type: boolean}
+      selectedTransition:
+        enum:
+          - RESUME_ASSIGNMENT
+          - FREEZE_FOR_REVIEW
+          - RECOVER_COORDINATION_STATE
+          - PREPARE_CORRECTION
+          - BLOCKED_EXTERNAL
+          - HUMAN_ACTION_REQUIRED
+          - OWNER_REQUIRED
+          - PRESERVE_AND_STOP
+      reason: {type: string, minLength: 1}
+      filesAllowedToChange: {$ref: '#/$defs/pathArray'}
+      preservedUnknownChanges: {$ref: '#/$defs/pathArray'}
+      stopConditions: {$ref: '#/$defs/stringArray'}
+  attestation:
+    type: object
+    additionalProperties: false
+    required:
+      - examplesUsedAsCurrentAuthority
+      - scratchUsedAsCurrentAuthority
+      - historicalUsedAsCurrentAuthority
+      - oldReviewReusedAfterDrift
+      - systemTmpUsedForProjectData
+      - credentialsPresentInReport
+      - unknownFilesModified
+      - unknownFilesCommitted
+    properties:
+      examplesUsedAsCurrentAuthority: {const: false}
+      scratchUsedAsCurrentAuthority: {const: false}
+      historicalUsedAsCurrentAuthority: {const: false}
+      oldReviewReusedAfterDrift: {const: false}
+      systemTmpUsedForProjectData: {const: false}
+      credentialsPresentInReport: {const: false}
+      unknownFilesModified: {const: false}
+      unknownFilesCommitted: {const: false}
+$defs:
+  absolutePath:
+    type: string
+    pattern: '^/'
+  fullSha:
+    type: string
+    pattern: '^[0-9a-f]{40}$'
+  optionalSha:
+    anyOf:
+      - {$ref: '#/$defs/fullSha'}
+      - {const: ''}
+  stringArray:
+    type: array
+    uniqueItems: true
+    items: {type: string}
+  pathArray:
+    type: array
+    uniqueItems: true
+    items:
+      type: string
+      minLength: 1
+      not:
+        pattern: '[*?\[]'
+  source:
+    type: object
+    additionalProperties: false
+    required: [path, found, status, authority, digest]
+    properties:
+      path: {type: string}
+      found: {type: boolean}
+      status: {type: string}
+      authority: {type: string}
+      digest:
+        type: string
+        pattern: '^$|^sha256:[0-9a-f]{64}$'
+  check:
+    type: object
+    additionalProperties: false
+    required: [name, command, status, subject, evidenceRef]
+    properties:
+      name: {type: string, minLength: 1}
+      command: {type: string, minLength: 1}
+      status: {enum: [PASS, FAIL, NOT_EVALUATED]}
+      subject: {type: string, minLength: 1}
+      evidenceRef: {type: string}
+allOf:
+  - if:
+      properties:
+        recoveryCard:
+          properties:
+            selectedTransition: {const: RESUME_ASSIGNMENT}
+    then:
+      properties:
+        recovery:
+          properties:
+            workspaceBindingValid: {const: true}
+        assignment:
+          properties:
+            recovered: {const: true}
+        workingTree:
+          properties:
+            ownershipKnown: {const: true}
+        sources:
+          properties:
+            missingRequired: {maxItems: 0}
+        subjectBinding:
+          properties:
+            subjectDriftDetected: {const: false}
+        boundaries:
+          properties:
+            ownerRequired: {const: false}
+            humanActionRequired: {const: false}
+            blockedExternal: {maxItems: 0}
+        recoveryCard:
+          properties:
+            eligibleToResume: {const: true}
+  - if:
+      properties:
+        recoveryCard:
+          properties:
+            selectedTransition: {const: RECOVER_COORDINATION_STATE}
+    then:
+      required: [coordinationRecovery]
+      properties:
+        recoveryCard:
+          properties:
+            eligibleToResume: {const: false}
+            filesAllowedToChange: {maxItems: 0}
+        attestation:
+          properties:
+            unknownFilesModified: {const: false}
+            unknownFilesCommitted: {const: false}
+  - if:
+      properties:
+        classification:
+          properties:
+            foreignOrUnknown: {minItems: 1}
+    then:
+      properties:
+        recoveryCard:
+          properties:
+            selectedTransition:
+              enum: [RECOVER_COORDINATION_STATE, PRESERVE_AND_STOP]
+            eligibleToResume: {const: false}
