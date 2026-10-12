@@ -17,8 +17,11 @@ echo "RECOVERY_CHECK_SELF_TEST_PASS"
 
 # Regression mutations for the recovery governance graph checks.
 # Temporary data stays in project-local scratch (R143); system /tmp is forbidden.
-SCRATCH="${COORD_SCRATCH_ROOT:-$ROOT/.scratch/tmp}/recovery-regression"
-mkdir -p "$SCRATCH"
+# The directory is unique per run so parallel runs do not share or delete
+# each other's evidence.
+SCRATCH_BASE="${COORD_SCRATCH_ROOT:-$ROOT/.scratch/tmp}"
+mkdir -p "$SCRATCH_BASE"
+SCRATCH=$(TMPDIR="$SCRATCH_BASE" mktemp -d recovery-regression-XXXXXX)
 trap 'rm -rf "$SCRATCH"' EXIT
 
 ACTION_MAP="$ROOT/docs/operations/ACTION-MAP.yaml"
