@@ -140,11 +140,21 @@ boundaries:
 
 recoveryCard:
   eligibleToResume: false
-  selectedTransition: "RESUME_ASSIGNMENT | FREEZE_FOR_REVIEW | PREPARE_CORRECTION | BLOCKED_EXTERNAL | HUMAN_ACTION_REQUIRED | OWNER_REQUIRED | PRESERVE_AND_STOP"
+  # Допустимые значения: RESUME_ASSIGNMENT | FREEZE_FOR_REVIEW |
+  # RECOVER_COORDINATION_STATE | PREPARE_CORRECTION | BLOCKED_EXTERNAL |
+  # HUMAN_ACTION_REQUIRED | OWNER_REQUIRED | PRESERVE_AND_STOP
+  selectedTransition: PRESERVE_AND_STOP
   reason: ""
   filesAllowedToChange: []
   preservedUnknownChanges: []
   stopConditions: []
+
+# Required when selectedTransition is RECOVER_COORDINATION_STATE.
+# coordinationRecovery:
+#   committedSubjects: []
+#   classificationAssignmentId: ""
+#   proposedWorkUnits: []
+#   operationalCorrections: []
 
 attestation:
   examplesUsedAsCurrentAuthority: false
@@ -153,3 +163,5 @@ attestation:
   oldReviewReusedAfterDrift: false
   systemTmpUsedForProjectData: false
   credentialsPresentInReport: false
+  unknownFilesModified: false
+  unknownFilesCommitted: false

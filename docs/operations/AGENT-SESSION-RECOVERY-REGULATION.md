@@ -329,6 +329,18 @@ transitions:
       - exact subject определён
       - обязательные проверки пройдены
 
+  RECOVER_COORDINATION_STATE:
+    when:
+      - assignment не восстановлен
+      - operational state stale
+      - присутствует unknown batch
+      - read-only анализ безопасен
+    readOnly: true
+    forbidden:
+      - изменять, stage, commit или удалять unknown paths
+      - смешивать unknown batch с committed review subject
+      - объявлять ownership без доказательств
+
   PREPARE_CORRECTION:
     when:
       - отсутствует обязательный current-state source
@@ -530,7 +542,16 @@ Issue до завершения восстановления.
 
 11. Если implementation завершена, выбери FREEZE_FOR_REVIEW, а не новую Issue.
 
-12. Если найдены unknown changes или риск потери работы, выбери PRESERVE_AND_STOP.
+12. Если найдены unknown changes, примени двухуровневое правило:
+    - read-only анализ безопасен (assignment не восстановлен, operational state
+      stale или ownership не доказан, но evidence не повреждается) —
+      выбери RECOVER_COORDINATION_STATE: сохрани unknown changes, отдели
+      committed subject, подготовь exact-subject Review/Audit и read-only
+      classification assignments, не изменяя unknown paths;
+    - есть риск повреждения evidence, неизвестные staged changes, недействительный
+      WorkspaceBinding или реальный конфликт authority — выбери PRESERVE_AND_STOP.
+    Одно лишь наличие FOREIGN_OR_UNKNOWN изменений не является достаточной
+    причиной для PRESERVE_AND_STOP.
 
 13. OWNER_REQUIRED допускается только для новой нормы, реального конфликта норм
     или зарезервированного решения. HUMAN_ACTION_REQUIRED допускается только для

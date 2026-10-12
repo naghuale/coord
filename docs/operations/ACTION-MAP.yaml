@@ -353,6 +353,7 @@ events:
     expectedResults:
       - RESUME_ASSIGNMENT
       - FREEZE_FOR_REVIEW
+      - RECOVER_COORDINATION_STATE
       - PREPARE_CORRECTION
       - PRESERVE_AND_STOP
       - BLOCKED_EXTERNAL
@@ -412,6 +413,7 @@ events:
       - commit_unclassified_changes
       - reset_or_clean
     expectedResults:
+      - RECOVER_COORDINATION_STATE
       - PRESERVE_AND_STOP
       - RESUME_ASSIGNMENT
 
@@ -446,16 +448,13 @@ events:
     expectedResults:
       - FREEZE_FOR_REVIEW
 
+recoveryTransitions:
+  RESUME_ASSIGNMENT:
+    when: assignment recovered, workspace binding valid, no unknown changes, no OWNER/HUMAN boundary
+  FREEZE_FOR_REVIEW:
+    when: implementation complete, exact subject determined, checks passed
   RECOVER_COORDINATION_STATE:
-    requiredDocuments:
-      - agent-session-recovery-regulation
-      - agents
-      - project-config
-      - context-index
-      - document-registry
-      - action-map
-      - project-current
-      - project-open-work
+    when: missing assignment or stale operational state or unknown batch present but read-only analysis is safe
     allowedActions:
       - read_git_and_files
       - compute_digests
@@ -473,18 +472,10 @@ events:
       - delete_caches_without_proof
       - mix_unknown_batch_with_committed_review_subject
       - declare_ownership_without_evidence
-    expectedResults:
+    resultsIn:
       - FREEZE_FOR_REVIEW
       - PREPARE_CORRECTION
       - BLOCKED_EXTERNAL
-
-recoveryTransitions:
-  RESUME_ASSIGNMENT:
-    when: assignment recovered, workspace binding valid, no unknown changes, no OWNER/HUMAN boundary
-  FREEZE_FOR_REVIEW:
-    when: implementation complete, exact subject determined, checks passed
-  RECOVER_COORDINATION_STATE:
-    when: missing assignment or stale operational state or unknown batch present but read-only analysis is safe
   PREPARE_CORRECTION:
     when: mandatory source missing, event not in action map, document drift found
   BLOCKED_EXTERNAL:

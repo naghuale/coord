@@ -40,6 +40,18 @@ def main():
     if missing_transitions:
         problems.append("missing recovery transitions: " + ", ".join(missing_transitions))
 
+    all_expected=set()
+    for ev_body in amap.get("events", {}).values():
+        if isinstance(ev_body, dict):
+            all_expected.update(ev_body.get("expectedResults", []))
+    recovery_transition_keys=set(amap.get("recoveryTransitions", {}).keys())
+    unreachable=sorted(
+        t for t in REQUIRED_TRANSITIONS
+        if t not in all_expected and t in recovery_transition_keys
+    )
+    if unreachable:
+        problems.append("unreachable recovery transitions (not in any expectedResults): " + ", ".join(unreachable))
+
     agents=Path(args.agents).read_text(encoding="utf-8")
     for phrase in ["RECOVER_SESSION", "PRESERVE_AND_STOP", "RESUME_ASSIGNMENT", "RECOVER_COORDINATION_STATE"]:
         if phrase not in agents:

@@ -23,7 +23,8 @@ assignment. Сначала не изменяй файлы.
 8. Если assignment и ownership однозначны и нет OWNER/HUMAN boundary, сформируй
    Recovery Card и самостоятельно продолжай прежний assignment.
 9. Если implementation завершена, freeze exact subject и готовь Review/Audit.
-10. При unknown changes выбери PRESERVE_AND_STOP. Ничего не разрушай.
+10. При unknown changes выбери RECOVER_COORDINATION_STATE, если read-only анализ
+    безопасен, иначе PRESERVE_AND_STOP. Ничего не разрушай.
 
 Верни Recovery Report с workspace, Git state, sources, assignment, change
 classification, verification, boundaries и next safe transition.
