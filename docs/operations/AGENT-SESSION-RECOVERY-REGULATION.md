@@ -415,7 +415,9 @@ ProjectID mismatch;
 ProjectRoot mismatch;
 repository/worktree вне project root;
 неизвестных staged changes;
-неподтверждённой ownership;
+неподтверждённой ownership при переходе, который требует изменения или коммита
+файлов (исключение: RECOVER_COORDINATION_STATE выполняется read-only и
+допускает неизвестную ownership);
 отсутствующем mandatory authority source;
 конфликте Accepted norms;
 credential/MFA boundary;

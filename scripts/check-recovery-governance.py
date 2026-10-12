@@ -52,6 +52,19 @@ def main():
     if unreachable:
         problems.append("unreachable recovery transitions (not in any expectedResults): " + ", ".join(unreachable))
 
+    undefined_but_required=sorted(
+        t for t in REQUIRED_TRANSITIONS
+        if t not in recovery_transition_keys
+    )
+    if undefined_but_required:
+        problems.append("recovery transitions required but missing from recoveryTransitions: " + ", ".join(undefined_but_required))
+
+    wtu_expected=set(
+        amap.get("events", {}).get("WORKTREE_STATE_UNKNOWN", {}).get("expectedResults", [])
+    )
+    if "RECOVER_COORDINATION_STATE" not in wtu_expected:
+        problems.append("RECOVER_COORDINATION_STATE not reachable from WORKTREE_STATE_UNKNOWN")
+
     agents=Path(args.agents).read_text(encoding="utf-8")
     for phrase in ["RECOVER_SESSION", "PRESERVE_AND_STOP", "RESUME_ASSIGNMENT", "RECOVER_COORDINATION_STATE"]:
         if phrase not in agents:
