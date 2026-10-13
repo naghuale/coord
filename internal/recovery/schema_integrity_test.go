@@ -134,7 +134,7 @@ func TestSchemaCoordinatorFullSHAPattern(t *testing.T) {
 		t.Errorf("$defs/fullSha pattern = %q, want %q", got, fullSHAPattern)
 	}
 
-	// 2. Each SHA site must $ref #/$defs/fullSha and resolve to fullSHAPattern.
+	// 2. Each direct SHA site must $ref #/$defs/fullSha and resolve to fullSHAPattern.
 	sites := []string{
 		"/properties/recovery/properties/head",
 		"/properties/recovery/properties/expectedHead/anyOf/0",
@@ -152,12 +152,10 @@ func TestSchemaCoordinatorFullSHAPattern(t *testing.T) {
 			t.Errorf("site %s: node is %T, expected object", site, node)
 			continue
 		}
-		// Assert site still points at the fullSha definition.
 		ref, _ := obj["$ref"].(string)
 		if ref != fullSHARef {
 			t.Errorf("site %s: $ref = %q, want %q — site may have been repointed to a weaker definition", site, ref, fullSHARef)
 		}
-		// Resolve and assert the pattern on the definition.
 		resolved, err := jsonResolveRef(schema, obj)
 		if err != nil {
 			t.Errorf("site %s: resolve $ref: %v", site, err)
@@ -166,6 +164,58 @@ func TestSchemaCoordinatorFullSHAPattern(t *testing.T) {
 		got, _ := resolved["pattern"].(string)
 		if got != fullSHAPattern {
 			t.Errorf("site %s: resolved pattern = %q, want %q", site, got, fullSHAPattern)
+		}
+	}
+
+	// 3. $defs/optionalSha must chain through fullSha as its first anyOf element.
+	//    Three subject SHA fields (reviewSubjectSha, auditSubjectSha, ciSubjectSha)
+	//    resolve through this definition.
+	const optionalSHARef = "#/$defs/optionalSha"
+	optNode, err := jsonNavigate(schema, "/$defs/optionalSha")
+	if err != nil {
+		t.Errorf("$defs/optionalSha not found: %v", err)
+	} else {
+		optObj, ok := optNode.(map[string]any)
+		if !ok {
+			t.Errorf("$defs/optionalSha is %T, expected object", optNode)
+		} else {
+			anyOf, _ := optObj["anyOf"].([]any)
+			if len(anyOf) == 0 {
+				t.Error("$defs/optionalSha has no anyOf — must contain $ref to fullSha")
+			} else {
+				elem0, ok := anyOf[0].(map[string]any)
+				if !ok {
+					t.Errorf("$defs/optionalSha.anyOf[0] is %T, expected object", anyOf[0])
+				} else {
+					ref, _ := elem0["$ref"].(string)
+					if ref != fullSHARef {
+						t.Errorf("$defs/optionalSha.anyOf[0].$ref = %q, want %q — weakening optionalSha breaks reviewSubjectSha/auditSubjectSha/ciSubjectSha enforcement", ref, fullSHARef)
+					}
+				}
+			}
+		}
+	}
+
+	// 4. Subject SHA sites must reference optionalSha (not a weaker definition).
+	subjectSites := []string{
+		"/properties/subjectBinding/properties/reviewSubjectSha",
+		"/properties/subjectBinding/properties/auditSubjectSha",
+		"/properties/subjectBinding/properties/ciSubjectSha",
+	}
+	for _, site := range subjectSites {
+		node, err := jsonNavigate(schema, site)
+		if err != nil {
+			t.Errorf("site %s: navigate failed: %v", site, err)
+			continue
+		}
+		obj, ok := node.(map[string]any)
+		if !ok {
+			t.Errorf("site %s: node is %T, expected object", site, node)
+			continue
+		}
+		ref, _ := obj["$ref"].(string)
+		if ref != optionalSHARef {
+			t.Errorf("site %s: $ref = %q, want %q — site may have been repointed to a weaker definition", site, ref, optionalSHARef)
 		}
 	}
 }

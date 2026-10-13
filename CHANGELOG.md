@@ -1,5 +1,9 @@
 # История изменений
 
+## 2026-10-13 — fix(recovery): cover optionalSha chain in coordinator YAML schema test (audit N04, Refs #44)
+
+- `TestSchemaCoordinatorFullSHAPattern` дополнен: проверяет что `$defs/optionalSha.anyOf[0].$ref == "#/$defs/fullSha"` и что три subject SHA сайта (`reviewSubjectSha`, `auditSubjectSha`, `ciSubjectSha`) ссылаются на `#/$defs/optionalSha`. Мутация `$defs/optionalSha → {type: string}`: поймана. `TestSchemaCoordinatorFullSHAPattern`
+
 ## 2026-10-13 — fix(recovery): structural fullSha verification in coordinator YAML schema test (audit N03, Refs #44)
 
 - `TestSchemaCoordinatorFullSHAPattern` переписан: парсинг YAML через `gopkg.in/yaml.v3`, проверка `$defs/fullSha.pattern` и навигация к каждому из 4 SHA-сайтов с разрешением `$ref`. Мутация C-1 (`$defs/fullSha` ослаблен + decoy): поймана. Репоинт сайта на слабую def: поймана. `TestSchemaCoordinatorFullSHAPattern`
