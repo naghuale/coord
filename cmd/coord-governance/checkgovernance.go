@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
+	"strings"
 
 	"coord/internal/actionmap"
 	"coord/internal/defectpatterns"
@@ -90,8 +92,17 @@ func runRecoveryGovernanceCheck(args []string) error {
 	actionMapFlag := fs.String("action-map", "docs/operations/ACTION-MAP.yaml", "path to ACTION-MAP.yaml")
 	agentsFlag := fs.String("agents", "AGENTS.md", "path to AGENTS.md")
 	regulationFlag := fs.String("regulation", "docs/operations/AGENT-SESSION-RECOVERY-REGULATION.md", "regulation path as registered in the registry")
+	repoRootFlag := fs.String("repo-root", "", "canonical repository root; when set, verifies git top-level matches (rejects ancestor repos)")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+
+	repoRoot := *repoRootFlag
+	if repoRoot == "" {
+		// Derive from git rev-parse when not explicitly provided.
+		if out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output(); err == nil {
+			repoRoot = strings.TrimSpace(string(out))
+		}
 	}
 
 	opts := recovery.CheckOptions{
@@ -99,6 +110,7 @@ func runRecoveryGovernanceCheck(args []string) error {
 		ActionMapPath:  *actionMapFlag,
 		AgentsPath:     *agentsFlag,
 		RegulationPath: *regulationFlag,
+		RepoRoot:       repoRoot,
 	}
 	vs, err := recovery.Check(opts)
 	if err != nil {

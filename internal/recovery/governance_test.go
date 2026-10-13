@@ -2,10 +2,30 @@ package recovery
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// gitCommitAll initialises a bare git repository in root, stages all current
+// files and creates an initial commit. It requires git to be in PATH.
+func gitCommitAll(t *testing.T, root string) {
+	t.Helper()
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("init", "-q")
+	run("config", "user.email", "test@coord.test")
+	run("config", "user.name", "Test")
+	run("add", "-A")
+	run("commit", "-q", "--allow-empty", "--allow-empty-message", "-m", "")
+}
 
 // buildFixtures creates a minimal valid tree under root and returns opts.
 func buildFixtures(t *testing.T, root string) CheckOptions {
@@ -66,12 +86,15 @@ documents:
 		t.Fatal(err)
 	}
 
+	gitCommitAll(t, root)
+
 	return CheckOptions{
 		RegistryPath:   registryPath,
 		ActionMapPath:  actionMapPath,
 		AgentsPath:     agentsPath,
 		RegulationPath: "docs/operations/REGULATION.md",
 		DecisionDir:    decisionsDir,
+		RepoRoot:       root,
 	}
 }
 
@@ -161,19 +184,77 @@ func TestRegulationNormativeAuthorityFalse(t *testing.T) {
 }
 
 func TestRegulationDecisionMissing(t *testing.T) {
+	// The decision file exists on disk but is never committed — git show HEAD fails.
 	root := t.TempDir()
-	opts := buildFixtures(t, root)
-	// Remove the decision file.
-	decPath := filepath.Join(opts.DecisionDir, "RECOVERY-REGULATION-R1.yaml")
-	if err := os.Remove(decPath); err != nil {
+
+	docsDir := filepath.Join(root, "docs")
+	opsDir := filepath.Join(docsDir, "operations")
+	decisionsDir := filepath.Join(docsDir, "decisions")
+	for _, d := range []string{opsDir, decisionsDir} {
+		if err := os.MkdirAll(d, 0750); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	regulationPath := filepath.Join(opsDir, "REGULATION.md")
+	if err := os.WriteFile(regulationPath, []byte("# Recovery Regulation"), 0600); err != nil {
 		t.Fatal(err)
+	}
+	registryContent := `apiVersion: coord.dev/v1alpha1
+kind: DocumentRegistry
+documents:
+  - id: recovery-regulation
+    path: docs/operations/REGULATION.md
+    class: process
+    status: accepted
+    purpose: [recovery]
+    usedBy: [COORDINATOR]
+    readWhen: [SESSION_START]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process
+    currentNormativeAuthority: true
+    decisionRef: RECOVERY-REGULATION-R1
+    ownership: {}
+    acceptance: {}
+`
+	registryPath := filepath.Join(root, "registry.yaml")
+	if err := os.WriteFile(registryPath, []byte(registryContent), 0600); err != nil {
+		t.Fatal(err)
+	}
+	actionMapPath := filepath.Join(root, "action-map.yaml")
+	if err := os.WriteFile(actionMapPath, []byte(buildMinimalActionMap()), 0600); err != nil {
+		t.Fatal(err)
+	}
+	agentsPath := filepath.Join(root, "AGENTS.md")
+	if err := os.WriteFile(agentsPath, []byte("RECOVER_SESSION\nPRESERVE_AND_STOP\nRESUME_ASSIGNMENT\nRECOVER_COORDINATION_STATE\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Commit all files EXCEPT the decision file.
+	gitCommitAll(t, root)
+
+	// Now create the decision file on disk after the commit (untracked).
+	decPath := filepath.Join(decisionsDir, "RECOVERY-REGULATION-R1.yaml")
+	if err := os.WriteFile(decPath, []byte("status: accepted\nclass: R\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	opts := CheckOptions{
+		RegistryPath:   registryPath,
+		ActionMapPath:  actionMapPath,
+		AgentsPath:     agentsPath,
+		RegulationPath: "docs/operations/REGULATION.md",
+		DecisionDir:    decisionsDir,
+		RepoRoot:       root,
 	}
 	vs, err := Check(opts)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !hasCode(vs, "DECISION_NOT_COMMITTED") {
-		t.Errorf("expected DECISION_NOT_COMMITTED, got: %v", vs)
+		t.Errorf("expected DECISION_NOT_COMMITTED for untracked decision file, got: %v", vs)
 	}
 }
 
@@ -184,6 +265,7 @@ func TestDecisionClassInvalid(t *testing.T) {
 	if err := os.WriteFile(decPath, []byte("status: accepted\nclass: TD\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	gitCommitAll(t, root)
 	vs, err := Check(opts)
 	if err != nil {
 		t.Fatal(err)
@@ -200,6 +282,7 @@ func TestDecisionStatusInvalid(t *testing.T) {
 	if err := os.WriteFile(decPath, []byte("status: proposed\nclass: R\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	gitCommitAll(t, root)
 	vs, err := Check(opts)
 	if err != nil {
 		t.Fatal(err)
@@ -327,6 +410,178 @@ func TestMutation_RegulationProposed(t *testing.T) {
 	}
 	if !found {
 		t.Error("mutation not detected: proposed status should produce a violation")
+	}
+}
+
+// TestDecisionNoGitContext verifies that readDecisionCommitted fails closed when
+// the decision file is not inside a git repository (R08: no disk fallback).
+func TestDecisionNoGitContext(t *testing.T) {
+	// Build fixtures WITHOUT calling gitCommitAll — no git repo.
+	root := t.TempDir()
+
+	docsDir := filepath.Join(root, "docs")
+	opsDir := filepath.Join(docsDir, "operations")
+	decisionsDir := filepath.Join(docsDir, "decisions")
+	for _, d := range []string{opsDir, decisionsDir} {
+		if err := os.MkdirAll(d, 0750); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(opsDir, "REGULATION.md"), []byte("# Reg"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(decisionsDir, "RECOVERY-REGULATION-R1.yaml"), []byte("status: accepted\nclass: R\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	registryContent := `apiVersion: coord.dev/v1alpha1
+kind: DocumentRegistry
+documents:
+  - id: recovery-regulation
+    path: docs/operations/REGULATION.md
+    class: process
+    status: accepted
+    purpose: [recovery]
+    usedBy: [COORDINATOR]
+    readWhen: [SESSION_START]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process
+    currentNormativeAuthority: true
+    decisionRef: RECOVERY-REGULATION-R1
+    ownership: {}
+    acceptance: {}
+`
+	if err := os.WriteFile(filepath.Join(root, "registry.yaml"), []byte(registryContent), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "action-map.yaml"), []byte(buildMinimalActionMap()), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "AGENTS.md"), []byte("RECOVER_SESSION\nPRESERVE_AND_STOP\nRESUME_ASSIGNMENT\nRECOVER_COORDINATION_STATE\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	opts := CheckOptions{
+		RegistryPath:   filepath.Join(root, "registry.yaml"),
+		ActionMapPath:  filepath.Join(root, "action-map.yaml"),
+		AgentsPath:     filepath.Join(root, "AGENTS.md"),
+		RegulationPath: "docs/operations/REGULATION.md",
+		DecisionDir:    decisionsDir,
+		RepoRoot:       root,
+	}
+	vs, err := Check(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCode(vs, "DECISION_NOT_COMMITTED") {
+		t.Errorf("expected DECISION_NOT_COMMITTED when no git context, got: %v", vs)
+	}
+}
+
+// TestDecisionAncestorGit verifies that an ancestor repository is rejected when
+// RepoRoot is set (R08: boundary check via rev-parse --show-toplevel).
+func TestDecisionAncestorGit(t *testing.T) {
+	// outer/ has a .git; inner/ has the decision file but no own .git.
+	outer := t.TempDir()
+	inner := filepath.Join(outer, "inner")
+	if err := os.MkdirAll(inner, 0750); err != nil {
+		t.Fatal(err)
+	}
+
+	// Commit something in the outer repo so it is a valid git repo.
+	gitCommitAll(t, outer)
+
+	// Build the decision file inside inner/ (never committed to outer).
+	decisionsDir := filepath.Join(inner, "docs", "decisions")
+	if err := os.MkdirAll(decisionsDir, 0750); err != nil {
+		t.Fatal(err)
+	}
+	decPath := filepath.Join(decisionsDir, "RECOVERY-REGULATION-R1.yaml")
+	if err := os.WriteFile(decPath, []byte("status: accepted\nclass: R\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Build other fixtures under inner/.
+	opsDir := filepath.Join(inner, "docs", "operations")
+	if err := os.MkdirAll(opsDir, 0750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(opsDir, "REGULATION.md"), []byte("# Reg"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	registryContent := `apiVersion: coord.dev/v1alpha1
+kind: DocumentRegistry
+documents:
+  - id: recovery-regulation
+    path: docs/operations/REGULATION.md
+    class: process
+    status: accepted
+    purpose: [recovery]
+    usedBy: [COORDINATOR]
+    readWhen: [SESSION_START]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: process
+    currentNormativeAuthority: true
+    decisionRef: RECOVERY-REGULATION-R1
+    ownership: {}
+    acceptance: {}
+`
+	if err := os.WriteFile(filepath.Join(inner, "registry.yaml"), []byte(registryContent), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(inner, "action-map.yaml"), []byte(buildMinimalActionMap()), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(inner, "AGENTS.md"), []byte("RECOVER_SESSION\nPRESERVE_AND_STOP\nRESUME_ASSIGNMENT\nRECOVER_COORDINATION_STATE\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// RepoRoot is inner/, but git --show-toplevel will return outer/ (ancestor).
+	opts := CheckOptions{
+		RegistryPath:   filepath.Join(inner, "registry.yaml"),
+		ActionMapPath:  filepath.Join(inner, "action-map.yaml"),
+		AgentsPath:     filepath.Join(inner, "AGENTS.md"),
+		RegulationPath: "docs/operations/REGULATION.md",
+		DecisionDir:    decisionsDir,
+		RepoRoot:       inner, // ← expected root; outer is detected → mismatch
+	}
+	vs, err := Check(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCode(vs, "DECISION_NOT_COMMITTED") {
+		t.Errorf("expected DECISION_NOT_COMMITTED for ancestor git mismatch, got: %v", vs)
+	}
+}
+
+// TestRCSAsEvent verifies that RECOVER_COORDINATION_STATE in the events section
+// is rejected (R09: it must appear only in recoveryTransitions).
+func TestRCSAsEvent(t *testing.T) {
+	root := t.TempDir()
+	opts := buildFixtures(t, root)
+
+	// Add RECOVER_COORDINATION_STATE as an event.
+	am, err := os.ReadFile(opts.ActionMapPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rcsEvent := "  RECOVER_COORDINATION_STATE:\n    requiredDocuments: []\n    allowedActions: []\n    forbiddenActions: []\n    expectedResults: [PRESERVE_AND_STOP]\n"
+	modified := strings.Replace(string(am), "recoveryTransitions:", rcsEvent+"recoveryTransitions:", 1)
+	if err := os.WriteFile(opts.ActionMapPath, []byte(modified), 0600); err != nil {
+		t.Fatal(err)
+	}
+	// Mutation also needs to be committed so the decision check passes.
+	gitCommitAll(t, root)
+
+	vs, err := Check(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCode(vs, "RECOVER_COORDINATION_STATE_AS_EVENT") {
+		t.Errorf("expected RECOVER_COORDINATION_STATE_AS_EVENT, got: %v", vs)
 	}
 }
 

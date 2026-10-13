@@ -46,6 +46,12 @@ type CheckOptions struct {
 	AgentsPath     string
 	RegulationPath string
 	DecisionDir    string // defaults to <RegulationPath dir>/../decisions
+
+	// RepoRoot is the canonical absolute path of the repository root. When set,
+	// readDecisionCommitted verifies that git rev-parse --show-toplevel equals
+	// this value before reading from HEAD, preventing an ancestor repository
+	// from being accepted as the project's git context.
+	RepoRoot string
 }
 
 // Check runs all recovery governance validations and returns violations.
@@ -172,8 +178,8 @@ func checkRegistry(opts CheckOptions) ([]Violation, error) {
 		return vs, nil
 	}
 
-	// Verify the decision is committed in HEAD when a git context is available.
-	decisionBytes, gitErr := readDecisionCommitted(decisionPath, resolvedDecision)
+	// Verify the decision is committed in HEAD.
+	decisionBytes, gitErr := readDecisionCommitted(resolvedDecision, opts.RepoRoot)
 	if gitErr != nil {
 		vs = append(vs, Violation{Code: "DECISION_NOT_COMMITTED", Detail: gitErr.Error()})
 		return vs, nil
@@ -199,43 +205,59 @@ func checkRegistry(opts CheckOptions) ([]Violation, error) {
 	return vs, nil
 }
 
-// readDecisionCommitted returns the decision file content.
-// When a git context exists, it reads from HEAD; otherwise reads from disk
-// (git archive snapshot — only committed files are present).
-func readDecisionCommitted(decisionPath, absPath string) ([]byte, error) {
-	// Check for a git context by looking for .git in ancestor directories.
-	repoRoot, hasGit := findGitRoot(filepath.Dir(absPath))
-	if !hasGit {
-		// git archive snapshot: file presence guarantees committed state.
-		return os.ReadFile(decisionPath)
+// readDecisionCommitted reads absPath from the git HEAD of its repository and
+// returns the committed bytes. It fails closed:
+//   - if the file is not inside a git repository, it returns an error;
+//   - if repoRoot is non-empty, it verifies that git rev-parse --show-toplevel
+//     equals repoRoot; a mismatch (ancestor repo) is rejected.
+//
+// No fallback to disk read: untracked files are not accepted as committed.
+func readDecisionCommitted(absPath, repoRoot string) ([]byte, error) {
+	dir := filepath.Dir(absPath)
+
+	// Determine the canonical repository top-level from git.
+	tlCmd := exec.Command("git", "-C", dir, "rev-parse", "--show-toplevel")
+	tlOut, tlErr := tlCmd.Output()
+	if tlErr != nil {
+		return nil, fmt.Errorf("decision file %q is not inside a git repository: cannot verify committed state (fail closed)", absPath)
+	}
+	detectedRoot := filepath.Clean(strings.TrimSpace(string(tlOut)))
+
+	// When an explicit boundary was provided, verify we are in the correct repo.
+	// Resolve symlinks on both sides to handle platforms where os.TempDir() and
+	// filepath.EvalSymlinks differ (e.g. macOS /var → /private/var).
+	if repoRoot != "" {
+		canonRoot := filepath.Clean(repoRoot)
+		if resolved, err := filepath.EvalSymlinks(canonRoot); err == nil {
+			canonRoot = resolved
+		}
+		resolvedDetected := detectedRoot
+		if resolved, err := filepath.EvalSymlinks(detectedRoot); err == nil {
+			resolvedDetected = resolved
+		}
+		if resolvedDetected != canonRoot {
+			return nil, fmt.Errorf("decision file %q belongs to repository at %q, not the required %q (ancestor repository rejected)", absPath, detectedRoot, repoRoot)
+		}
 	}
 
-	rel, err := filepath.Rel(repoRoot, absPath)
+	// Resolve symlinks on absPath so filepath.Rel works correctly on platforms
+	// where os.TempDir() differs from the canonical path (e.g. macOS /var → /private/var).
+	resolvedAbsPath := absPath
+	if rp, err := filepath.EvalSymlinks(absPath); err == nil {
+		resolvedAbsPath = rp
+	}
+	rel, err := filepath.Rel(detectedRoot, resolvedAbsPath)
 	if err != nil {
 		return nil, fmt.Errorf("cannot relativize decision path to repo root: %w", err)
 	}
 	rel = filepath.ToSlash(rel)
 
-	cmd := exec.Command("git", "-C", repoRoot, "show", "HEAD:"+rel)
+	cmd := exec.Command("git", "-C", detectedRoot, "show", "HEAD:"+rel)
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("decision artifact %q exists on disk but is not committed in HEAD", rel)
 	}
 	return out, nil
-}
-
-// findGitRoot walks up from dir looking for a .git directory.
-func findGitRoot(dir string) (string, bool) {
-	for {
-		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
-			return dir, true
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", false
-		}
-		dir = parent
-	}
 }
 
 func checkActionMap(actionMapPath string) ([]Violation, error) {
@@ -281,6 +303,16 @@ func checkActionMap(actionMapPath string) ([]Violation, error) {
 		if _, ok := am.RecoveryTransitions[t]; ok && !allExpected[t] {
 			vs = append(vs, Violation{Code: "UNREACHABLE_TRANSITION", Detail: fmt.Sprintf("transition %s is defined but not reachable from any event's expectedResults", t)})
 		}
+	}
+
+	// RECOVER_COORDINATION_STATE must not appear as an event key; it is a
+	// recovery transition only. Adding it as an event would allow bypass of the
+	// transition-only access control.
+	if _, ok := am.Events["RECOVER_COORDINATION_STATE"]; ok {
+		vs = append(vs, Violation{
+			Code:   "RECOVER_COORDINATION_STATE_AS_EVENT",
+			Detail: "RECOVER_COORDINATION_STATE must not appear in events; it is a recoveryTransitions entry only",
+		})
 	}
 
 	// RECOVER_COORDINATION_STATE edge checks.
