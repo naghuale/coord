@@ -171,12 +171,17 @@ workspace:
 Правила проекта `coord`:
 
 ```text
-COORD_GLOBAL_ROOT=/Users/andreybabenko/Downloads/workspace
-COORD_PROJECT_ROOT=/Users/andreybabenko/Downloads/workspace/workspace-01
+COORD_GLOBAL_ROOT=<absolute canonical path from local configuration>
+COORD_PROJECT_ROOT=${COORD_GLOBAL_ROOT}/<local project namespace>
 стартовый cwd агента=COORD_PROJECT_ROOT
-временные файлы=workspace-01/.scratch/tmp
+временные файлы=${COORD_PROJECT_ROOT}/.scratch/tmp
 системный /tmp запрещён
 ```
+
+Значения задаются локальной конфигурацией машины, а не этим документом.
+Recovery Report содержит фактические абсолютные пути этой машины; шаблон
+`docs/templates/RECOVERY-REPORT-TEMPLATE.yaml` и fixtures используют
+machine-local примеры.
 
 Несоответствие binding останавливает recovery с `INVALID_WORKSPACE_BINDING`.
 

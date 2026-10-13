@@ -1,3 +1,6 @@
+# NOTE: the paths below are machine-local examples used to satisfy the absolute
+# path pattern; replace them with the actual COORD_GLOBAL_ROOT / COORD_PROJECT_ROOT
+# of your environment. Values are never authoritative.
 apiVersion: coord.dev/v1alpha1
 kind: AgentSessionRecoveryReport
 

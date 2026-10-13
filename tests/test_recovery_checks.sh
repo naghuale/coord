@@ -20,7 +20,8 @@ echo "RECOVERY_CHECK_SELF_TEST_PASS"
 # The directory is unique per run so parallel runs do not share or delete
 # each other's evidence. The template carries the absolute path explicitly:
 # BSD mktemp ignores TMPDIR when the template has no path component.
-SCRATCH_BASE="${COORD_SCRATCH_ROOT:-$ROOT/.scratch/tmp}"
+SCRATCH_BASE_PROJECT="${COORD_PROJECT_ROOT:-$(cd "$ROOT/../.." 2>/dev/null && pwd || echo "$ROOT")}"
+SCRATCH_BASE="${COORD_SCRATCH_ROOT:-$SCRATCH_BASE_PROJECT/.scratch/tmp}"
 mkdir -p "$SCRATCH_BASE"
 SCRATCH=$(mktemp -d "$SCRATCH_BASE/recovery-regression-XXXXXX")
 trap 'rm -rf "$SCRATCH"' EXIT

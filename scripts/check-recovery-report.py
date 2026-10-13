@@ -63,6 +63,47 @@ def main():
     if data["recovery"]["requiredLaunchCwd"].rstrip("/") != project:
         return fail("requiredLaunchCwd must equal projectRoot")
 
+    # Unknown staged changes are a hard stop; they cannot be classified read-only.
+    staged = wt.get("stagedFiles", [])
+    unknown_staged = set(staged) & set(foreign)
+    if unknown_staged and transition != "PRESERVE_AND_STOP":
+        return fail(f"unknown staged files require PRESERVE_AND_STOP, found transition={transition}")
+
+    if not data["recovery"].get("headMatchesExpected", True) and transition == "RESUME_ASSIGNMENT":
+        return fail("RESUME_ASSIGNMENT forbidden when headMatchesExpected is false")
+
+    pRisk = data["workingTree"].get("preservationRisk", "")
+    safe_transitions = {"PRESERVE_AND_STOP", "BLOCKED_EXTERNAL", "OWNER_REQUIRED", "HUMAN_ACTION_REQUIRED"}
+    if pRisk == "HIGH" and transition not in safe_transitions:
+        return fail(f"preservationRisk=HIGH requires transition in {sorted(safe_transitions)}, got {transition}")
+
+    # Every changed file is classified, and no file lands in two buckets.
+    cls = data.get("classification", {})
+    buckets = {
+        "committedAccepted": set(cls.get("committedAccepted", [])),
+        "currentAssignmentUncommitted": set(cls.get("currentAssignmentUncommitted", [])),
+        "postAssignmentSync": set(cls.get("postAssignmentSync", [])),
+        "foreignOrUnknown": set(cls.get("foreignOrUnknown", [])),
+        "generated": set(cls.get("generated", [])),
+        "scratch": set(cls.get("scratch", [])),
+    }
+    wt_paths = set(staged + wt.get("modifiedFiles", []) + wt.get("untrackedFiles", []))
+    classified: set = set()
+    for name, paths in buckets.items():
+        overlap = paths & classified
+        if overlap:
+            return fail(f"classification overlap: {sorted(overlap)} appear in multiple buckets including {name}")
+        classified |= paths
+    unclassified = sorted(wt_paths - classified)
+    if unclassified:
+        return fail(f"changed files missing from classification: {unclassified}")
+
+    # Containment: repository and worktree must stay under the project root.
+    for field in ("repositoryRoot", "assignedWorktree"):
+        val = data["recovery"].get(field, "")
+        if val and not Path(val.rstrip("/")).is_relative_to(Path(project)):
+            return fail(f"recovery.{field}={val!r} not contained within projectRoot={project!r}")
+
     if args.project_root:
         expected = str(Path(args.project_root).resolve())
         if str(Path(project).resolve()) != expected:
