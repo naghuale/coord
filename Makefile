@@ -67,6 +67,7 @@ check-supervisor-seccomp-registry:
 	PYTHONPATH=scripts python3 -m unittest discover -s tests -p 'test_supervisor_seccomp_registry.py' -v
 
 check-recovery:
+	bash tests/test_recovery_checks.sh
 	go run ./cmd/coord-governance recovery governance-check \
 		--registry docs/DOCUMENT-REGISTRY.yaml \
 		--action-map docs/operations/ACTION-MAP.yaml \
