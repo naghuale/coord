@@ -33,10 +33,16 @@ func TestSchemaWildcardBanPattern(t *testing.T) {
 }
 
 // TestSchemaFullSHAPattern verifies that the recovery report JSON schema
-// enforces 40-character hex SHA values. Replacing the fullSha definition with
-// {type: string} passes CI silently without this test.
+// enforces 40-character hex SHA values at all 7 required sites. The pattern
+// appears inline (not via $ref), so strings.Contains passes even when 6 of 7
+// sites are weakened. strings.Count catches per-site removal.
+//
+// The 7 required sites: recovery.head, recovery.expectedHead, assignment.baseSha,
+// subjectBinding.reviewSubjectSha, subjectBinding.auditSubjectSha,
+// subjectBinding.ciSubjectSha, coordinationRecovery.committedSubjects[].sha.
 func TestSchemaFullSHAPattern(t *testing.T) {
 	const path = "../../docs/schemas/recovery-report.schema.json"
+	const requiredCount = 7
 	if _, err := os.Stat(path); err != nil {
 		t.Skipf("schema not available: %s", path)
 	}
@@ -44,8 +50,9 @@ func TestSchemaFullSHAPattern(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read schema: %v", err)
 	}
-	if !strings.Contains(string(data), "[0-9a-f]{40}") {
-		t.Errorf("full-SHA pattern [0-9a-f]{40} missing in %s — removing it would allow short SHAs to pass schema validation silently", path)
+	got := strings.Count(string(data), "[0-9a-f]{40}")
+	if got < requiredCount {
+		t.Errorf("full-SHA pattern [0-9a-f]{40} found %d times in %s, need >= %d — per-site weakening allows short SHAs to pass validation silently", got, path, requiredCount)
 	}
 }
 

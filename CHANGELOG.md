@@ -1,5 +1,9 @@
 # История изменений
 
+## 2026-10-13 — fix(recovery): per-site fullSha coverage in schema integrity test (audit N01, Refs #44)
+
+- `TestSchemaFullSHAPattern` заменяет `strings.Contains` на `strings.Count(...) >= 7`: JSON-схема содержит паттерн `[0-9a-f]{40}` ровно в 7 полях inline; ослабление любого одного поля снижает счётчик до 6 и немедленно роняет тест. Мутационная проверка (замена первого из 7 сайтов): exit 1, тест упал. `TestSchemaFullSHAPattern`
+
 ## 2026-10-13 — fix(recovery): restore report-level gate and schema integrity tests (audit F1/F3, Refs #44)
 
 - Восстановлен `bash tests/test_recovery_checks.sh` в target `check-recovery` в Makefile: 18 report-level правил (wildcard ban, fullSha, cross-field consistency, path containment, credential leakage) снова входят в `make check`. Auditor доказал, что без этого мутация схем проходила CI без обнаружения (F1). `TestSchemaWildcardBanPattern` `TestSchemaFullSHAPattern` `TestSchemaCoordinatorFullSHAPattern`
