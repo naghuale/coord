@@ -112,11 +112,25 @@ expect_invalid_registry decision-ref-parent "$SCRATCH/decision-ref-parent.yaml"
 # An untracked file in docs/decisions must not satisfy the reference.
 FAKE_DECISION_ID="UNTRACKED-DECISION-TEST"
 FAKE_DECISION_FILE="$ROOT/docs/decisions/${FAKE_DECISION_ID}.yaml"
-cleanup_fake_decision() { rm -f "$FAKE_DECISION_FILE"; }
+# A staged but uncommitted artifact must not satisfy it either: the check reads
+# the blob from HEAD, not the index and not the working tree.
+FAKE_STAGED_ID="STAGED-DECISION-TEST"
+FAKE_STAGED_FILE="$ROOT/docs/decisions/${FAKE_STAGED_ID}.yaml"
+cleanup_fake_decision() {
+  rm -f "$FAKE_DECISION_FILE" "$FAKE_STAGED_FILE"
+  git -C "$ROOT" restore --staged -- "$FAKE_STAGED_FILE" >/dev/null 2>&1 ||
+    git -C "$ROOT" reset -q HEAD -- "$FAKE_STAGED_FILE" >/dev/null 2>&1 || true
+}
 trap 'rm -rf "$SCRATCH"; cleanup_fake_decision' EXIT
 printf 'decision: %s\nclass: R\nstatus: accepted\n' "$FAKE_DECISION_ID" > "$FAKE_DECISION_FILE"
 mutate_registry decision-ref-untracked "doc[\"decisionRef\"] = \"$FAKE_DECISION_ID\""
 expect_invalid_registry decision-ref-untracked "$SCRATCH/decision-ref-untracked.yaml"
+cleanup_fake_decision
+
+printf 'decision: %s\nclass: R\nstatus: accepted\n' "$FAKE_STAGED_ID" > "$FAKE_STAGED_FILE"
+git -C "$ROOT" add -- "$FAKE_STAGED_FILE"
+mutate_registry decision-ref-staged "doc[\"decisionRef\"] = \"$FAKE_STAGED_ID\""
+expect_invalid_registry decision-ref-staged "$SCRATCH/decision-ref-staged.yaml"
 cleanup_fake_decision
 
 echo "AUTHORITY_REGRESSION_PASS"

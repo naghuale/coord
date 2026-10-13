@@ -68,33 +68,55 @@ def main():
                         f"has no committed artifact at {decision_path.as_posix()}"
                     )
                 else:
+                    # Read the blob from HEAD rather than trusting the working
+                    # tree: ls-files only reports the index, so a staged but
+                    # uncommitted artifact would satisfy it, and an export
+                    # without .git would resolve elsewhere or fail silently.
                     repo_root = Path(args.regulation_path).parent.parent.parent.resolve()
-                    tracked = subprocess.run(
-                        ["git", "ls-files", "--error-unmatch",
-                         decision_path.relative_to(repo_root).as_posix()],
-                        capture_output=True, cwd=repo_root,
-                    )
-                    if tracked.returncode != 0:
+                    try:
+                        rel_path = decision_path.relative_to(repo_root)
+                    except ValueError:
                         problems.append(
-                            f"decision artifact {ref!r} exists on disk "
-                            f"but is not committed to git"
+                            f"decision artifact {ref!r} path cannot be relativized "
+                            f"to repository root"
                         )
                     else:
-                        try:
-                            dec = load(str(decision_path))
-                        except Exception as exc:
-                            problems.append(f"cannot load decision artifact {ref!r}: {exc}")
+                        show = subprocess.run(
+                            ["git", "-C", str(repo_root), "show",
+                             f"HEAD:{rel_path.as_posix()}"],
+                            capture_output=True, text=True,
+                        )
+                        if show.returncode != 0:
+                            problems.append(
+                                f"decision artifact {ref!r} exists on disk but "
+                                f"is not committed in HEAD (staged or untracked, "
+                                f"or no git context)"
+                            )
                         else:
-                            if dec.get("status") != "accepted":
+                            try:
+                                dec = yaml.safe_load(show.stdout)
+                            except Exception as exc:
                                 problems.append(
-                                    f"decision artifact {ref!r} "
-                                    f"status must be 'accepted', got {dec.get('status')!r}"
+                                    f"cannot parse committed decision artifact "
+                                    f"{ref!r}: {exc}"
                                 )
-                            if dec.get("class") != "R":
-                                problems.append(
-                                    f"decision artifact {ref!r} "
-                                    f"must be class R, got {dec.get('class')!r}"
-                                )
+                            else:
+                                if not isinstance(dec, dict):
+                                    problems.append(
+                                        f"committed decision artifact {ref!r} "
+                                        f"is not a mapping"
+                                    )
+                                else:
+                                    if dec.get("status") != "accepted":
+                                        problems.append(
+                                            f"decision artifact {ref!r} "
+                                            f"status must be 'accepted', got {dec.get('status')!r}"
+                                        )
+                                    if dec.get("class") != "R":
+                                        problems.append(
+                                            f"decision artifact {ref!r} "
+                                            f"must be class R, got {dec.get('class')!r}"
+                                        )
 
     amap=load(args.action_map)
     events=set(amap.get("events", {}).keys())
