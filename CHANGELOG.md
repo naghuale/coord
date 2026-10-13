@@ -1,5 +1,9 @@
 # История изменений
 
+## 2026-10-14 — chore(test): retire Python harnesses after Go parity confirmed, WP-06 (Refs #46)
+
+- Удалены три Python test-файла после полного Go parity, зелёного CI и AUDIT_ACCEPTED: `tests/test_resolver_launcher.py`, `tests/test_sandbox_session_registry.py`, `tests/test_supervisor_seccomp_registry.py` (документация).
+
 ## 2026-10-13 — feat(test): migrate Python check harnesses to Go, WP-02–WP-05 (Refs #46)
 
 - `internal/admission/validator_test.go`: `TestDigestDriftDetected` — parity с Python `test_digest_drift_detected`; после изменения AGENTS.md проверяет production `Validate` отклоняет action context с `DIGEST_DRIFT`.
