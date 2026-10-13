@@ -1959,6 +1959,34 @@ documents:
       reviewer: required
       auditor: conditional_if_TD_R2
       owner: only_for_class_R
+  - id: recovery-regulation-r1
+    path: docs/decisions/RECOVERY-REGULATION-R1.yaml
+    class: process
+    status: accepted
+    purpose:
+      - recorded OWNER class R decision elevating the recovery regulation to Accepted
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - RECOVER_SESSION
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    normativeAuthority: process
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: required
+      owner: only_for_class_R
+
   - id: td-issue-36
     path: docs/decisions/TD-issue-36.yaml
     class: process

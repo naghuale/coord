@@ -64,6 +64,17 @@ def main():
     if data["recovery"]["requiredLaunchCwd"].rstrip("/") != global_root:
         return fail("requiredLaunchCwd must equal globalRoot per R143")
 
+    # Containment ladder: globalRoot contains projectRoot, projectRoot contains
+    # the repository and the worktree. Compared on fully resolved paths.
+    norm_global = Path(os.path.realpath(global_root))
+    norm_project = Path(os.path.realpath(project))
+    if not norm_project.is_relative_to(norm_global):
+        return fail(f"projectRoot={project!r} not contained within globalRoot={global_root!r}")
+    for field in ("repositoryRoot", "assignedWorktree"):
+        val = data["recovery"].get(field, "")
+        if val and not Path(os.path.realpath(val)).is_relative_to(norm_project):
+            return fail(f"recovery.{field}={val!r} not contained within projectRoot={project!r}")
+
     # Unknown staged changes are a hard stop; they cannot be classified read-only.
     staged = wt.get("stagedFiles", [])
     unknown_staged = set(staged) & set(foreign)
@@ -98,16 +109,6 @@ def main():
     unclassified = sorted(wt_paths - classified)
     if unclassified:
         return fail(f"changed files missing from classification: {unclassified}")
-
-    # Containment: repository and worktree must stay under the project root.
-    # Paths are fully resolved first. Lexical comparison alone accepts both
-    # "<projectRoot>/../../outside" and a symlink inside the project root that
-    # points outside it.
-    norm_project = Path(os.path.realpath(project))
-    for field in ("repositoryRoot", "assignedWorktree"):
-        val = data["recovery"].get(field, "")
-        if val and not Path(os.path.realpath(val)).is_relative_to(norm_project):
-            return fail(f"recovery.{field}={val!r} not contained within projectRoot={project!r}")
 
     if args.project_root:
         expected = str(Path(args.project_root).resolve())

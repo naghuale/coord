@@ -47,8 +47,8 @@ OPEN-WORK, Operations Ledger, assignments и evidence.
 
 Для проекта coord ожидается:
 
-- `COORD_GLOBAL_ROOT=/Users/andreybabenko/Downloads/workspace`;
-- `COORD_PROJECT_ROOT=/Users/andreybabenko/Downloads/workspace/workspace-01`;
+- `COORD_GLOBAL_ROOT=<absolute canonical path from local configuration>`;
+- `COORD_PROJECT_ROOT=${COORD_GLOBAL_ROOT}/<local project namespace>`;
 - стартовый cwd всех агентов равен `COORD_GLOBAL_ROOT` (R143);
 - repository и worktrees находятся внутри `workspace-01`;
 - project temporary data находятся только в `workspace-01/.scratch/tmp`;

@@ -143,6 +143,10 @@ expect_invalid_report worktree-dotdot "$RESUME_FIXTURE" \
   'doc["recovery"]["assignedWorktree"] = doc["recovery"]["projectRoot"] + "/../workspace-02"'
 expect_invalid_report repo-outside "$RESUME_FIXTURE" \
   'doc["recovery"]["repositoryRoot"] = "/etc/passwd"'
+expect_invalid_report sibling-prefix "$RESUME_FIXTURE" \
+  'doc["recovery"]["repositoryRoot"] = doc["recovery"]["projectRoot"] + "-evil"'
+expect_invalid_report project-outside-global "$RESUME_FIXTURE" \
+  'doc["recovery"]["globalRoot"] = "/somewhere/else"; doc["recovery"]["requiredLaunchCwd"] = "/somewhere/else"'
 expect_invalid_report launch-cwd-wrong "$RESUME_FIXTURE" \
   'doc["recovery"]["requiredLaunchCwd"] = doc["recovery"]["projectRoot"]'
 expect_invalid_report unclassified-changed "$COORD_FIXTURE" \

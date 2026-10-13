@@ -48,6 +48,32 @@ def main():
             problems.append("recovery regulation must have currentNormativeAuthority=true")
         if not reg_doc.get("decisionRef"):
             problems.append("recovery regulation must record the OWNER decisionRef")
+        else:
+            # The reference must resolve to a committed decision record. The
+            # path is anchored on the regulation, not on the registry file, so
+            # a registry copy passed from elsewhere still resolves in the repo.
+            decision_path = Path(args.regulation_path).parent.parent / "decisions" / (str(reg_doc["decisionRef"]) + ".yaml")
+            if not decision_path.is_file():
+                problems.append(
+                    f"recovery regulation decisionRef={reg_doc['decisionRef']!r} "
+                    f"has no committed artifact at {decision_path.as_posix()}"
+                )
+            else:
+                try:
+                    dec = load(str(decision_path))
+                except Exception as exc:
+                    problems.append(f"cannot load decision artifact {reg_doc['decisionRef']!r}: {exc}")
+                else:
+                    if dec.get("status") != "accepted":
+                        problems.append(
+                            f"decision artifact {reg_doc['decisionRef']!r} "
+                            f"status must be 'accepted', got {dec.get('status')!r}"
+                        )
+                    if dec.get("class") != "R":
+                        problems.append(
+                            f"decision artifact {reg_doc['decisionRef']!r} "
+                            f"must be class R, got {dec.get('class')!r}"
+                        )
 
     amap=load(args.action_map)
     events=set(amap.get("events", {}).keys())
