@@ -1,5 +1,9 @@
 # История изменений
 
+## 2026-10-13 — fix(recovery): structural fullSha verification in coordinator YAML schema test (audit N03, Refs #44)
+
+- `TestSchemaCoordinatorFullSHAPattern` переписан: парсинг YAML через `gopkg.in/yaml.v3`, проверка `$defs/fullSha.pattern` и навигация к каждому из 4 SHA-сайтов с разрешением `$ref`. Мутация C-1 (`$defs/fullSha` ослаблен + decoy): поймана. Репоинт сайта на слабую def: поймана. `TestSchemaCoordinatorFullSHAPattern`
+
 ## 2026-10-13 — fix(recovery): structural per-site fullSha verification (audit N02, Refs #44)
 
 - `TestSchemaFullSHAPattern` переписан: вместо подсчёта строк — парсинг JSON-схемы и навигация по JSON Pointer к каждому из 7 обязательных SHA-полей. Decoy-паттерны в `description` больше не обходят проверку. Мутации E1 (все 7 сайтов + 8 decoy) и E2 (один сайт + один decoy): оба пойманы (exit 1). `TestSchemaFullSHAPattern`

@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestSchemaWildcardBanPattern(t *testing.T) {
@@ -94,17 +96,77 @@ func TestSchemaFullSHAPattern(t *testing.T) {
 	}
 }
 
+// TestSchemaCoordinatorFullSHAPattern verifies the coordinator YAML schema
+// enforces full SHA-40 structurally:
+//  1. The $defs/fullSha definition carries pattern == "^[0-9a-f]{40}$".
+//  2. Each SHA site that $refs fullSha still points at #/$defs/fullSha
+//     and resolves to the correct pattern.
+//
+// This catches both weakening $defs/fullSha (with or without decoys) and
+// repointing a site to a weaker definition.
 func TestSchemaCoordinatorFullSHAPattern(t *testing.T) {
-	const path = "../../docs/schemas/recovery-report.coordinator.schema.yaml"
-	if _, err := os.Stat(path); err != nil {
-		t.Skipf("schema not available: %s", path)
+	const schemaPath = "../../docs/schemas/recovery-report.coordinator.schema.yaml"
+	const fullSHAPattern = "^[0-9a-f]{40}$"
+	const fullSHARef = "#/$defs/fullSha"
+
+	if _, err := os.Stat(schemaPath); err != nil {
+		t.Skipf("schema not available: %s", schemaPath)
 	}
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(schemaPath)
 	if err != nil {
 		t.Fatalf("read schema: %v", err)
 	}
-	if !strings.Contains(string(data), "[0-9a-f]{40}") {
-		t.Errorf("full-SHA pattern [0-9a-f]{40} missing in %s", path)
+	var schema map[string]any
+	if err := yaml.Unmarshal(data, &schema); err != nil {
+		t.Fatalf("parse YAML schema: %v", err)
+	}
+
+	// 1. Assert the $defs/fullSha definition has the required pattern.
+	defNode, err := jsonNavigate(schema, "/$defs/fullSha")
+	if err != nil {
+		t.Fatalf("$defs/fullSha not found: %v", err)
+	}
+	defObj, ok := defNode.(map[string]any)
+	if !ok {
+		t.Fatalf("$defs/fullSha is %T, expected object", defNode)
+	}
+	if got, _ := defObj["pattern"].(string); got != fullSHAPattern {
+		t.Errorf("$defs/fullSha pattern = %q, want %q", got, fullSHAPattern)
+	}
+
+	// 2. Each SHA site must $ref #/$defs/fullSha and resolve to fullSHAPattern.
+	sites := []string{
+		"/properties/recovery/properties/head",
+		"/properties/recovery/properties/expectedHead/anyOf/0",
+		"/properties/assignment/properties/baseSha/anyOf/0",
+		"/properties/coordinationRecovery/properties/committedSubjects/items/properties/sha",
+	}
+	for _, site := range sites {
+		node, err := jsonNavigate(schema, site)
+		if err != nil {
+			t.Errorf("site %s: navigate failed: %v", site, err)
+			continue
+		}
+		obj, ok := node.(map[string]any)
+		if !ok {
+			t.Errorf("site %s: node is %T, expected object", site, node)
+			continue
+		}
+		// Assert site still points at the fullSha definition.
+		ref, _ := obj["$ref"].(string)
+		if ref != fullSHARef {
+			t.Errorf("site %s: $ref = %q, want %q — site may have been repointed to a weaker definition", site, ref, fullSHARef)
+		}
+		// Resolve and assert the pattern on the definition.
+		resolved, err := jsonResolveRef(schema, obj)
+		if err != nil {
+			t.Errorf("site %s: resolve $ref: %v", site, err)
+			continue
+		}
+		got, _ := resolved["pattern"].(string)
+		if got != fullSHAPattern {
+			t.Errorf("site %s: resolved pattern = %q, want %q", site, got, fullSHAPattern)
+		}
 	}
 }
 
