@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -33,11 +35,51 @@ func writeBootstrap(t *testing.T, root, kind, admissionResult string) string {
 	return path
 }
 
-func TestAgentLaunchDryRunAdmitted(t *testing.T) {
+func TestLauncherDryRun(t *testing.T) {
 	root := t.TempDir()
 	bp := writeBootstrap(t, root, "AgentBootstrap", "ADMITTED")
-	if err := runAgentLaunch(context.Background(), []string{"--bootstrap", bp, "--dry-run"}); err != nil {
+	executorCalled := false
+	executor := func(context.Context, []string, string) error {
+		executorCalled = true
+		return nil
+	}
+	if err := runAgentLaunchWithExecutor(context.Background(), []string{"--bootstrap", bp, "--dry-run"}, executor); err != nil {
 		t.Fatalf("expected nil, got %v", err)
+	}
+	if executorCalled {
+		t.Fatal("dry-run invoked the process executor")
+	}
+}
+
+func TestLauncherExecuteInvokesExecutorWithBoundProjectRoot(t *testing.T) {
+	root := t.TempDir()
+	bp := writeBootstrap(t, root, "AgentBootstrap", "ADMITTED")
+	wantArgs := []string{"/bin/echo", "launch", "a1"}
+	wantErr := errors.New("executor sentinel")
+	calls := 0
+	var gotArgs []string
+	var gotProjectRoot string
+	executor := func(_ context.Context, args []string, projectRoot string) error {
+		calls++
+		gotArgs = append([]string(nil), args...)
+		gotProjectRoot = projectRoot
+		return wantErr
+	}
+
+	err := runAgentLaunchWithExecutor(context.Background(), []string{
+		"--bootstrap", bp, "--execute", "--", wantArgs[0], wantArgs[1], wantArgs[2],
+	}, executor)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected executor error %v to propagate, got %v", wantErr, err)
+	}
+	if calls != 1 {
+		t.Fatalf("executor calls = %d, want exactly one", calls)
+	}
+	if !reflect.DeepEqual(gotArgs, wantArgs) {
+		t.Fatalf("executor args = %#v, want %#v", gotArgs, wantArgs)
+	}
+	if gotProjectRoot != root {
+		t.Fatalf("executor ProjectRoot = %q, want bootstrap ProjectRoot %q", gotProjectRoot, root)
 	}
 }
 

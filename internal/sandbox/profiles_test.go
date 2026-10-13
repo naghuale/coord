@@ -14,10 +14,12 @@ import (
 // provide Bubblewrap (non-Linux or bwrap binary absent), Validate must return
 // an error rather than silently succeed.
 //
-// On Linux: tested with a profile that requires bubblewrap and an empty Path.
+// On Linux: tested with a profile that requires bubblewrap and a guaranteed-missing path.
 // On other platforms: the stub always returns an error.
 func TestSandboxFailsClosedWithoutBwrapOrEnv(t *testing.T) {
-	b := Bubblewrap{Path: ""} // empty path — no bwrap binary
+	// Point to a path that cannot exist instead of relying on PATH not to
+	// contain a working bwrap binary on the test host.
+	b := Bubblewrap{Path: filepath.Join(t.TempDir(), "missing-bwrap")}
 	profile := Profile{
 		Name:              "evaluation-linux",
 		RequireBubblewrap: true,

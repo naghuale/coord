@@ -32,6 +32,12 @@ type bootstrapFile struct {
 }
 
 func runAgentLaunch(ctx context.Context, args []string) error {
+	return runAgentLaunchWithExecutor(ctx, args, executeLaunchCommand)
+}
+
+type launchExecutor func(context.Context, []string, string) error
+
+func runAgentLaunchWithExecutor(ctx context.Context, args []string, executor launchExecutor) error {
 	fs := flag.NewFlagSet("agent launch", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	bootstrapPath := fs.String("bootstrap", "", "path to bootstrap JSON file")
@@ -95,9 +101,13 @@ func runAgentLaunch(ctx context.Context, args []string) error {
 		return writeLaunchReceipt(os.Stdout, receipt)
 	}
 
+	return executor(ctx, cmdArgs, bootstrap.WorkspaceBinding.ProjectRoot)
+}
+
+func executeLaunchCommand(ctx context.Context, command []string, projectRoot string) error {
 	// Execute directly with argv; no shell is involved.
-	proc := exec.CommandContext(ctx, cmdArgs[0], cmdArgs[1:]...)
-	proc.Dir = bootstrap.WorkspaceBinding.ProjectRoot
+	proc := exec.CommandContext(ctx, command[0], command[1:]...)
+	proc.Dir = projectRoot
 	proc.Stdin = os.Stdin
 	proc.Stdout = os.Stdout
 	proc.Stderr = os.Stderr

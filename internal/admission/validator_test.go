@@ -1,12 +1,15 @@
 package admission
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"coord/internal/actioncontext"
 )
 
 func makeBootstrap(t *testing.T, projectRoot, repoRoot, worktree string) AgentBootstrap {
@@ -160,30 +163,89 @@ func TestValidateExecutableNotAllowed(t *testing.T) {
 	}
 }
 
-// TestLauncherDryRun verifies parity with Python test_launcher_dry_run:
-// when realSideEffects.allowed is false (DryRun mode), bootstrap validation
-// must be ADMITTED and the result must carry DryRun=true (executed=false).
-// This covers the build-agent-bootstrap → launch-agent dry-run path in Go.
-func TestLauncherDryRun(t *testing.T) {
+// TestDigestDriftDetected verifies that admission rejects a previously resolved
+// action context after one of its bound files changes, matching the Python
+// check-action-context drift test through the production Validate path.
+func TestDigestDriftDetected(t *testing.T) {
 	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, "repo"), 0755); err != nil {
+	for rel, content := range map[string]string{
+		"docs/DOCUMENT-REGISTRY.yaml": `kind: DocumentRegistry
+documents:
+  - id: agents
+    path: AGENTS.md
+    class: process
+    status: active
+    readWhen: [SESSION_STARTED]
+    currentOperationalAuthority: true
+  - id: current
+    path: operations/project/CURRENT.yaml
+    class: active_context
+    status: active
+    readWhen: [SESSION_STARTED]
+    currentOperationalAuthority: true
+`,
+		"docs/operations/ACTION-MAP.yaml": `kind: ActionMap
+events:
+  SESSION_STARTED:
+    requiredDocuments: [agents, current]
+    allowedActions: [verify_head]
+    forbiddenActions: []
+    expectedResults: [CONTINUE]
+`,
+		"config/CONTEXT-BUDGETS.yaml": `budgets:
+  COORDINATOR: {maxDocuments: 7, maxHistoricalDocuments: 0, maxInputTokens: 24000}
+`,
+		"AGENTS.md":                       "# agents\n",
+		"operations/project/CURRENT.yaml": "current: true\n",
+	} {
+		path := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	resolver := actioncontext.FileResolver{ProjectRoot: root}
+	resolved, err := resolver.Resolve(context.Background(), actioncontext.ResolveRequest{
+		Role:         actioncontext.RoleCoordinator,
+		Event:        actioncontext.Event("SESSION_STARTED"),
+		AssignmentID: "a1",
+		BaseSHA:      strings.Repeat("a", 40),
+	})
+	if err != nil {
+		t.Fatalf("resolve action context: %v", err)
+	}
+	if resolved.Admission.Status != actioncontext.StatusAdmitted {
+		t.Fatalf("precondition: expected ADMITTED context, got %s (%+v)", resolved.Admission.Status, resolved.Admission.Rejections)
+	}
+	actionContextJSON, err := json.Marshal(resolved)
+	if err != nil {
+		t.Fatalf("marshal action context: %v", err)
+	}
+	repo := filepath.Join(root, "repo")
+	worktree := filepath.Join(root, "worktree")
+	if err := os.MkdirAll(repo, 0755); err != nil {
 		t.Fatal(err)
 	}
-	worktree := filepath.Join(root, "worktree")
 	if err := os.MkdirAll(worktree, 0755); err != nil {
 		t.Fatal(err)
 	}
-	b := makeBootstrap(t, root, filepath.Join(root, "repo"), worktree)
-	// RealSideEffects: false → dry-run; DryRun: true is explicit.
+	b := makeBootstrap(t, root, repo, worktree)
+	b.ActionContext = actionContextJSON
+	if err := os.WriteFile(filepath.Join(root, "AGENTS.md"), []byte("# agents changed\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
 	result, err := Validate(b, ValidateOptions{DryRun: true, RealSideEffects: false})
 	if err != nil {
 		t.Fatalf("Validate: %v", err)
 	}
-	if result.Result != StatusAdmitted {
-		t.Fatalf("expected ADMITTED in dry-run mode, got %s: %v", result.Result, result.Errors)
+	if result.Result != StatusInvalidAdmission {
+		t.Fatalf("expected INVALID_ADMISSION after bound document drift, got %s: %v", result.Result, result.Errors)
 	}
-	if !result.DryRun {
-		t.Error("expected DryRun=true (executed=false) in the admission result")
+	if !containsError(result.Errors, actioncontext.ErrDigestDrift) {
+		t.Fatalf("expected %s rejection, got %v", actioncontext.ErrDigestDrift, result.Errors)
 	}
 }
 
