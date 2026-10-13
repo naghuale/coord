@@ -2,10 +2,8 @@
 
 ## 2026-10-13 — fix(recovery): fail-closed git boundary and RCS event guard (review R08/R09, Refs #44)
 
-- `readDecisionCommitted` переписан: использует `git rev-parse --show-toplevel` вместо пешего `findGitRoot`; при отсутствии git-контекста возвращает ошибку (нет fallback на диск); при установленном `RepoRoot` проверяет совпадение toplevel с ним — reject ancestral git (R08). Новые тесты: `TestDecisionNoGitContext`, `TestDecisionAncestorGit`. Обновлены `TestRegulationDecisionMissing`, `TestDecisionClassInvalid`, `TestDecisionStatusInvalid` — все используют git-fixture.
+- `readDecisionCommitted` переписан: использует `git rev-parse --show-toplevel` вместо пешего `findGitRoot`; при отсутствии git-контекста возвращает ошибку (нет fallback на диск); при установленном `CheckOptions.RepoRoot` проверяет совпадение toplevel с ним — reject ancestral git (R08); флаг `--repo-root` добавлен в CLI, по умолчанию определяется через `git rev-parse`. Новые тесты: `TestDecisionNoGitContext`, `TestDecisionAncestorGit`. Обновлены `TestRegulationDecisionMissing`, `TestDecisionClassInvalid`, `TestDecisionStatusInvalid` — все используют git-fixture.
 - `checkActionMap` отклоняет `RECOVER_COORDINATION_STATE` в секции `events` с кодом `RECOVER_COORDINATION_STATE_AS_EVENT` (R09). Новый тест: `TestRCSAsEvent`.
-- `CheckOptions.RepoRoot` и `--repo-root` флаг в CLI; при пустом значении определяется через `git rev-parse` из cwd.
-- `TestDecisionNoGitContext` `TestDecisionAncestorGit` `TestRCSAsEvent`
 
 ## 2026-10-13 — fix(recovery): cover optionalSha chain in coordinator YAML schema test (audit N04, Refs #44)
 
