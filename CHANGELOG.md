@@ -1,5 +1,9 @@
 # История изменений
 
+## 2026-10-13 — fix(ci): restore Python setup for resolver/launcher tests (macOS fix)
+
+- Возвращены `actions/setup-python` и `pip install PyYAML` в CI: они нужны для `check-resolver-launcher`, `check-sandbox-session-registry`, `check-supervisor-seccomp-registry`, которые используют Python. Прямые вызовы Python governance скриптов остались удалены. Refs #45
+
 ## 2026-10-13 — fix(registry): mark uncommitted documents optional: true (CI fix for #45)
 
 - 44 документа в DOCUMENT-REGISTRY.yaml, чьи файлы не закоммичены в Git (Python-скрипты, scenario-файлы, GitLab CI, RFC, шаблоны), помечены `optional: true`. Pre-existing defect: реестр регистрировал файлы, которые существовали только локально (untracked). `check-document-registry` в Go впервые обнаружил это на CI (Python-скрипт никогда не прогонялся в CI-checkout). Refs #45
