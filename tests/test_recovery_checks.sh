@@ -106,32 +106,75 @@ expect_invalid_registry authority-no-decision "$SCRATCH/authority-no-decision.ya
 mutate_registry decision-ref-absolute 'doc["decisionRef"] = "/etc/passwd"'
 expect_invalid_registry decision-ref-absolute "$SCRATCH/decision-ref-absolute.yaml"
 
-mutate_registry decision-ref-parent 'doc["decisionRef"] = "../RECOVERY-REGULATION-R1"'
-expect_invalid_registry decision-ref-parent "$SCRATCH/decision-ref-parent.yaml"
+mutate_registry decision-parent-separator 'doc["decisionRef"] = "../RECOVERY-REGULATION-R1"'
+expect_invalid_registry decision-parent-separator "$SCRATCH/decision-parent-separator.yaml"
 
-# An untracked file in docs/decisions must not satisfy the reference.
-FAKE_DECISION_ID="UNTRACKED-DECISION-TEST"
-FAKE_DECISION_FILE="$ROOT/docs/decisions/${FAKE_DECISION_ID}.yaml"
-# A staged but uncommitted artifact must not satisfy it either: the check reads
-# the blob from HEAD, not the index and not the working tree.
-FAKE_STAGED_ID="STAGED-DECISION-TEST"
-FAKE_STAGED_FILE="$ROOT/docs/decisions/${FAKE_STAGED_ID}.yaml"
-cleanup_fake_decision() {
-  rm -f "$FAKE_DECISION_FILE" "$FAKE_STAGED_FILE"
-  git -C "$ROOT" restore --staged -- "$FAKE_STAGED_FILE" >/dev/null 2>&1 ||
-    git -C "$ROOT" reset -q HEAD -- "$FAKE_STAGED_FILE" >/dev/null 2>&1 || true
+# A bare ID with no artifact at all must be rejected too.
+mutate_registry decision-missing-artifact 'doc["decisionRef"] = "NO-SUCH-DECISION"'
+expect_invalid_registry decision-missing-artifact "$SCRATCH/decision-missing-artifact.yaml"
+
+# An untracked file, or a staged but uncommitted one, must not satisfy the
+# reference. Both run inside a throwaway git repository in project scratch, so
+# the real working tree and its index are never touched.
+setup_decision_repo() {
+  local repo="$1"
+  git -C "$repo" init -q
+  mkdir -p "$repo/docs/operations" "$repo/docs/decisions"
+  : > "$repo/docs/operations/AGENT-SESSION-RECOVERY-REGULATION.md"
+  printf 'decision: RECOVERY-REGULATION-R1\nclass: R\nstatus: accepted\n' \
+    > "$repo/docs/decisions/RECOVERY-REGULATION-R1.yaml"
+  git -C "$repo" add -A
+  git -C "$repo" -c user.email=test@test.local -c user.name=Test commit -qm init
 }
-trap 'rm -rf "$SCRATCH"; cleanup_fake_decision' EXIT
-printf 'decision: %s\nclass: R\nstatus: accepted\n' "$FAKE_DECISION_ID" > "$FAKE_DECISION_FILE"
-mutate_registry decision-ref-untracked "doc[\"decisionRef\"] = \"$FAKE_DECISION_ID\""
-expect_invalid_registry decision-ref-untracked "$SCRATCH/decision-ref-untracked.yaml"
-cleanup_fake_decision
 
-printf 'decision: %s\nclass: R\nstatus: accepted\n' "$FAKE_STAGED_ID" > "$FAKE_STAGED_FILE"
-git -C "$ROOT" add -- "$FAKE_STAGED_FILE"
-mutate_registry decision-ref-staged "doc[\"decisionRef\"] = \"$FAKE_STAGED_ID\""
-expect_invalid_registry decision-ref-staged "$SCRATCH/decision-ref-staged.yaml"
-cleanup_fake_decision
+expect_invalid_in_repo() {
+  # $1: mutation name, $2: registry copy, $3: repository used as git context
+  # $3 is entered as cwd so that the relative --regulation-path resolves inside
+  # it; every other path must stay absolute or it would resolve against $3 and
+  # fail for the wrong reason.
+  if (cd "$3" && python3 "$GOV" \
+        --registry "$2" --action-map "$ACTION_MAP" \
+        --agents "$ROOT/AGENTS.md" \
+        --regulation-path docs/operations/AGENT-SESSION-RECOVERY-REGULATION.md) 2>/dev/null; then
+    echo "REGRESSION: $1 should fail but passed" >&2
+    exit 1
+  fi
+}
+
+ISOLATED_UNTRACKED="$SCRATCH/repo-untracked"
+mkdir -p "$ISOLATED_UNTRACKED"
+setup_decision_repo "$ISOLATED_UNTRACKED"
+printf 'decision: UNTRACKED-DECISION-TEST\nclass: R\nstatus: accepted\n' \
+  > "$ISOLATED_UNTRACKED/docs/decisions/UNTRACKED-DECISION-TEST.yaml"
+mutate_registry decision-ref-untracked 'doc["decisionRef"] = "UNTRACKED-DECISION-TEST"'
+expect_invalid_in_repo decision-ref-untracked "$SCRATCH/decision-ref-untracked.yaml" "$ISOLATED_UNTRACKED"
+
+ISOLATED_STAGED="$SCRATCH/repo-staged"
+mkdir -p "$ISOLATED_STAGED"
+setup_decision_repo "$ISOLATED_STAGED"
+printf 'decision: STAGED-DECISION-TEST\nclass: R\nstatus: accepted\n' \
+  > "$ISOLATED_STAGED/docs/decisions/STAGED-DECISION-TEST.yaml"
+git -C "$ISOLATED_STAGED" add -- docs/decisions/STAGED-DECISION-TEST.yaml
+mutate_registry decision-ref-staged 'doc["decisionRef"] = "STAGED-DECISION-TEST"'
+expect_invalid_in_repo decision-ref-staged "$SCRATCH/decision-ref-staged.yaml" "$ISOLATED_STAGED"
+
+# A tree without its own .git resolves against an ancestor repository. The
+# ancestor here is a real repository that does contain the artifact, so without
+# a toplevel check the report would be validated against a foreign HEAD.
+NESTED_OUTER="$SCRATCH/repo-ancestor"
+mkdir -p "$NESTED_OUTER/docs/operations" "$NESTED_OUTER/docs/decisions"
+cp "$AGENTS_FILE" "$NESTED_OUTER/AGENTS.md"
+cp "$ACTION_MAP" "$NESTED_OUTER/docs/operations/ACTION-MAP.yaml"
+cp "$REGISTRY" "$NESTED_OUTER/docs/DOCUMENT-REGISTRY.yaml"
+cp "$REGULATION" "$NESTED_OUTER/docs/operations/AGENT-SESSION-RECOVERY-REGULATION.md"
+cp "$ROOT/docs/decisions/RECOVERY-REGULATION-R1.yaml" "$NESTED_OUTER/docs/decisions/"
+git -C "$NESTED_OUTER" init -q
+git -C "$NESTED_OUTER" add -A
+git -C "$NESTED_OUTER" -c user.email=test@test.local -c user.name=Test commit -qm ancestor
+mkdir -p "$NESTED_OUTER/export"
+git -C "$NESTED_OUTER" archive HEAD | tar -x -C "$NESTED_OUTER/export"
+mutate_registry decision-ref-ancestor 'doc["decisionRef"] = "RECOVERY-REGULATION-R1"'
+expect_invalid_in_repo decision-ref-ancestor "$SCRATCH/decision-ref-ancestor.yaml" "$NESTED_OUTER/export"
 
 echo "AUTHORITY_REGRESSION_PASS"
 

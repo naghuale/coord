@@ -81,42 +81,60 @@ def main():
                             f"to repository root"
                         )
                     else:
-                        show = subprocess.run(
-                            ["git", "-C", str(repo_root), "show",
-                             f"HEAD:{rel_path.as_posix()}"],
+                        # git -C searches upward. A tree without its own .git
+                        # (a git archive export, a nested checkout) resolves
+                        # against an ancestor repository, and the artifact would
+                        # then be validated against a foreign HEAD. Require the
+                        # git context to be owned by repo_root.
+                        toplevel = subprocess.run(
+                            ["git", "-C", str(repo_root), "rev-parse", "--show-toplevel"],
                             capture_output=True, text=True,
                         )
-                        if show.returncode != 0:
+                        if toplevel.returncode != 0 or \
+                                Path(toplevel.stdout.strip()).resolve() != repo_root:
                             problems.append(
-                                f"decision artifact {ref!r} exists on disk but "
-                                f"is not committed in HEAD (staged or untracked, "
-                                f"or no git context)"
+                                f"decision artifact {ref!r}: git context root "
+                                f"{toplevel.stdout.strip()!r} does not match "
+                                f"repository root {repo_root.as_posix()}; "
+                                f"no git context or ancestor git context"
                             )
                         else:
-                            try:
-                                dec = yaml.safe_load(show.stdout)
-                            except Exception as exc:
+                            show = subprocess.run(
+                                ["git", "-C", str(repo_root), "show",
+                                 f"HEAD:{rel_path.as_posix()}"],
+                                capture_output=True, text=True,
+                            )
+                            if show.returncode != 0:
                                 problems.append(
-                                    f"cannot parse committed decision artifact "
-                                    f"{ref!r}: {exc}"
+                                    f"decision artifact {ref!r} exists on disk but "
+                                    f"is not committed in HEAD (staged or untracked, "
+                                    f"or no git context)"
                                 )
                             else:
-                                if not isinstance(dec, dict):
+                                try:
+                                    dec = yaml.safe_load(show.stdout)
+                                except Exception as exc:
                                     problems.append(
-                                        f"committed decision artifact {ref!r} "
-                                        f"is not a mapping"
+                                        f"cannot parse committed decision artifact "
+                                        f"{ref!r}: {exc}"
                                     )
                                 else:
-                                    if dec.get("status") != "accepted":
+                                    if not isinstance(dec, dict):
                                         problems.append(
-                                            f"decision artifact {ref!r} "
-                                            f"status must be 'accepted', got {dec.get('status')!r}"
+                                            f"committed decision artifact {ref!r} "
+                                            f"is not a mapping"
                                         )
-                                    if dec.get("class") != "R":
-                                        problems.append(
-                                            f"decision artifact {ref!r} "
-                                            f"must be class R, got {dec.get('class')!r}"
-                                        )
+                                    else:
+                                        if dec.get("status") != "accepted":
+                                            problems.append(
+                                                f"decision artifact {ref!r} "
+                                                f"status must be 'accepted', got {dec.get('status')!r}"
+                                            )
+                                        if dec.get("class") != "R":
+                                            problems.append(
+                                                f"decision artifact {ref!r} "
+                                                f"must be class R, got {dec.get('class')!r}"
+                                            )
 
     amap=load(args.action_map)
     events=set(amap.get("events", {}).keys())
