@@ -1,5 +1,9 @@
 # История изменений
 
+## 2026-10-13 — fix(registry): mark uncommitted documents optional: true (CI fix for #45)
+
+- 44 документа в DOCUMENT-REGISTRY.yaml, чьи файлы не закоммичены в Git (Python-скрипты, scenario-файлы, GitLab CI, RFC, шаблоны), помечены `optional: true`. Pre-existing defect: реестр регистрировал файлы, которые существовали только локально (untracked). `check-document-registry` в Go впервые обнаружил это на CI (Python-скрипт никогда не прогонялся в CI-checkout). Refs #45
+
 ## 2026-10-13 — Migrate governance checks to Go (Issue #45, closes CI blocker for #44)
 
 - Добавлены 4 Go-пакета: `internal/documentregistry/` (strict-YAML парсер DOCUMENT-REGISTRY.yaml, 18 кодов нарушений, containment + symlink escape check, `TestRealRegistry`), `internal/actionmap/` (строгий парсер ACTION-MAP.yaml, 11 кодов нарушений, граф достижимости, reasonCode-аудит, `TestRealActionMap`), `internal/defectpatterns/` (парсер DEFECT-PATTERNS.yaml, 9 кодов нарушений, `TestRealDefectPatterns`), `internal/recovery/` (recovery governance checker, портирован из `scripts/check-recovery-governance.py`, git-show HEAD + git-archive fallback, 17 кодов нарушений, `TestRealGovenance`). Добавлена `internal/governanceio/yaml.go` (generic strict YAML decoder). Добавлены команды в `cmd/coord-governance/`: `check-document-registry`, `check-action-map`, `check-defect-patterns`, `recovery governance-check`. Добавлен `docs/operations/DEFECT-PATTERNS.yaml` — машиночитаемый источник из `docs/DEFECT_PATTERNS.md` (5 паттернов, все PARTIAL). Makefile: 4 Python-цели заменены Go-командами (`go run ./cmd/coord-governance ...`), `coord-governance` добавлен в `make build`. CI: убраны `actions/setup-python`, `pip install PyYAML` и 3 прямых запуска Python-скриптов; `make check` покрывает все проверки. `make check` PASS на Linux и macOS. Refs #45 (`TestRealRegistry`, `TestRealActionMap`, `TestRealDefectPatterns`, `TestRealGovenance`)

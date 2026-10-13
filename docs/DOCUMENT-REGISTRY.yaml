@@ -1363,6 +1363,7 @@ documents:
       creates: COORDINATOR
       updates: COORDINATOR
       accountable: OWNER
+    optional: true
     acceptance:
       reviewer: required
       auditor: conditional_if_TD_R2
@@ -1381,6 +1382,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_guidance
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: gitlab-ci-example
     path: .gitlab-ci.example.yml
@@ -1396,6 +1398,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: example_only
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-ci-gates-metrics
     path: docs/operations/CI-GATES-AND-METRICS.md
@@ -1409,6 +1412,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_guidance
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-evaluation-suite
     path: docs/operations/evaluation/action-map/EVALUATION-SUITE.md
@@ -1422,6 +1426,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_test_guidance
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-evaluation-manifest
     path: docs/operations/evaluation/action-map/evaluation-manifest.yaml
@@ -1435,6 +1440,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_test_contract
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-evaluation-profiles
     path: docs/operations/evaluation/action-map/profiles.yaml
@@ -1448,6 +1454,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_test_design
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-evaluation-pipeline
     path: docs/operations/evaluation/action-map/PIPELINE.md
@@ -1461,6 +1468,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_guidance
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-threshold-policy
     path: docs/operations/evaluation/action-map/threshold-policy.yaml
@@ -1474,6 +1482,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_gate_policy
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-baseline-store-readme
     path: ci/baselines/action-map/README.md
@@ -1487,6 +1496,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_guidance
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-baseline-store-manifest
     path: ci/baselines/action-map/manifest.yaml
@@ -1500,6 +1510,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_gate_policy
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: gitlab-action-map-metrics-pipeline
     path: .gitlab/ci/action-map-metrics.yml
@@ -1513,6 +1524,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_automation
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: run-action-map-behavior
     path: scripts/run-action-map-behavior
@@ -1526,6 +1538,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_tooling
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: check-action-map-results
     path: scripts/check-action-map-results
@@ -1539,6 +1552,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_test_tooling
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: check-action-map-results-test
     path: scripts/check-action-map-results-test
@@ -1552,6 +1566,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_test_tooling
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: collect-action-map-metrics
     path: scripts/collect-action-map-metrics
@@ -1565,6 +1580,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_tooling
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: check-action-map-metrics
     path: scripts/check-action-map-metrics
@@ -1578,6 +1594,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_tooling
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-baseline-compare
     path: scripts/compare-action-map-baseline
@@ -1591,6 +1608,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_gate_tooling
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-baseline-store-check
     path: scripts/check-action-map-baseline-store
@@ -1604,6 +1622,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_gate_tooling
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-threshold-policy-check
     path: scripts/check-action-map-threshold-policy
@@ -1617,6 +1636,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_gate_tooling
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-baseline-run-store
     path: scripts/store-action-map-run
@@ -1630,6 +1650,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_gate_tooling
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-baseline-candidate
     path: scripts/promote-action-map-baseline
@@ -1643,6 +1664,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_gate_tooling
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-baseline-activate
     path: scripts/activate-action-map-baseline
@@ -1656,6 +1678,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_gate_tooling
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-baseline-test
     path: scripts/check-action-map-baseline-test
@@ -1669,6 +1692,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_test_tooling
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-scenario-readme
     path: docs/operations/scenarios/action-map/README.md
@@ -1682,6 +1706,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_test_guidance
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-scenario-suite
     path: docs/operations/scenarios/action-map/suite.yaml
@@ -1695,6 +1720,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_test_contract
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-scenario-result-schema
     path: docs/operations/scenarios/action-map/scenario-result.schema.yaml
@@ -1708,6 +1734,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_test_contract
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-scenario-session-start
     path: docs/operations/scenarios/action-map/01-session-start.yaml
@@ -1721,6 +1748,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_test_contract
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-scenario-context-stale
     path: docs/operations/scenarios/action-map/02-context-stale.yaml
@@ -1734,6 +1762,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_test_contract
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-scenario-issue-created
     path: docs/operations/scenarios/action-map/03-issue-created.yaml
@@ -1747,6 +1776,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_test_contract
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-scenario-review-changes
     path: docs/operations/scenarios/action-map/04-review-changes-required.yaml
@@ -1760,6 +1790,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_test_contract
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-scenario-human-action
     path: docs/operations/scenarios/action-map/05-human-action-required.yaml
@@ -1773,6 +1804,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_test_contract
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-scenario-owner-boundary
     path: docs/operations/scenarios/action-map/06-owner-required.yaml
@@ -1786,6 +1818,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_test_contract
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-scenario-migration
     path: docs/operations/scenarios/action-map/07-migration-completed.yaml
@@ -1799,6 +1832,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_test_contract
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-scenario-commit-readiness
     path: docs/operations/scenarios/action-map/08-commit-readiness.yaml
@@ -1812,6 +1846,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_test_contract
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-scenario-ci-failed
     path: docs/operations/scenarios/action-map/09-ci-failed.yaml
@@ -1825,6 +1860,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_test_contract
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-scenario-historical
     path: docs/operations/scenarios/action-map/10-historical-document.yaml
@@ -1838,6 +1874,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_test_contract
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-scenario-proposed-adr
     path: docs/operations/scenarios/action-map/11-proposed-adr.yaml
@@ -1851,6 +1888,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_test_contract
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-scenario-legacy-guide
     path: docs/operations/scenarios/action-map/12-legacy-guide.yaml
@@ -1864,6 +1902,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_test_contract
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-scenario-architecture-impact
     path: docs/operations/scenarios/action-map/13-architecture-impact.yaml
@@ -1877,6 +1916,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_test_contract
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-scenario-integration
     path: docs/operations/scenarios/action-map/14-integration-completed.yaml
@@ -1890,6 +1930,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_test_contract
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: action-map-scenario-unknown-event
     path: docs/operations/scenarios/action-map/15-unknown-event.yaml
@@ -1903,6 +1944,7 @@ documents:
     canonicalProductionAuthority: false
     normativeAuthority: process_test_contract
     ownership: {creates: COORDINATOR, updates: COORDINATOR, accountable: COORDINATOR}
+    optional: true
     acceptance: {reviewer: required, auditor: conditional_if_TD_R2, owner: only_for_class_R}
   - id: operations-ledger
     path: docs/operations/OPERATIONS-LEDGER.md
@@ -2534,6 +2576,7 @@ documents:
       creates: COORDINATOR
       updates: COORDINATOR
       accountable: OWNER
+    optional: true
     acceptance:
       reviewer: required
       auditor: required_for_authority_evidence_and_exact_version_gates
@@ -2564,6 +2607,7 @@ documents:
       creates: COORDINATOR
       updates: COORDINATOR
       accountable: OWNER
+    optional: true
     acceptance:
       reviewer: required
       auditor: conditional_if_TD_R2
