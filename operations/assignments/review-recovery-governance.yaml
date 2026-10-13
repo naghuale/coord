@@ -1,0 +1,89 @@
+---
+# Auto-appended 2026-10-13
+event: RECOVERY_GOVERNANCE_REVIEW_ASSIGNED
+type: assignment
+id: review-recovery-governance
+role: REVIEWER
+class: TD-R2
+branch: p0-2-task
+baseSha: 51793b3da4597aa91f5a805cb02bbba1f099f44b
+subjectSha: 7d23d5b95cc840abf30cf4cf112bec9adc90384b
+issue: naghuale/coord#44
+modificationAllowed: false
+executor: opencode:workspace-74
+status: AWAITING_REVIEW
+scope:
+  - .gitlab/ci/recovery.yml
+  - AGENTS.md
+  - Makefile
+  - docs/DOCUMENT-REGISTRY.yaml
+  - docs/operations/ACTION-MAP.yaml
+  - docs/operations/AGENT-SESSION-RECOVERY-REGULATION.md
+  - docs/schemas/recovery-report.coordinator.schema.yaml
+  - docs/schemas/recovery-report.schema.json
+  - docs/templates/COORDINATOR-RECOVERY-PROMPT.md
+  - docs/templates/RECOVERY-PROMPT-SHORT.md
+  - docs/templates/RECOVERY-REPORT-TEMPLATE.yaml
+  - scripts/check-recovery-governance.py
+  - scripts/check-recovery-report.py
+  - tests/fixtures/invalid/foreign-resume.yaml
+  - tests/fixtures/valid/coordinator-recover-coordination-state.yaml
+  - tests/fixtures/valid/resume.yaml
+  - tests/test_recovery_checks.sh
+focus:
+  - recovery state machine correctness
+  - RECOVER_COORDINATION_STATE completeness
+  - no autonomous mutation of unknown work
+  - OWNER/HUMAN boundary classification
+  - exact-subject discipline
+  - full-SHA enforcement (no short SHAs)
+  - no-wildcard path enforcement in schemas
+  - schema consistency (JSON vs YAML)
+  - fixture quality (positive and negative)
+  - Document Registry integration
+  - Action Map integration
+  - AGENTS.md entrypoint
+  - credential leakage prevention
+negativeTestCases:
+  - unknown batch + RESUME_ASSIGNMENT -> must FAIL schema
+  - unknown batch + RECOVER_COORDINATION_STATE -> must PASS
+  - subject drift + reused Review -> must FAIL
+  - short SHA in head -> must FAIL schema
+  - wildcard path in classification -> must FAIL schema
+  - foreignOrUnknown not in preservedUnknownChanges -> must FAIL schema
+  - RECOVER_COORDINATION_STATE without coordinationRecovery -> must FAIL schema
+stopConditions:
+  - make check full succeeds only after orphaned batch assignment is committed
+  - AGENTS.md is staged partially; review only the "Восстановление сессии" hunk
+  - orphaned docs/CI batch stays FOREIGN_OR_UNKNOWN and out of this subject
+  - OWNER/HUMAN boundary reached during review
+executorEvidence:
+  subjectVerification: git archive of git write-tree, extracted to .scratch/tmp/subject
+  recoverySelfTest: RECOVERY_CHECK_SELF_TEST_PASS
+  recoveryGovernance: RECOVERY_GOVERNANCE_VALID
+  documentRegistry: PASS 158 documents
+  actionMap: PASS 15 scenarios 19 events
+  goBuild: PASS
+  goVet: PASS
+  goTestRace: PASS 34 packages
+  mutationSuite: 12 cases fail-closed as specified
+---
+# Auto-appended 2026-10-13
+event: REVIEW_AUDITOR_ASSIGNED
+type: assignment_update
+issue: 44
+reviewerAssigned: codex:workspace-c19
+auditorAssigned: opencode:workspace-o1e
+contextNote: >
+  Since original assignment, issue #45 (Go governance migration) was completed
+  (HEAD be2262b). Python scripts check-recovery-governance.py and
+  check-recovery-report.py from #44 subjectSha are replaced by Go command
+  'coord-governance recovery governance-check'. The Go command enforces the same
+  invariants. Reviewer MUST verify Go enforcement is equivalent; also review the
+  #44 subject commit 7d23d5b directly (regulation, schemas, fixtures, ACTION-MAP,
+  AGENTS.md recovery section). CI is now green on be2262b.
+executorCorrection: >
+  executor field in original record incorrectly shows opencode:workspace-74;
+  actual executor was Claude (workspace-74, claude-sonnet-4-6) for the #45
+  Go migration commits; original #44 implementation executor was a prior session.
+status: AWAITING_REVIEW
