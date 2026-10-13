@@ -413,6 +413,22 @@ func TestMutation_RegulationProposed(t *testing.T) {
 	}
 }
 
+// TestCheckRequiresRepoRoot verifies that Check() returns an error when
+// RepoRoot is empty. Without an explicit root the git boundary check is
+// tautological: cwd-derived and file-derived rev-parse both return the same
+// ancestor, so there is no real containment guarantee (R08 regression).
+func TestCheckRequiresRepoRoot(t *testing.T) {
+	root := t.TempDir()
+	opts := buildFixtures(t, root)
+	opts.RepoRoot = "" // clear the explicit root
+
+	_, err := Check(opts)
+	if err == nil {
+		t.Error("Check must return an error when RepoRoot is empty: " +
+			"omitting it makes the git boundary check tautological")
+	}
+}
+
 // TestDecisionNoGitContext verifies that readDecisionCommitted fails closed when
 // the decision file is not inside a git repository (R08: no disk fallback).
 func TestDecisionNoGitContext(t *testing.T) {
@@ -587,11 +603,16 @@ func TestRCSAsEvent(t *testing.T) {
 
 func TestRealGovenance(t *testing.T) {
 	const base = "../.."
+	repoRoot, err := exec.Command("git", "-C", base, "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		t.Skip("real git root not available:", err)
+	}
 	opts := CheckOptions{
 		RegistryPath:   base + "/docs/DOCUMENT-REGISTRY.yaml",
 		ActionMapPath:  base + "/docs/operations/ACTION-MAP.yaml",
 		AgentsPath:     base + "/AGENTS.md",
 		RegulationPath: "docs/operations/AGENT-SESSION-RECOVERY-REGULATION.md",
+		RepoRoot:       strings.TrimSpace(string(repoRoot)),
 	}
 	for _, p := range []string{opts.RegistryPath, opts.ActionMapPath, opts.AgentsPath} {
 		if _, err := os.Stat(p); err != nil {

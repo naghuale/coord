@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 
 	"coord/internal/actionmap"
@@ -97,12 +96,11 @@ func runRecoveryGovernanceCheck(args []string) error {
 		return err
 	}
 
-	repoRoot := *repoRootFlag
+	repoRoot := strings.TrimSpace(*repoRootFlag)
 	if repoRoot == "" {
-		// Derive from git rev-parse when not explicitly provided.
-		if out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output(); err == nil {
-			repoRoot = strings.TrimSpace(string(out))
-		}
+		return fmt.Errorf("flag --repo-root is required: " +
+			"omitting it makes the git boundary check tautological; " +
+			"pass the canonical project repository root (e.g. $(git rev-parse --show-toplevel))")
 	}
 
 	opts := recovery.CheckOptions{

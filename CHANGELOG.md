@@ -1,5 +1,10 @@
 # История изменений
 
+## 2026-10-13 — fix(recovery): require explicit RepoRoot to break git boundary tautology (review R08 round 2, Refs #44)
+
+- `Check()` returns error when `CheckOptions.RepoRoot == ""`: without an explicit root, the cwd-derived and file-derived rev-parse calls both return the same ancestor, making the comparison tautological (`TestCheckRequiresRepoRoot`). `TestRealGovenance` updated to pass `RepoRoot` from `git rev-parse`.
+- CLI `--repo-root` flag is now required: auto-derivation from cwd removed; binary errors if flag is omitted. Makefile `check-recovery` target updated to pass `--repo-root $(shell git rev-parse --show-toplevel)` (документация).
+
 ## 2026-10-13 — fix(recovery): fail-closed git boundary and RCS event guard (review R08/R09, Refs #44)
 
 - `readDecisionCommitted` переписан: использует `git rev-parse --show-toplevel` вместо пешего `findGitRoot`; при отсутствии git-контекста возвращает ошибку (нет fallback на диск); при установленном `CheckOptions.RepoRoot` проверяет совпадение toplevel с ним — reject ancestral git (R08); флаг `--repo-root` добавлен в CLI, по умолчанию определяется через `git rev-parse`. Новые тесты: `TestDecisionNoGitContext`, `TestDecisionAncestorGit`. Обновлены `TestRegulationDecisionMissing`, `TestDecisionClassInvalid`, `TestDecisionStatusInvalid` — все используют git-fixture.

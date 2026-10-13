@@ -72,7 +72,8 @@ check-recovery:
 		--registry docs/DOCUMENT-REGISTRY.yaml \
 		--action-map docs/operations/ACTION-MAP.yaml \
 		--agents AGENTS.md \
-		--regulation docs/operations/AGENT-SESSION-RECOVERY-REGULATION.md
+		--regulation docs/operations/AGENT-SESSION-RECOVERY-REGULATION.md \
+		--repo-root $(shell git rev-parse --show-toplevel)
 
 check: check-document-registry check-action-map check-resolver-launcher check-sandbox-session-registry check-supervisor-seccomp-registry check-architecture-sync check-format vet cross-vet test lint check-defect-patterns check-recovery
 	go build ./...

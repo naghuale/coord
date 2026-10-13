@@ -55,7 +55,16 @@ type CheckOptions struct {
 }
 
 // Check runs all recovery governance validations and returns violations.
+// opts.RepoRoot must be non-empty: without an explicitly anchored root the
+// git boundary check in readDecisionCommitted is tautological (cwd-derived
+// and file-derived rev-parse both return the same ancestor).
 func Check(opts CheckOptions) ([]Violation, error) {
+	if opts.RepoRoot == "" {
+		return nil, fmt.Errorf("CheckOptions.RepoRoot is required: " +
+			"omitting it makes the git boundary check tautological — " +
+			"pass the canonical repository root explicitly")
+	}
+
 	var vs []Violation
 
 	registryVs, err := checkRegistry(opts)
