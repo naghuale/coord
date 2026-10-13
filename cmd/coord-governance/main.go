@@ -23,7 +23,7 @@ func main() {
 
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "usage: coord-governance <command> [flags]")
-		fmt.Fprintln(os.Stderr, "commands: resolve, agent launch, run-scenarios, baseline")
+		fmt.Fprintln(os.Stderr, "commands: resolve, agent launch, run-scenarios, baseline, check-document-registry, check-action-map, check-defect-patterns, recovery governance-check")
 		os.Exit(2)
 	}
 
@@ -86,6 +86,30 @@ func main() {
 			os.Exit(2)
 		}
 		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	case "check-document-registry":
+		if err := runCheckDocumentRegistry(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	case "check-action-map":
+		if err := runCheckActionMap(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	case "check-defect-patterns":
+		if err := runCheckDefectPatterns(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	case "recovery":
+		if len(os.Args) < 3 || os.Args[2] != "governance-check" {
+			fmt.Fprintln(os.Stderr, "usage: coord-governance recovery governance-check [flags]")
+			os.Exit(2)
+		}
+		if err := runRecoveryGovernanceCheck(os.Args[3:]); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}

@@ -1,0 +1,39 @@
+apiVersion: coord.dev/v1alpha1
+kind: DefectPatterns
+metadata:
+  source: docs/DEFECT_PATTERNS.md
+  normativeAuthority: AGENTS.md
+  purpose: >
+    Machine-readable registry of recurring defect classes.
+    Validation by `coord governance check-defect-patterns`.
+
+patterns:
+  - patternId: DP-001
+    title: "Indirect indicator instead of invariant"
+    automationStatus: PARTIAL
+    owningNorm: AGENTS.md
+    selfTestRef: "coord governance check-defect-patterns"
+
+  - patternId: DP-002
+    title: "Transition does not clean up dependent state or resource"
+    automationStatus: PARTIAL
+    owningNorm: AGENTS.md
+    selfTestRef: "coord governance check-defect-patterns"
+
+  - patternId: DP-003
+    title: "Two sources of truth diverge"
+    automationStatus: PARTIAL
+    owningNorm: AGENTS.md
+    selfTestRef: "coord governance check-defect-patterns"
+
+  - patternId: DP-004
+    title: "Accepted documents are not cross-checked"
+    automationStatus: PARTIAL
+    owningNorm: AGENTS.md
+    selfTestRef: "coord governance check-defect-patterns"
+
+  - patternId: DP-005
+    title: "Validation after state read; trail on failure"
+    automationStatus: PARTIAL
+    owningNorm: AGENTS.md
+    selfTestRef: "coord governance check-defect-patterns"

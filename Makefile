@@ -33,6 +33,7 @@ build:
 	go build -o bin/coord-watchdog ./cmd/coord-watchdog
 	go build -o bin/coord-telepathy ./cmd/coord-telepathy
 	go build -o bin/coordd ./cmd/coordd
+	go build -o bin/coord-governance ./cmd/coord-governance
 
 demo:
 	go run ./cmd/coord-demo
@@ -48,20 +49,13 @@ check-architecture-sync:
 	fi
 
 check-defect-patterns:
-	python3 scripts/check-defect-patterns
-	python3 scripts/check-defect-patterns-test
+	go run ./cmd/coord-governance check-defect-patterns --patterns docs/operations/DEFECT-PATTERNS.yaml --root .
 
 check-document-registry:
-	python3 scripts/check-document-registry
-	python3 scripts/check-document-registry-test
+	go run ./cmd/coord-governance check-document-registry --registry docs/DOCUMENT-REGISTRY.yaml --root .
 
 check-action-map:
-	python3 scripts/check-action-map
-	python3 scripts/check-action-map-test
-	python3 scripts/check-action-map-results-test
-	python3 scripts/check-action-map-threshold-policy
-	python3 scripts/check-action-map-baseline-store
-	python3 scripts/check-action-map-baseline-test
+	go run ./cmd/coord-governance check-action-map --action-map docs/operations/ACTION-MAP.yaml --registry docs/DOCUMENT-REGISTRY.yaml
 
 check-resolver-launcher:
 	PYTHONPATH=scripts python3 -m unittest discover -s tests -p 'test_resolver_launcher.py' -v
@@ -73,16 +67,11 @@ check-supervisor-seccomp-registry:
 	PYTHONPATH=scripts python3 -m unittest discover -s tests -p 'test_supervisor_seccomp_registry.py' -v
 
 check-recovery:
-	@if python3 -c "import yaml, jsonschema" 2>/dev/null; then \
-		bash tests/test_recovery_checks.sh && \
-		python3 scripts/check-recovery-governance.py \
-			--registry docs/DOCUMENT-REGISTRY.yaml \
-			--action-map docs/operations/ACTION-MAP.yaml \
-			--agents AGENTS.md \
-			--regulation-path docs/operations/AGENT-SESSION-RECOVERY-REGULATION.md; \
-	else \
-		echo "PyYAML or jsonschema not installed; recovery check skipped (run: pip3 install pyyaml jsonschema)"; \
-	fi
+	go run ./cmd/coord-governance recovery governance-check \
+		--registry docs/DOCUMENT-REGISTRY.yaml \
+		--action-map docs/operations/ACTION-MAP.yaml \
+		--agents AGENTS.md \
+		--regulation docs/operations/AGENT-SESSION-RECOVERY-REGULATION.md
 
 check: check-document-registry check-action-map check-resolver-launcher check-sandbox-session-registry check-supervisor-seccomp-registry check-architecture-sync check-format vet cross-vet test lint check-defect-patterns check-recovery
 	go build ./...
