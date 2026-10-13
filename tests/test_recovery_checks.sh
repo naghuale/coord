@@ -148,4 +148,37 @@ expect_invalid_report launch-cwd-wrong "$RESUME_FIXTURE" \
 expect_invalid_report unclassified-changed "$COORD_FIXTURE" \
   'doc["workingTree"]["modifiedFiles"] = doc["workingTree"].get("modifiedFiles", []) + ["docs/NEW-UNCLASSIFIED.md"]; doc["workingTree"]["totalChangedFiles"] = doc["workingTree"].get("totalChangedFiles", 0) + 1'
 
+# A symlink inside the project root that points outside it must be rejected.
+# Lexical normalisation alone would accept it, so this pins the realpath fix.
+SYMLINK_PROJ="$SCRATCH/symlink-reg-proj"
+SYMLINK_SIB="$SCRATCH/symlink-reg-sib"
+cleanup_symlink_case() { rm -rf "$SYMLINK_PROJ" "$SYMLINK_SIB"; }
+mkdir -p "$SYMLINK_PROJ/.scratch/tmp" "$SYMLINK_SIB"
+ln -sfn "$SYMLINK_SIB" "$SYMLINK_PROJ/link-outside"
+SYMLINK_REPORT=$(mktemp "$SCRATCH/report-symlink-XXXXXX")
+if ! python3 - "$RESUME_FIXTURE" "$SYMLINK_REPORT" "$SCRATCH" "$SYMLINK_PROJ" <<'PY'
+import copy, sys, yaml
+doc = yaml.safe_load(open(sys.argv[1], encoding="utf-8"))
+doc = copy.deepcopy(doc)
+scratch, proj = sys.argv[3], sys.argv[4]
+doc["recovery"]["globalRoot"] = scratch
+doc["recovery"]["projectRoot"] = proj
+doc["recovery"]["repositoryRoot"] = proj + "/link-outside"
+doc["recovery"]["assignedWorktree"] = proj + "/link-outside"
+doc["recovery"]["requiredLaunchCwd"] = scratch
+doc["recovery"]["scratchRoot"] = proj + "/.scratch/tmp"
+yaml.safe_dump(doc, open(sys.argv[2], "w", encoding="utf-8"), sort_keys=False, allow_unicode=True)
+PY
+then
+  echo "REGRESSION: symlink-escape mutation setup failed" >&2
+  cleanup_symlink_case
+  exit 1
+fi
+if python3 "$ROOT/scripts/check-recovery-report.py" "$SYMLINK_REPORT" --schema "$SCHEMA" 2>/dev/null; then
+  echo "REGRESSION: symlink-escape should fail but passed" >&2
+  cleanup_symlink_case
+  exit 1
+fi
+cleanup_symlink_case
+
 echo "REPORT_REGRESSION_MUTATIONS_PASS"
