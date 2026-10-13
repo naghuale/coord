@@ -64,3 +64,38 @@ mutate_action_map wtu-edge-removed 'am["events"]["WORKTREE_STATE_UNKNOWN"]["expe
 expect_invalid wtu-edge-removed "$SCRATCH/wtu-edge-removed.yaml"
 
 echo "REGRESSION_MUTATIONS_PASS"
+
+# F7 authority regression: the regulation must stay Accepted and normative.
+mutate_registry() {
+  python3 - "$ROOT/docs/DOCUMENT-REGISTRY.yaml" "$SCRATCH/$1.yaml" "$2" <<'PY'
+import copy, sys, yaml
+reg = yaml.safe_load(open(sys.argv[1], encoding="utf-8"))
+reg = copy.deepcopy(reg)
+for doc in reg["documents"]:
+    if doc.get("path") == "docs/operations/AGENT-SESSION-RECOVERY-REGULATION.md":
+        exec(sys.argv[3])
+        break
+yaml.safe_dump(reg, open(sys.argv[2], "w", encoding="utf-8"), sort_keys=False, allow_unicode=True)
+PY
+}
+
+expect_invalid_registry() {
+  if python3 "$GOV" --registry "$2" --action-map "$ACTION_MAP" --agents "$AGENTS_FILE" --regulation-path "$REGULATION" 2>/dev/null; then
+    echo "REGRESSION: $1 mutation should fail but passed" >&2
+    exit 1
+  fi
+}
+
+mutate_registry authority-proposed 'doc["status"] = "proposed"'
+expect_invalid_registry authority-proposed "$SCRATCH/authority-proposed.yaml"
+
+mutate_registry authority-no-normative 'doc["normativeAuthority"] = "none"'
+expect_invalid_registry authority-no-normative "$SCRATCH/authority-no-normative.yaml"
+
+mutate_registry authority-not-current 'doc["currentNormativeAuthority"] = False'
+expect_invalid_registry authority-not-current "$SCRATCH/authority-not-current.yaml"
+
+mutate_registry authority-no-decision 'doc.pop("decisionRef", None)'
+expect_invalid_registry authority-no-decision "$SCRATCH/authority-no-decision.yaml"
+
+echo "AUTHORITY_REGRESSION_PASS"

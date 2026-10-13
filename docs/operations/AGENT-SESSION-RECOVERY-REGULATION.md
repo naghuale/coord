@@ -1,15 +1,16 @@
 # Регламент восстановления агентской сессии после обрыва или перерыва
 
 ```yaml
-documentStatus: Proposed
+documentStatus: Accepted
 kind: AgentSessionRecoveryRegulation
 appliesTo:
   - Coordinator
   - Executor
   - Reviewer
   - Auditor
-normativeAuthority: false
-ownerAcceptanceRequired: true
+normativeAuthority: true
+ownerAcceptanceRequired: false
+ownerDecisionRef: RECOVERY-REGULATION-R1
 defaultBehavior: fail_closed_recovery
 ```
 

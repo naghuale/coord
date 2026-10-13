@@ -12,6 +12,10 @@ REQUIRED_TRANSITIONS = {
     "PREPARE_CORRECTION", "BLOCKED_EXTERNAL", "HUMAN_ACTION_REQUIRED",
     "OWNER_REQUIRED", "PRESERVE_AND_STOP"
 }
+# Registry markers that explicitly deny current normative authority.
+NON_NORMATIVE_AUTHORITY = {
+    "none", "proposed_direction", "design_only", "example_only", "legacy_only",
+}
 
 def load(path):
     return yaml.safe_load(Path(path).read_text(encoding="utf-8"))
@@ -29,6 +33,23 @@ def main():
     paths={d.get("path") for d in registry.get("documents", [])}
     if args.regulation_path not in paths:
         problems.append("recovery regulation is not registered")
+
+    reg_doc=next(
+        (d for d in registry.get("documents", []) if d.get("path") == args.regulation_path),
+        None,
+    )
+    if reg_doc is None:
+        problems.append("recovery regulation not found in registry")
+    else:
+        if reg_doc.get("status") != "accepted":
+            problems.append(f"recovery regulation status must be 'accepted', got {reg_doc.get('status')!r}")
+        normative=reg_doc.get("normativeAuthority")
+        if not isinstance(normative, str) or normative in NON_NORMATIVE_AUTHORITY:
+            problems.append(f"recovery regulation must have normativeAuthority, got {normative!r}")
+        if reg_doc.get("currentNormativeAuthority") is not True:
+            problems.append("recovery regulation must have currentNormativeAuthority=true")
+        if not reg_doc.get("decisionRef"):
+            problems.append("recovery regulation must record the OWNER decisionRef")
 
     amap=load(args.action_map)
     events=set(amap.get("events", {}).keys())

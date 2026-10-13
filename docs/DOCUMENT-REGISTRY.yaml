@@ -3740,7 +3740,8 @@ documents:
   - id: agent-session-recovery-regulation
     path: docs/operations/AGENT-SESSION-RECOVERY-REGULATION.md
     class: process
-    status: proposed
+    status: accepted
+    decisionRef: RECOVERY-REGULATION-R1
     purpose:
       - fail-closed session recovery algorithm
       - Recovery Report format and schema
@@ -3759,10 +3760,10 @@ documents:
     updateWhen:
       - PROCESS_NORM_CHANGED
       - WORKSPACE_POLICY_CHANGED
-    currentNormativeAuthority: false
+    currentNormativeAuthority: true
     currentOperationalAuthority: false
     canonicalProductionAuthority: false
-    normativeAuthority: proposed_direction
+    normativeAuthority: process
     ownership:
       creates: COORDINATOR
       updates: COORDINATOR
@@ -3770,7 +3771,7 @@ documents:
     acceptance:
       reviewer: required
       auditor: conditional_if_TD_R2
-      owner: required_for_normative_acceptance
+      owner: only_for_class_R
   - id: recovery-report-schema
     path: docs/schemas/recovery-report.schema.json
     class: process
