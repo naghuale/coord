@@ -3,15 +3,32 @@ class: R
 issue: 44
 status: accepted
 authority: AGENTS.md
-norms: [AGENTS.md-sources-of-truth, R143]
+norms:
+  - AGENTS.md-sources-of-truth
+  - R143
+
+decisionDate: "2026-10-13"
+
+decisionProvenance: >
+  OWNER confirmed RECOVERY-REGULATION-R1 in the coordinator conversation
+  on 2026-10-13. The accepted decision selects option A: the Agent Session
+  Recovery Regulation is Accepted, has normativeAuthority=true, and remains
+  subject to mandatory CI enforcement. GitHub issue https://github.com/naghuale/coord/issues/44
+  is the durable project record associated with the decision.
+
+provenanceRefs:
+  - kind: github-issue
+    value: "https://github.com/naghuale/coord/issues/44"
+  - kind: owner-decision
+    value: RECOVERY-REGULATION-R1
 
 context: >
   docs/operations/AGENT-SESSION-RECOVERY-REGULATION.md was registered as
-  status=proposed, normativeAuthority=false. AGENTS.md §Workspace Root и
-  ACTION-MAP уже направляли resumed sessions в RECOVER_SESSION, а CI
-  enforced присутствие RECOVER_SESSION в AGENTS.md. Регламент был
-  необходим как обязательный fail-closed process, а не как рекомендация.
-  OWNER принял Variant A: elevate regulation to Accepted, normativeAuthority=true.
+  status=proposed, normativeAuthority=false. AGENTS.md §Workspace Root and
+  ACTION-MAP already directed resumed sessions to RECOVER_SESSION, and CI
+  enforced presence of recovery transitions in AGENTS.md. The regulation was
+  necessary as a mandatory fail-closed process, not a recommendation.
+  OWNER accepted Variant A: elevate regulation to Accepted, normativeAuthority=true.
 
 selectedOption: >
   Variant A: elevate recovery regulation from Proposed to Accepted.
@@ -32,7 +49,21 @@ securityImpact: >
   accepted norm. Agents cannot bypass recovery by omitting the regulation
   or declaring it non-binding. CI fails if the regulation is absent from
   the Registry or has non-accepted status or non-normative authority.
-  Fail-closed property: CI enforces the accepted regulation is present.
+  Fail-closed property: CI enforces that the accepted regulation is present
+  and backed by a committed class-R decision artifact.
+
+effects:
+  - recovery regulation becomes mandatory
+  - DOCUMENT-REGISTRY records status=accepted, normativeAuthority=process
+  - AGENTS.md recovery binding remains mandatory
+  - recovery governance CI remains blocking
+  - decisionRef validated against committed docs/decisions/ artifact (A01)
+
+excludedEffects:
+  - no other Proposed document is promoted
+  - unknown working-tree changes receive no ownership
+  - Review and Audit requirements are not weakened
+  - exact-subject requirements remain mandatory
 
 mutation:
   revertToProposed:
@@ -43,6 +74,10 @@ mutation:
     description: Set normativeAuthority=none in DOCUMENT-REGISTRY.yaml
     result: killed
     killedBy: AUTHORITY_REGRESSION_PASS (governance check rc=1)
+  removeDecisionArtifact:
+    description: Delete docs/decisions/RECOVERY-REGULATION-R1.yaml
+    result: killed
+    killedBy: governance check rc=1 (decisionRef artifact missing)
 
 review:
   class: R
@@ -50,12 +85,13 @@ review:
     - independent Reviewer (codex:workspace-c19, not Executor opencode:workspace-oa1)
     - independent Auditor (opencode:workspace-o1e, not Executor or Reviewer)
     - authority validation in CI with mutation regression
-    - proof decisionRef points to committed artifact (A01 fix)
+    - decisionRef file existence verified by check-recovery-governance.py
 
 rollback: >
   Set status=proposed, normativeAuthority=proposed_direction,
   currentNormativeAuthority=false, remove decisionRef in DOCUMENT-REGISTRY.yaml.
   Set documentStatus=Proposed, normativeAuthority=false, ownerAcceptanceRequired=true,
   remove ownerDecisionRef in regulation header.
+  Delete docs/decisions/RECOVERY-REGULATION-R1.yaml.
   Remove decisionRef validation from check-recovery-governance.py.
-  This is a 4-field revert; no schema changes; all prior review subjects remain valid.
+  All prior review subjects remain valid.
