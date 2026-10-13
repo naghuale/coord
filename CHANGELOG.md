@@ -2,7 +2,7 @@
 
 ## 2026-10-13 — fix(ci): restore Python setup for resolver/launcher tests (macOS fix)
 
-- Возвращены `actions/setup-python` и `pip install PyYAML` в CI: они нужны для `check-resolver-launcher`, `check-sandbox-session-registry`, `check-supervisor-seccomp-registry`, которые используют Python. Прямые вызовы Python governance скриптов остались удалены. Refs #45
+- Возвращены `actions/setup-python` и `pip install PyYAML` в CI: они нужны для `check-resolver-launcher`, `check-sandbox-session-registry`, `check-supervisor-seccomp-registry`, которые используют Python. Прямые вызовы Python governance скриптов остались удалены. Refs #45 (документация)
 
 ## 2026-10-13 — fix(registry): mark uncommitted documents optional: true (CI fix for #45)
 
