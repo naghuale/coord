@@ -100,13 +100,13 @@ def main():
         return fail(f"changed files missing from classification: {unclassified}")
 
     # Containment: repository and worktree must stay under the project root.
-    # Paths are normalised first: is_relative_to alone is lexical, so a
-    # "<projectRoot>/../../outside" path would satisfy it without ever
-    # resolving inside the project root.
-    norm_project = Path(os.path.normpath(project))
+    # Paths are fully resolved first. Lexical comparison alone accepts both
+    # "<projectRoot>/../../outside" and a symlink inside the project root that
+    # points outside it.
+    norm_project = Path(os.path.realpath(project))
     for field in ("repositoryRoot", "assignedWorktree"):
         val = data["recovery"].get(field, "")
-        if val and not Path(os.path.normpath(val)).is_relative_to(norm_project):
+        if val and not Path(os.path.realpath(val)).is_relative_to(norm_project):
             return fail(f"recovery.{field}={val!r} not contained within projectRoot={project!r}")
 
     if args.project_root:

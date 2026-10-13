@@ -63,6 +63,10 @@ expect_invalid definition-removed "$SCRATCH/definition-removed.yaml"
 mutate_action_map wtu-edge-removed 'am["events"]["WORKTREE_STATE_UNKNOWN"]["expectedResults"] = [r for r in am["events"]["WORKTREE_STATE_UNKNOWN"]["expectedResults"] if r != "RECOVER_COORDINATION_STATE"]'
 expect_invalid wtu-edge-removed "$SCRATCH/wtu-edge-removed.yaml"
 
+# gap-3: SESSION_RESUMED edge removed, WORKTREE_STATE_UNKNOWN edge kept -> must FAIL
+mutate_action_map sr-edge-removed 'am["events"]["SESSION_RESUMED"]["expectedResults"] = [r for r in am["events"]["SESSION_RESUMED"]["expectedResults"] if r != "RECOVER_COORDINATION_STATE"]'
+expect_invalid sr-edge-removed "$SCRATCH/sr-edge-removed.yaml"
+
 echo "REGRESSION_MUTATIONS_PASS"
 
 # F7 authority regression: the regulation must stay Accepted and normative.
@@ -141,5 +145,7 @@ expect_invalid_report repo-outside "$RESUME_FIXTURE" \
   'doc["recovery"]["repositoryRoot"] = "/etc/passwd"'
 expect_invalid_report launch-cwd-wrong "$RESUME_FIXTURE" \
   'doc["recovery"]["requiredLaunchCwd"] = doc["recovery"]["projectRoot"]'
+expect_invalid_report unclassified-changed "$COORD_FIXTURE" \
+  'doc["workingTree"]["modifiedFiles"] = doc["workingTree"].get("modifiedFiles", []) + ["docs/NEW-UNCLASSIFIED.md"]; doc["workingTree"]["totalChangedFiles"] = doc["workingTree"].get("totalChangedFiles", 0) + 1'
 
 echo "REPORT_REGRESSION_MUTATIONS_PASS"

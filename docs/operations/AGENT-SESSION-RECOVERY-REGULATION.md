@@ -483,7 +483,7 @@ Issue до завершения восстановления.
    - обязательный launch cwd;
    - project-local scratch root.
 
-2. Проверь, что текущий cwd соответствует обязательному project root. Не создавай
+2. Проверь, что текущий cwd соответствует COORD_GLOBAL_ROOT (R143). Не создавай
    временные файлы вне project-local scratch. Не используй системный /tmp.
 
 3. Сними неизменяющий Git snapshot:
