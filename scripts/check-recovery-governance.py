@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import argparse, sys
+import argparse, subprocess, sys
 from pathlib import Path
 import yaml
 
@@ -49,31 +49,52 @@ def main():
         if not reg_doc.get("decisionRef"):
             problems.append("recovery regulation must record the OWNER decisionRef")
         else:
-            # The reference must resolve to a committed decision record. The
-            # path is anchored on the regulation, not on the registry file, so
-            # a registry copy passed from elsewhere still resolves in the repo.
-            decision_path = Path(args.regulation_path).parent.parent / "decisions" / (str(reg_doc["decisionRef"]) + ".yaml")
-            if not decision_path.is_file():
+            ref = str(reg_doc["decisionRef"])
+            # Only bare IDs are accepted. A path-like reference would let Path
+            # joining escape docs/decisions/ and point the check at any file.
+            if "/" in ref or "\\" in ref or ref.startswith("."):
                 problems.append(
-                    f"recovery regulation decisionRef={reg_doc['decisionRef']!r} "
-                    f"has no committed artifact at {decision_path.as_posix()}"
+                    f"recovery regulation decisionRef must be a bare ID "
+                    f"(no path separators), got {ref!r}"
                 )
             else:
-                try:
-                    dec = load(str(decision_path))
-                except Exception as exc:
-                    problems.append(f"cannot load decision artifact {reg_doc['decisionRef']!r}: {exc}")
+                decisions_dir = (Path(args.regulation_path).parent.parent / "decisions").resolve()
+                decision_path = (decisions_dir / (ref + ".yaml")).resolve()
+                if not str(decision_path).startswith(str(decisions_dir) + "/"):
+                    problems.append("decision artifact path escapes docs/decisions/")
+                elif not decision_path.is_file():
+                    problems.append(
+                        f"recovery regulation decisionRef={ref!r} "
+                        f"has no committed artifact at {decision_path.as_posix()}"
+                    )
                 else:
-                    if dec.get("status") != "accepted":
+                    repo_root = Path(args.regulation_path).parent.parent.parent.resolve()
+                    tracked = subprocess.run(
+                        ["git", "ls-files", "--error-unmatch",
+                         decision_path.relative_to(repo_root).as_posix()],
+                        capture_output=True, cwd=repo_root,
+                    )
+                    if tracked.returncode != 0:
                         problems.append(
-                            f"decision artifact {reg_doc['decisionRef']!r} "
-                            f"status must be 'accepted', got {dec.get('status')!r}"
+                            f"decision artifact {ref!r} exists on disk "
+                            f"but is not committed to git"
                         )
-                    if dec.get("class") != "R":
-                        problems.append(
-                            f"decision artifact {reg_doc['decisionRef']!r} "
-                            f"must be class R, got {dec.get('class')!r}"
-                        )
+                    else:
+                        try:
+                            dec = load(str(decision_path))
+                        except Exception as exc:
+                            problems.append(f"cannot load decision artifact {ref!r}: {exc}")
+                        else:
+                            if dec.get("status") != "accepted":
+                                problems.append(
+                                    f"decision artifact {ref!r} "
+                                    f"status must be 'accepted', got {dec.get('status')!r}"
+                                )
+                            if dec.get("class") != "R":
+                                problems.append(
+                                    f"decision artifact {ref!r} "
+                                    f"must be class R, got {dec.get('class')!r}"
+                                )
 
     amap=load(args.action_map)
     events=set(amap.get("events", {}).keys())

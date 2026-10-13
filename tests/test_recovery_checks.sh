@@ -102,6 +102,23 @@ expect_invalid_registry authority-not-current "$SCRATCH/authority-not-current.ya
 mutate_registry authority-no-decision 'doc.pop("decisionRef", None)'
 expect_invalid_registry authority-no-decision "$SCRATCH/authority-no-decision.yaml"
 
+# decisionRef path safety: only bare IDs that resolve to a committed record.
+mutate_registry decision-ref-absolute 'doc["decisionRef"] = "/etc/passwd"'
+expect_invalid_registry decision-ref-absolute "$SCRATCH/decision-ref-absolute.yaml"
+
+mutate_registry decision-ref-parent 'doc["decisionRef"] = "../RECOVERY-REGULATION-R1"'
+expect_invalid_registry decision-ref-parent "$SCRATCH/decision-ref-parent.yaml"
+
+# An untracked file in docs/decisions must not satisfy the reference.
+FAKE_DECISION_ID="UNTRACKED-DECISION-TEST"
+FAKE_DECISION_FILE="$ROOT/docs/decisions/${FAKE_DECISION_ID}.yaml"
+cleanup_fake_decision() { rm -f "$FAKE_DECISION_FILE"; }
+trap 'rm -rf "$SCRATCH"; cleanup_fake_decision' EXIT
+printf 'decision: %s\nclass: R\nstatus: accepted\n' "$FAKE_DECISION_ID" > "$FAKE_DECISION_FILE"
+mutate_registry decision-ref-untracked "doc[\"decisionRef\"] = \"$FAKE_DECISION_ID\""
+expect_invalid_registry decision-ref-untracked "$SCRATCH/decision-ref-untracked.yaml"
+cleanup_fake_decision
+
 echo "AUTHORITY_REGRESSION_PASS"
 
 # Regression mutations for the Recovery Report validator itself.
