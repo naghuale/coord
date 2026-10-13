@@ -174,7 +174,7 @@ workspace:
 ```text
 COORD_GLOBAL_ROOT=<absolute canonical path from local configuration>
 COORD_PROJECT_ROOT=${COORD_GLOBAL_ROOT}/<local project namespace>
-стартовый cwd агента=COORD_PROJECT_ROOT
+стартовый cwd агента=COORD_GLOBAL_ROOT
 временные файлы=${COORD_PROJECT_ROOT}/.scratch/tmp
 системный /tmp запрещён
 ```

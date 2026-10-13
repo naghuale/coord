@@ -89,7 +89,7 @@ expect_invalid_registry() {
 mutate_registry authority-proposed 'doc["status"] = "proposed"'
 expect_invalid_registry authority-proposed "$SCRATCH/authority-proposed.yaml"
 
-mutate_registry authority-no-normative 'doc["normativeAuthority"] = "none"'
+mutate_registry authority-no-normative 'doc["normativeAuthority"] = ""'
 expect_invalid_registry authority-no-normative "$SCRATCH/authority-no-normative.yaml"
 
 mutate_registry authority-not-current 'doc["currentNormativeAuthority"] = False'
@@ -99,3 +99,47 @@ mutate_registry authority-no-decision 'doc.pop("decisionRef", None)'
 expect_invalid_registry authority-no-decision "$SCRATCH/authority-no-decision.yaml"
 
 echo "AUTHORITY_REGRESSION_PASS"
+
+# Regression mutations for the Recovery Report validator itself.
+expect_invalid_report() {
+  # $1: mutation name, $2: fixture, $3: python mutation expression
+  local mf
+  mf=$(mktemp "$SCRATCH/report-mutation-XXXXXX")
+  if ! python3 - "$2" "$mf" "$3" <<'PY'
+import copy, sys, yaml
+doc = yaml.safe_load(open(sys.argv[1], encoding="utf-8"))
+doc = copy.deepcopy(doc)
+exec(sys.argv[3])
+yaml.safe_dump(doc, open(sys.argv[2], "w", encoding="utf-8"), sort_keys=False, allow_unicode=True)
+PY
+  then
+    echo "REGRESSION: $1 mutation setup failed" >&2
+    exit 1
+  fi
+  if python3 "$ROOT/scripts/check-recovery-report.py" "$mf" --schema "$COORD_SCHEMA" 2>/dev/null; then
+    echo "REGRESSION: $1 should fail but passed" >&2
+    exit 1
+  fi
+}
+
+COORD_FIXTURE="$ROOT/tests/fixtures/valid/coordinator-recover-coordination-state.yaml"
+RESUME_FIXTURE="$ROOT/tests/fixtures/valid/resume.yaml"
+
+expect_invalid_report staged-unknown-rcs "$COORD_FIXTURE" \
+  'doc["workingTree"]["stagedFiles"] = doc["classification"]["foreignOrUnknown"][:1]'
+expect_invalid_report bucket-overlap "$COORD_FIXTURE" \
+  'doc["classification"]["generated"] = doc["classification"]["foreignOrUnknown"][:1]'
+expect_invalid_report head-mismatch-resume "$RESUME_FIXTURE" \
+  'doc["recovery"]["headMatchesExpected"] = False'
+expect_invalid_report high-risk-resume "$RESUME_FIXTURE" \
+  'doc["workingTree"]["preservationRisk"] = "HIGH"'
+expect_invalid_report repo-dotdot "$RESUME_FIXTURE" \
+  'doc["recovery"]["repositoryRoot"] = doc["recovery"]["projectRoot"] + "/../../outside"'
+expect_invalid_report worktree-dotdot "$RESUME_FIXTURE" \
+  'doc["recovery"]["assignedWorktree"] = doc["recovery"]["projectRoot"] + "/../workspace-02"'
+expect_invalid_report repo-outside "$RESUME_FIXTURE" \
+  'doc["recovery"]["repositoryRoot"] = "/etc/passwd"'
+expect_invalid_report launch-cwd-wrong "$RESUME_FIXTURE" \
+  'doc["recovery"]["requiredLaunchCwd"] = doc["recovery"]["projectRoot"]'
+
+echo "REPORT_REGRESSION_MUTATIONS_PASS"

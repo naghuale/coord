@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import argparse, json, re, sys
+import argparse, json, os, re, sys
 from pathlib import Path
 import yaml
 from jsonschema import Draft202012Validator, FormatChecker
@@ -60,8 +60,9 @@ def main():
     project = data["recovery"]["projectRoot"].rstrip("/")
     if scratch != project + "/.scratch/tmp":
         return fail("scratchRoot must equal projectRoot/.scratch/tmp")
-    if data["recovery"]["requiredLaunchCwd"].rstrip("/") != project:
-        return fail("requiredLaunchCwd must equal projectRoot")
+    global_root = data["recovery"].get("globalRoot", "").rstrip("/")
+    if data["recovery"]["requiredLaunchCwd"].rstrip("/") != global_root:
+        return fail("requiredLaunchCwd must equal globalRoot per R143")
 
     # Unknown staged changes are a hard stop; they cannot be classified read-only.
     staged = wt.get("stagedFiles", [])
@@ -99,9 +100,13 @@ def main():
         return fail(f"changed files missing from classification: {unclassified}")
 
     # Containment: repository and worktree must stay under the project root.
+    # Paths are normalised first: is_relative_to alone is lexical, so a
+    # "<projectRoot>/../../outside" path would satisfy it without ever
+    # resolving inside the project root.
+    norm_project = Path(os.path.normpath(project))
     for field in ("repositoryRoot", "assignedWorktree"):
         val = data["recovery"].get(field, "")
-        if val and not Path(val.rstrip("/")).is_relative_to(Path(project)):
+        if val and not Path(os.path.normpath(val)).is_relative_to(norm_project):
             return fail(f"recovery.{field}={val!r} not contained within projectRoot={project!r}")
 
     if args.project_root:

@@ -7,7 +7,7 @@ recovery:
   projectRoot: /workspace/workspace-01
   repositoryRoot: /workspace/workspace-01/repositories/coord
   assignedWorktree: /workspace/workspace-01/repositories/coord
-  requiredLaunchCwd: /workspace/workspace-01
+  requiredLaunchCwd: /workspace
   scratchRoot: /workspace/workspace-01/.scratch/tmp
   branch: p0-2-task
   head: 51793b351793b351793b351793b351793b351793

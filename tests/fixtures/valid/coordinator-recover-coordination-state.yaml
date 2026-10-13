@@ -17,7 +17,7 @@ recovery:
   projectRoot: /Users/andreybabenko/Downloads/workspace/workspace-01
   repositoryRoot: /Users/andreybabenko/Downloads/workspace/workspace-01/repositories/coord
   assignedWorktree: /Users/andreybabenko/Downloads/workspace/workspace-01/repositories/coord
-  requiredLaunchCwd: /Users/andreybabenko/Downloads/workspace/workspace-01
+  requiredLaunchCwd: /Users/andreybabenko/Downloads/workspace
   scratchRoot: /Users/andreybabenko/Downloads/workspace/workspace-01/.scratch/tmp
   branch: p0-2-task
   head: 51793b3da4597aa91f5a805cb02bbba1f099f44b

@@ -14,7 +14,7 @@ recovery:
   projectRoot: "<absolute project root>"
   repositoryRoot: "<absolute repository root>"
   assignedWorktree: "<absolute worktree or repository root>"
-  requiredLaunchCwd: "<absolute project root>"
+  requiredLaunchCwd: "<absolute global root>"
   scratchRoot: "<projectRoot>/.scratch/tmp"
   branch: "<branch>"
   head: "<full commit SHA>"

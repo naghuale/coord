@@ -12,10 +12,8 @@ REQUIRED_TRANSITIONS = {
     "PREPARE_CORRECTION", "BLOCKED_EXTERNAL", "HUMAN_ACTION_REQUIRED",
     "OWNER_REQUIRED", "PRESERVE_AND_STOP"
 }
-# Registry markers that explicitly deny current normative authority.
-NON_NORMATIVE_AUTHORITY = {
-    "none", "proposed_direction", "design_only", "example_only", "legacy_only",
-}
+# Only these values grant a document current normative authority.
+NORMATIVE_AUTHORITY_ALLOWLIST = {"process", "product", "canonical"}
 
 def load(path):
     return yaml.safe_load(Path(path).read_text(encoding="utf-8"))
@@ -44,8 +42,8 @@ def main():
         if reg_doc.get("status") != "accepted":
             problems.append(f"recovery regulation status must be 'accepted', got {reg_doc.get('status')!r}")
         normative=reg_doc.get("normativeAuthority")
-        if not isinstance(normative, str) or normative in NON_NORMATIVE_AUTHORITY:
-            problems.append(f"recovery regulation must have normativeAuthority, got {normative!r}")
+        if not isinstance(normative, str) or normative not in NORMATIVE_AUTHORITY_ALLOWLIST:
+            problems.append(f"recovery regulation must have normativeAuthority in {sorted(NORMATIVE_AUTHORITY_ALLOWLIST)}, got {normative!r}")
         if reg_doc.get("currentNormativeAuthority") is not True:
             problems.append("recovery regulation must have currentNormativeAuthority=true")
         if not reg_doc.get("decisionRef"):
