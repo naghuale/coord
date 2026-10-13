@@ -16,13 +16,16 @@ func writeBootstrap(t *testing.T, root, kind, admissionResult string) string {
 	b := bootstrapFile{}
 	b.Kind = kind
 	b.WorkspaceBinding.ProjectRoot = root
-	b.WorkspaceBinding.RepositoryRoot = root
+	b.WorkspaceBinding.RepositoryRoot = filepath.Join(root, "repo")
 	b.WorkspaceBinding.AssignedWorktree = filepath.Join(root, "worktree")
 	b.Assignment.AssignmentID = "a1"
 	b.Assignment.BaseSHA = "273c2c2b5e4f1a9d0c3b8e7f6a5d4c3b2a1e0f9e"
 	b.Admission.Result = admissionResult
 	if err := os.MkdirAll(filepath.Join(root, "worktree"), 0755); err != nil {
 		t.Fatalf("create worktree fixture: %v", err)
+	}
+	if err := os.MkdirAll(b.WorkspaceBinding.RepositoryRoot, 0755); err != nil {
+		t.Fatalf("create repository fixture: %v", err)
 	}
 	data, err := json.Marshal(b)
 	if err != nil {
