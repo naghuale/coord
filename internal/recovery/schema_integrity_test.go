@@ -1,15 +1,14 @@
 package recovery
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 )
 
-// TestSchemaWildcardBanPattern verifies that both recovery schemas enforce the
-// wildcard ban on path fields. The JSON schema uses "[*?\\[]" and the YAML
-// coordinator schema uses "[*?\\[]". Removing either pattern passes CI silently
-// without this test (proven by Auditor audit on be2262b).
 func TestSchemaWildcardBanPattern(t *testing.T) {
 	schemas := []struct {
 		path    string
@@ -33,31 +32,68 @@ func TestSchemaWildcardBanPattern(t *testing.T) {
 }
 
 // TestSchemaFullSHAPattern verifies that the recovery report JSON schema
-// enforces 40-character hex SHA values at all 7 required sites. The pattern
-// appears inline (not via $ref), so strings.Contains passes even when 6 of 7
-// sites are weakened. strings.Count catches per-site removal.
+// enforces full SHA-40 at each of the 7 required fields by navigating the
+// parsed schema document to each site and checking the pattern field directly.
 //
-// The 7 required sites: recovery.head, recovery.expectedHead, assignment.baseSha,
-// subjectBinding.reviewSubjectSha, subjectBinding.auditSubjectSha,
-// subjectBinding.ciSubjectSha, coordinationRecovery.committedSubjects[].sha.
+// Required sites:
+//
+//	/properties/recovery/properties/head
+//	/properties/recovery/properties/expectedHead/anyOf/0
+//	/properties/assignment/properties/baseSha/anyOf/0
+//	/properties/subjectBinding/properties/reviewSubjectSha/anyOf/0
+//	/properties/subjectBinding/properties/auditSubjectSha/anyOf/0
+//	/properties/subjectBinding/properties/ciSubjectSha/anyOf/0
+//	/properties/coordinationRecovery/properties/committedSubjects/items/properties/sha
 func TestSchemaFullSHAPattern(t *testing.T) {
-	const path = "../../docs/schemas/recovery-report.schema.json"
-	const requiredCount = 7
-	if _, err := os.Stat(path); err != nil {
-		t.Skipf("schema not available: %s", path)
+	const schemaPath = "../../docs/schemas/recovery-report.schema.json"
+	const fullSHAPattern = "^[0-9a-f]{40}$"
+
+	if _, err := os.Stat(schemaPath); err != nil {
+		t.Skipf("schema not available: %s", schemaPath)
 	}
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(schemaPath)
 	if err != nil {
 		t.Fatalf("read schema: %v", err)
 	}
-	got := strings.Count(string(data), "[0-9a-f]{40}")
-	if got < requiredCount {
-		t.Errorf("full-SHA pattern [0-9a-f]{40} found %d times in %s, need >= %d — per-site weakening allows short SHAs to pass validation silently", got, path, requiredCount)
+	var schema map[string]any
+	if err := json.Unmarshal(data, &schema); err != nil {
+		t.Fatalf("parse schema: %v", err)
+	}
+
+	sites := []string{
+		"/properties/recovery/properties/head",
+		"/properties/recovery/properties/expectedHead/anyOf/0",
+		"/properties/assignment/properties/baseSha/anyOf/0",
+		"/properties/subjectBinding/properties/reviewSubjectSha/anyOf/0",
+		"/properties/subjectBinding/properties/auditSubjectSha/anyOf/0",
+		"/properties/subjectBinding/properties/ciSubjectSha/anyOf/0",
+		"/properties/coordinationRecovery/properties/committedSubjects/items/properties/sha",
+	}
+
+	for _, site := range sites {
+		node, err := jsonNavigate(schema, site)
+		if err != nil {
+			t.Errorf("site %s: navigate failed: %v", site, err)
+			continue
+		}
+		obj, ok := node.(map[string]any)
+		if !ok {
+			t.Errorf("site %s: node is %T, expected object", site, node)
+			continue
+		}
+		// Resolve $ref if present.
+		obj, err = jsonResolveRef(schema, obj)
+		if err != nil {
+			t.Errorf("site %s: resolve $ref: %v", site, err)
+			continue
+		}
+		got, _ := obj["pattern"].(string)
+		if got != fullSHAPattern {
+			t.Errorf("site %s: pattern = %q, want %q — weakening this field allows short SHAs to pass schema validation silently", site, got, fullSHAPattern)
+		}
 	}
 }
 
-// TestSchemaCoordinatorFullSHAPattern verifies the coordinator YAML schema also
-// enforces full SHAs.
 func TestSchemaCoordinatorFullSHAPattern(t *testing.T) {
 	const path = "../../docs/schemas/recovery-report.coordinator.schema.yaml"
 	if _, err := os.Stat(path); err != nil {
@@ -70,4 +106,54 @@ func TestSchemaCoordinatorFullSHAPattern(t *testing.T) {
 	if !strings.Contains(string(data), "[0-9a-f]{40}") {
 		t.Errorf("full-SHA pattern [0-9a-f]{40} missing in %s", path)
 	}
+}
+
+// jsonNavigate walks a parsed JSON document following a JSON Pointer path
+// (/key/key/index). Returns the node at that path or an error.
+func jsonNavigate(root any, path string) (any, error) {
+	segments := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	cur := root
+	for _, seg := range segments {
+		switch v := cur.(type) {
+		case map[string]any:
+			next, ok := v[seg]
+			if !ok {
+				return nil, fmt.Errorf("key %q not found", seg)
+			}
+			cur = next
+		case []any:
+			idx, err := strconv.Atoi(seg)
+			if err != nil {
+				return nil, fmt.Errorf("expected array index, got %q", seg)
+			}
+			if idx < 0 || idx >= len(v) {
+				return nil, fmt.Errorf("index %d out of range [0,%d)", idx, len(v))
+			}
+			cur = v[idx]
+		default:
+			return nil, fmt.Errorf("cannot descend into %T with segment %q", cur, seg)
+		}
+	}
+	return cur, nil
+}
+
+// jsonResolveRef resolves a $ref pointer of the form "#/path/to/def" within
+// the root schema document. Returns the node itself when no $ref is present.
+func jsonResolveRef(root map[string]any, node map[string]any) (map[string]any, error) {
+	ref, ok := node["$ref"].(string)
+	if !ok {
+		return node, nil
+	}
+	if !strings.HasPrefix(ref, "#/") {
+		return nil, fmt.Errorf("unsupported $ref: %q", ref)
+	}
+	resolved, err := jsonNavigate(root, strings.TrimPrefix(ref, "#"))
+	if err != nil {
+		return nil, fmt.Errorf("resolve %q: %v", ref, err)
+	}
+	m, ok := resolved.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("$ref %q target is not an object", ref)
+	}
+	return m, nil
 }

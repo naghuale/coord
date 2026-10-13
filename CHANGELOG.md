@@ -1,5 +1,9 @@
 # История изменений
 
+## 2026-10-13 — fix(recovery): structural per-site fullSha verification (audit N02, Refs #44)
+
+- `TestSchemaFullSHAPattern` переписан: вместо подсчёта строк — парсинг JSON-схемы и навигация по JSON Pointer к каждому из 7 обязательных SHA-полей. Decoy-паттерны в `description` больше не обходят проверку. Мутации E1 (все 7 сайтов + 8 decoy) и E2 (один сайт + один decoy): оба пойманы (exit 1). `TestSchemaFullSHAPattern`
+
 ## 2026-10-13 — fix(recovery): per-site fullSha coverage in schema integrity test (audit N01, Refs #44)
 
 - `TestSchemaFullSHAPattern` заменяет `strings.Contains` на `strings.Count(...) >= 7`: JSON-схема содержит паттерн `[0-9a-f]{40}` ровно в 7 полях inline; ослабление любого одного поля снижает счётчик до 6 и немедленно роняет тест. Мутационная проверка (замена первого из 7 сайтов): exit 1, тест упал. `TestSchemaFullSHAPattern`
