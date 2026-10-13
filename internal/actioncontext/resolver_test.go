@@ -168,6 +168,52 @@ func TestResolveProposedRejected(t *testing.T) {
 	t.Fatalf("expected %s rejection, got %+v", ErrProposedNotAccepted, result.Admission.Rejections)
 }
 
+// TestDigestDriftDetected verifies parity with Python test_digest_drift_detected:
+// after resolving context, modifying a tracked file causes SHA256File to return
+// a different digest, which the caller must detect as drift (ErrDigestDrift exists
+// as a named error code and SHA256File reflects the changed content).
+func TestDigestDriftDetected(t *testing.T) {
+	root, req := makeRoot(t)
+	result, err := Resolve(req)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if result.Admission.Status != StatusAdmitted {
+		t.Fatalf("pre-condition: expected ADMITTED, got %s", result.Admission.Status)
+	}
+	// Find the document binding for AGENTS.md.
+	var agentsBinding *DocumentBinding
+	for i := range result.Admission.Documents {
+		if result.Admission.Documents[i].Path == "AGENTS.md" {
+			agentsBinding = &result.Admission.Documents[i]
+			break
+		}
+	}
+	if agentsBinding == nil {
+		t.Fatal("AGENTS.md not found in resolved documents")
+	}
+	capturedDigest := agentsBinding.Digest
+
+	// Simulate the file being modified after context was resolved.
+	agentsPath := filepath.Join(root, "AGENTS.md")
+	if err := os.WriteFile(agentsPath, []byte("# agents — modified"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// SHA256File must now return a different digest.
+	newDigest, err := SHA256File(agentsPath)
+	if err != nil {
+		t.Fatalf("SHA256File: %v", err)
+	}
+	if newDigest == capturedDigest {
+		t.Errorf("digest unchanged after file modification — SHA256File does not detect content changes")
+	}
+	// Confirm ErrDigestDrift error code is defined for callers to use.
+	if ErrDigestDrift == "" {
+		t.Error("ErrDigestDrift constant must be non-empty")
+	}
+}
+
 func TestFileResolverImplementsInterface(t *testing.T) {
 	root, req := makeRoot(t)
 	var _ Resolver = &FileResolver{ProjectRoot: root}

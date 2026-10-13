@@ -58,13 +58,13 @@ check-action-map:
 	go run ./cmd/coord-governance check-action-map --action-map docs/operations/ACTION-MAP.yaml --registry docs/DOCUMENT-REGISTRY.yaml
 
 check-resolver-launcher:
-	PYTHONPATH=scripts python3 -m unittest discover -s tests -p 'test_resolver_launcher.py' -v
+	go test -race -count=1 ./internal/actioncontext/ ./internal/admission/
 
 check-sandbox-session-registry:
-	PYTHONPATH=scripts python3 -m unittest discover -s tests -p 'test_sandbox_session_registry.py' -v
+	go test -race -count=1 ./internal/agentsession/ ./internal/sandbox/
 
 check-supervisor-seccomp-registry:
-	PYTHONPATH=scripts python3 -m unittest discover -s tests -p 'test_supervisor_seccomp_registry.py' -v
+	go test -race -count=1 ./internal/supervisor/
 
 check-recovery:
 	bash tests/test_recovery_checks.sh

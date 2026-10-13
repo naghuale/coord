@@ -160,6 +160,33 @@ func TestValidateExecutableNotAllowed(t *testing.T) {
 	}
 }
 
+// TestLauncherDryRun verifies parity with Python test_launcher_dry_run:
+// when realSideEffects.allowed is false (DryRun mode), bootstrap validation
+// must be ADMITTED and the result must carry DryRun=true (executed=false).
+// This covers the build-agent-bootstrap → launch-agent dry-run path in Go.
+func TestLauncherDryRun(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "repo"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	worktree := filepath.Join(root, "worktree")
+	if err := os.MkdirAll(worktree, 0755); err != nil {
+		t.Fatal(err)
+	}
+	b := makeBootstrap(t, root, filepath.Join(root, "repo"), worktree)
+	// RealSideEffects: false → dry-run; DryRun: true is explicit.
+	result, err := Validate(b, ValidateOptions{DryRun: true, RealSideEffects: false})
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if result.Result != StatusAdmitted {
+		t.Fatalf("expected ADMITTED in dry-run mode, got %s: %v", result.Result, result.Errors)
+	}
+	if !result.DryRun {
+		t.Error("expected DryRun=true (executed=false) in the admission result")
+	}
+}
+
 func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)

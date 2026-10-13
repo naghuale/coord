@@ -1,5 +1,14 @@
 # История изменений
 
+## 2026-10-13 — feat(test): migrate Python check harnesses to Go, WP-02–WP-05 (Refs #46)
+
+- `internal/actioncontext/resolver_test.go`: добавлен `TestDigestDriftDetected` — parity с Python `test_digest_drift_detected`; проверяет, что `SHA256File` возвращает иной дайджест после изменения файла и что константа `ErrDigestDrift` определена.
+- `internal/admission/validator_test.go`: добавлен `TestLauncherDryRun` — parity с Python `test_launcher_dry_run`; `DryRun: true, RealSideEffects: false` → `ADMITTED` и `result.DryRun == true`.
+- `internal/agentsession/admit_test.go`: добавлен `TestRegistryClientMockAdmission` — parity с Python `test_registry_client_mock`; mock HTTP возвращает ADMITTED, `sessionId=s1`.
+- `internal/sandbox/profiles_test.go`: добавлены `TestSandboxFailsClosedWithoutBwrapOrEnv` (parity с Python `test_sandbox_fails_closed_without_bwrap_or_env`; `Bubblewrap{Path:""}` → error), `TestSeccompProfileParses` (парсит `config/SECCOMP-PROFILES.yaml`, проверяет `ptrace` в `denyExplicit`), `TestLibseccompLoaderFailsClosedOnNonLinux` (stub returns error on non-Linux).
+- `internal/supervisor/http_fence_test.go`: добавлен `TestHTTPAdapterSupervisorFence` — parity с Python `test_http_adapter_and_supervisor_fence`; `httptest.Server` возвращает generation=2 при local=1 → `receipt.Fenced==true`, `FenceReason==FenceGeneration`.
+- `Makefile`: три Python-цели (`check-resolver-launcher`, `check-sandbox-session-registry`, `check-supervisor-seccomp-registry`) переключены на Go: `go test -race -count=1 ./internal/...` (документация).
+
 ## 2026-10-13 — fix(recovery): require explicit RepoRoot to break git boundary tautology (review R08 round 2, Refs #44)
 
 - `Check()` returns error when `CheckOptions.RepoRoot == ""`: without an explicit root, the cwd-derived and file-derived rev-parse calls both return the same ancestor, making the comparison tautological (`TestCheckRequiresRepoRoot`). `TestRealGovenance` updated to pass `RepoRoot` from `git rev-parse`.
