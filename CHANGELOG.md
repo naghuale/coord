@@ -5,6 +5,10 @@
 - Восстановлен `bash tests/test_recovery_checks.sh` в target `check-recovery` в Makefile: 18 report-level правил (wildcard ban, fullSha, cross-field consistency, path containment, credential leakage) снова входят в `make check`. Auditor доказал, что без этого мутация схем проходила CI без обнаружения (F1). `TestSchemaWildcardBanPattern` `TestSchemaFullSHAPattern` `TestSchemaCoordinatorFullSHAPattern`
 - Добавлен `internal/recovery/schema_integrity_test.go`: три Go-теста фиксируют наличие wildcard-ban и full-SHA паттернов в обеих схемах. Удаление паттерна из любой схемы теперь немедленно роняет Go test-suite (F3). `TestSchemaWildcardBanPattern` `TestSchemaFullSHAPattern` `TestSchemaCoordinatorFullSHAPattern`
 
+## 2026-10-13 — fix(ci): add jsonschema to Python deps (check-recovery needs it) (документация)
+
+- `jsonschema` добавлен в `pip install` в CI: `scripts/check-recovery-report.py` требует его для валидации Recovery Report против JSON-схемы. Refs #44
+
 ## 2026-10-13 — fix(ci): restore Python setup for resolver/launcher tests (macOS fix)
 
 - Возвращены `actions/setup-python` и `pip install PyYAML` в CI: они нужны для `check-resolver-launcher`, `check-sandbox-session-registry`, `check-supervisor-seccomp-registry`, которые используют Python. Прямые вызовы Python governance скриптов остались удалены. Refs #45 (документация)
