@@ -38,10 +38,6 @@ func TestSeccompProfileParses(t *testing.T) {
 	// Walk up from the test file to find the repo root config/ directory.
 	repoRoot := findRepoRoot(t)
 	path := filepath.Join(repoRoot, "config", "SECCOMP-PROFILES.yaml")
-	if _, err := os.Stat(path); err != nil {
-		t.Skipf("SECCOMP-PROFILES.yaml not available: %v", err)
-	}
-
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read SECCOMP-PROFILES.yaml: %v", err)

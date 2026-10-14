@@ -11,12 +11,39 @@ import (
 	"time"
 )
 
+type admitResponseHTTP string
+
+func (h admitResponseHTTP) Do(_ *http.Request) (*http.Response, error) {
+	return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(string(h))), Header: http.Header{}}, nil
+}
+
 // fakeAdmitHTTP returns a mock ADMITTED response on the first call.
 type fakeAdmitHTTP struct{}
 
 func (fakeAdmitHTTP) Do(_ *http.Request) (*http.Response, error) {
 	body := `{"sessionId":"s1","leaseTokenDigest":"sha256:x","registryRevision":"r1","generation":1,"status":"ADMITTED"}`
 	return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Header: http.Header{}}, nil
+}
+
+func TestRegistryClientRejectsInvalidAdmitResponses(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{name: "empty response", body: `{}`},
+		{name: "unknown status", body: `{"sessionId":"s1","leaseTokenDigest":"d1","registryRevision":"r1","generation":1,"status":"TOTALLY_BOGUS"}`},
+		{name: "missing required fields", body: `{"sessionId":"s1","generation":1,"status":"ADMITTED"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := OpenAPIClient{
+				Config: OpenAPIConfig{BaseURL: "https://registry.invalid", Admit: Operation{Method: "POST", Path: "/admit"}},
+				HTTP:   admitResponseHTTP(tc.body), Credential: StaticCredential("token"), Retry: RetryPolicy{MaxAttempts: 1}, Sleep: noSleep{},
+			}
+			if _, err := c.Admit(context.Background(), AdmitRequest{ProjectID: "coord", AssignmentID: "a1"}); err == nil || !strings.Contains(err.Error(), "SESSION_REGISTRY_RESPONSE_INVALID") {
+				t.Fatalf("Admit error = %v, want SESSION_REGISTRY_RESPONSE_INVALID", err)
+			}
+		})
+	}
 }
 
 // TestRegistryClientMockAdmission verifies parity with Python

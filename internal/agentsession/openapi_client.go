@@ -80,8 +80,19 @@ func (c *OpenAPIClient) Admit(ctx context.Context, in AdmitRequest) (Session, er
 	}
 	var out Session
 	err := c.doJSON(ctx, c.Config.Admit, "", in.IdempotencyKey, in, &out)
+	if err != nil {
+		return Session{}, err
+	}
 	out.Status = c.mapStatus(out.Status)
-	return out, err
+	if out.SessionID == "" || out.Generation == 0 || out.LeaseTokenDigest == "" || out.RegistryRevision == "" {
+		return Session{}, errors.New("SESSION_REGISTRY_RESPONSE_INVALID: missing required admit response fields")
+	}
+	switch out.Status {
+	case StatusAdmitted, StatusRejected, StatusFenced, "NOT_EVALUATED":
+		return out, nil
+	default:
+		return Session{}, fmt.Errorf("SESSION_REGISTRY_RESPONSE_INVALID: unsupported admit status %q", out.Status)
+	}
 }
 
 func (c *OpenAPIClient) Heartbeat(ctx context.Context, in HeartbeatRequest) (HeartbeatResult, error) {

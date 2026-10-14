@@ -8,6 +8,31 @@ permissions:
   contents: read
 
 jobs:
+  migrated-harnesses:
+    name: Go migrated harnesses (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Verify migrated targets without Python
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Deny interpreters that hosted runners may provide implicitly.
+          guard_dir="$GITHUB_WORKSPACE/.scratch/tmp/no-python"
+          mkdir -p "$guard_dir"
+          for tool in python python3 pip pip3 pytest; do
+            printf '#!/bin/sh\necho "Python dependency in migrated harness: $0" >&2\nexit 97\n' > "$guard_dir/$tool"
+            chmod +x "$guard_dir/$tool"
+          done
+          PATH="$guard_dir:$PATH" make check-migrated-harnesses
+
   check:
     name: make check (${{ matrix.os }})
     strategy:
@@ -23,6 +48,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install Python test dependencies
+      # Recovery and architecture checks remain separate accepted contours.
+      # GO-TEST-HARNESS-RETIREMENT-R1 does not retire their dependencies.
+      - name: Install recovery and architecture check dependencies
         run: python -m pip install --disable-pip-version-check PyYAML jsonschema
       - run: make check

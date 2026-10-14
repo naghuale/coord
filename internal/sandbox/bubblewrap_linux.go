@@ -4,6 +4,7 @@ package sandbox
 
 import (
 	"errors"
+	"fmt"
 	"os/exec"
 	"path/filepath"
 )
@@ -22,6 +23,17 @@ func (b Bubblewrap) Validate(p Profile) error {
 	return nil
 }
 func (b Bubblewrap) Command(p Profile, l Launch) ([]string, []string, error) {
+	// Typed roots replace the Python harness's required COORD_* variables.
+	// Reject missing bindings even when a Bubblewrap executable is available.
+	for _, root := range []struct{ name, path string }{
+		{"ProjectRoot", l.ProjectRoot},
+		{"RepositoryRoot", l.RepositoryRoot},
+		{"AssignedWorktree", l.AssignedWorktree},
+	} {
+		if !filepath.IsAbs(root.path) {
+			return nil, nil, fmt.Errorf("%s must be an absolute nonempty path", root.name)
+		}
+	}
 	if e := b.Validate(p); e != nil {
 		return nil, nil, e
 	}

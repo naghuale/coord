@@ -1,13 +1,8 @@
 supervisor-seccomp-registry:
   stage: verify
-  image: debian:bookworm-slim
-  before_script:
-    - apt-get update
-    - apt-get install -y --no-install-recommends python3 python3-yaml python3-seccomp libseccomp2
+  image: golang:1.27-bookworm
   script:
-    - python3 -m unittest discover -s tests -v
-    - python3 -m py_compile scripts/*.py
-    - python3 scripts/seccomp_exec.py --profiles config/SECCOMP-PROFILES.yaml --profile python-agent-v1 -- /bin/true
+    - make check-sandbox-session-registry check-supervisor-seccomp-registry
   rules:
     - changes:
         - scripts/**

@@ -18,7 +18,8 @@ import (
 //
 // This covers the full HTTP path from the OpenAPIClient through the Loop, using
 // a local test server instead of the Python session_supervisor.py + mock server.
-func TestHTTPAdapterSupervisorFence(t *testing.T) {
+func newHTTPFenceRegistry(t *testing.T) *agentsession.OpenAPIClient {
+	t.Helper()
 	// Mock HTTP registry: returns a heartbeat response with generation 2 while
 	// the local session has generation 1 — triggers FenceGeneration.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -43,7 +44,7 @@ func TestHTTPAdapterSupervisorFence(t *testing.T) {
 			http.NotFound(w, r)
 		}
 	}))
-	defer srv.Close()
+	t.Cleanup(srv.Close)
 
 	registry := &agentsession.OpenAPIClient{
 		Config: agentsession.OpenAPIConfig{
@@ -60,6 +61,11 @@ func TestHTTPAdapterSupervisorFence(t *testing.T) {
 		Retry:      agentsession.RetryPolicy{MaxAttempts: 1},
 	}
 
+	return registry
+}
+
+func TestHTTPAdapterSupervisorFence(t *testing.T) {
+	registry := newHTTPFenceRegistry(t)
 	p := &fakeProcess{}
 	tick := &fakeTicker{ch: make(chan time.Time, 1)}
 	loop := Loop{
@@ -101,6 +107,9 @@ func TestHTTPAdapterSupervisorFence(t *testing.T) {
 		}
 		if receipt.FenceReason != FenceGeneration {
 			t.Errorf("expected FenceReason=%s, got %s", FenceGeneration, receipt.FenceReason)
+		}
+		if !p.terminated {
+			t.Error("generation mismatch did not terminate the process")
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("timeout waiting for supervisor fence receipt")

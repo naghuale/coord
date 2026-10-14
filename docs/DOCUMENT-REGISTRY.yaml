@@ -2001,6 +2001,29 @@ documents:
       reviewer: required
       auditor: conditional_if_TD_R2
       owner: only_for_class_R
+  - id: go-test-harness-retirement-r1
+    path: docs/decisions/GO-TEST-HARNESS-RETIREMENT-R1.yaml
+    class: process
+    status: accepted
+    purpose: [OWNER decision for issue 46 WP-06 test harness retirement]
+    usedBy: [COORDINATOR, EXECUTOR, REVIEWER, AUDITOR]
+    readWhen: [SESSION_START, ISSUE_46_WORK]
+    updateWhen: [OWNER_DECISION_CHANGED]
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    normativeAuthority: process
+    currentNormativeAuthority: true
+    decisionRef: GO-TEST-HARNESS-RETIREMENT-R1
+  - id: issue-46-parity
+    path: docs/plans/go-migration/ISSUE-46-PARITY.yaml
+    class: operations
+    status: active
+    purpose: [Exact mapping of the nine retired Python cases to Go tests and CI targets]
+    usedBy: [COORDINATOR, EXECUTOR, REVIEWER, AUDITOR]
+    readWhen: [ISSUE_46_WORK]
+    updateWhen: [TEST_HARNESS_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
   - id: recovery-regulation-r1
     path: docs/decisions/RECOVERY-REGULATION-R1.yaml
     class: process

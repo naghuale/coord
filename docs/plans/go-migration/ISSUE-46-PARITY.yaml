@@ -1,0 +1,89 @@
+issue: 46
+ownerDecisionRef: GO-TEST-HARNESS-RETIREMENT-R1
+pythonSourceSha: 76484985839d131c073b0359d064c55611864aed
+retirementSha: bbf5053e07ba9acd59fe908fa807bfce51fee114
+note: >
+  The three files were already deleted in the intermediate retirement commit.
+  This matrix is reconstructed from their exact parent blobs; WP-06 completion
+  adds missing parity checks and CI isolation. Final acceptance is recorded
+  externally against the final commit, not inferred from this mapping.
+parity:
+  resolverLauncher:
+    pythonFile: tests/test_resolver_launcher.py
+    makeTarget: check-resolver-launcher
+    cases:
+      - python: Tests.test_resolve_success
+        go: [internal/actioncontext/resolver_test.go:TestResolveAdmitted]
+        assertions: [ADMITTED, required document count matches declared fixture]
+        fixtureDifference: Python declares three required documents; Go declares two and checks both.
+      - python: Tests.test_unknown_event_fails_closed
+        go: [internal/actioncontext/resolver_test.go:TestResolveUnknownEventFailsClosed]
+        assertions: [INVALID_ADMISSION, UNKNOWN_EVENT rejection]
+      - python: Tests.test_historical_rejected
+        go: [internal/actioncontext/resolver_test.go:TestResolveHistoricalRejected]
+        assertions: [INVALID_ADMISSION, historical authority rejection]
+      - python: Tests.test_digest_drift_detected
+        go: [internal/admission/validator_test.go:TestDigestDriftDetected]
+        assertions: [resolve real context, modify bound AGENTS.md, Validate returns INVALID_ADMISSION and DIGEST_DRIFT]
+      - python: Tests.test_launcher_dry_run
+        go:
+          - internal/admission/validator_test.go:TestValidateAdmitted
+          - cmd/coord-governance/launch_test.go:TestLauncherDryRun
+        assertions: [valid admission, launcher success, process executor never called]
+    allMapped: true
+  sandboxSessionRegistry:
+    pythonFile: tests/test_sandbox_session_registry.py
+    makeTarget: check-sandbox-session-registry
+    cases:
+      - python: SandboxSessionRegistryTests.test_registry_client_mock
+        go: [internal/agentsession/admit_test.go:TestRegistryClientMockAdmission]
+        assertions: [mock admission succeeds, ADMITTED, sessionId returned]
+      - python: SandboxSessionRegistryTests.test_sandbox_fails_closed_without_bwrap_or_env
+        go:
+          - internal/sandbox/profiles_test.go:TestSandboxFailsClosedWithoutBwrapOrEnv
+          - internal/sandbox/bubblewrap_linux_test.go:TestSandboxFailsClosedWithoutWorkspaceRoots
+          - internal/sandbox/bubblewrap_other_test.go:TestNonLinuxSandboxFailsClosed
+        assertions: [missing executable rejected, missing typed workspace roots rejected despite available executable, unsupported OS rejected, no command returned on error]
+        boundary: Python invoked sandbox_exec without --execute; it never ran Bubblewrap or loaded a seccomp filter.
+    allMapped: true
+  supervisorSeccompRegistry:
+    pythonFile: tests/test_supervisor_seccomp_registry.py
+    makeTarget: check-supervisor-seccomp-registry
+    cases:
+      - python: SupervisorSeccompRegistryTests.test_http_adapter_and_supervisor_fence
+        go:
+          - internal/supervisor/http_fence_test.go:TestHTTPAdapterSupervisorFence
+          - internal/supervisor/http_fence_unix_test.go:TestHTTPAdapterSupervisorFenceLiveProcess
+        assertions: [real HTTP through OpenAPIClient, generation mismatch, error returned, fenced receipt, child process terminated with nonzero exit]
+      - python: SupervisorSeccompRegistryTests.test_seccomp_profile_parses
+        go: [internal/sandbox/profiles_test.go:TestSeccompProfileParses]
+        assertions: [config file required, python-agent-v1 exists, denyExplicit contains ptrace]
+        replacementTarget: check-sandbox-session-registry
+        boundary: The original case parsed YAML only; it never installed a live seccomp filter.
+    allMapped: true
+  uncoveredCases: []
+additionalChecks:
+  - cmd/coord-governance/launch_test.go:TestLauncherExecuteInvokesExecutorWithBoundProjectRoot
+  - internal/sandbox/profiles_test.go:TestLibseccompLoaderFailsClosedOnNonLinux
+ci:
+  goOnlyJob: .github/workflows/ci.yml:migrated-harnesses
+  operatingSystems: [ubuntu-latest, macos-latest]
+  target: check-migrated-harnesses
+  pythonRequiredByMigratedTargets: false
+  pythonRequiredByMigratedHarnessJob: false
+  noPythonGuard: Python and pip executable names are replaced with failing commands during the target run.
+  remainingPythonConsumers:
+    - check-recovery and tests/test_recovery_checks.sh require PyYAML and jsonschema
+    - check-architecture-sync requires PyYAML
+  fullMakeCheckStillRequiresPython: true
+  fullRepositoryJobStillRequiresPython: true
+runtimeLimits:
+  linuxSecurityLiveIntegration: NOT_EVALUATED
+  reason: No retired case installed a Bubblewrap namespace or live seccomp filter; production isolation certification is outside these harness replacements.
+  supervisorLiveHTTPAndChild: TestHTTPAdapterSupervisorFenceLiveProcess runs on Linux and macOS.
+finalAcceptance:
+  review: REQUIRED_ON_FINAL_SHA
+  audit: REQUIRED_ON_FINAL_SHA
+  workingTreeGate: REQUIRED
+  cleanSnapshotGate: REQUIRED
+  remoteCI: REQUIRED_ON_FINAL_SHA

@@ -1,0 +1,37 @@
+decision: GO-TEST-HARNESS-RETIREMENT-R1
+class: R
+issue: 46
+status: accepted
+decisionDate: "2026-10-14"
+selectedOption: EXPAND_TO_WP_06
+adjustAcceptanceCriteria: false
+decisionProvenance: >
+  OWNER explicitly accepted GO-TEST-HARNESS-RETIREMENT-R1 in the Codex
+  coordinator conversation on 2026-10-14. The final instruction defines
+  the Python-free gate for the three migrated targets and explicitly
+  preserves Python dependencies required by other committed checks.
+provenanceRefs:
+  - kind: owner-decision
+    value: GO-TEST-HARNESS-RETIREMENT-R1
+  - kind: github-issue
+    value: https://github.com/naghuale/coord/issues/46
+decision:
+  - Finish WP-06 within issue 46 without weakening acceptance criteria.
+  - Map every retired Python scenario to Go, preserving negative and fail-closed semantics.
+  - The three migrated Makefile targets and their dedicated CI job require only Go.
+  - Remove Python setup only where no other committed check needs it.
+  - Keep recovery and architecture checks and their Python dependencies intact.
+  - Require working-tree and clean committed snapshot gates, independent Review and Audit, and exact-SHA CI on Ubuntu and macOS before closure.
+scope:
+  targets:
+    - check-resolver-launcher
+    - check-sandbox-session-registry
+    - check-supervisor-seccomp-registry
+  parityMatrix: docs/plans/go-migration/ISSUE-46-PARITY.yaml
+  intermediateSubject: bbf5053e07ba9acd59fe908fa807bfce51fee114
+  excluded:
+    - orphaned batch
+    - Coordinator active-dispatch workstream
+    - recovery governance migration and issue 44 audit
+    - production AgentSession runtime expansion
+closeAllowedOnIntermediateSubject: false

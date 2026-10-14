@@ -58,13 +58,17 @@ check-action-map:
 	go run ./cmd/coord-governance check-action-map --action-map docs/operations/ACTION-MAP.yaml --registry docs/DOCUMENT-REGISTRY.yaml
 
 check-resolver-launcher:
-	go test -race -count=1 ./internal/actioncontext/ ./internal/admission/
+	go test -race -count=1 ./internal/actioncontext/ ./internal/admission/ ./cmd/coord-governance/
 
 check-sandbox-session-registry:
 	go test -race -count=1 ./internal/agentsession/ ./internal/sandbox/
 
 check-supervisor-seccomp-registry:
 	go test -race -count=1 ./internal/supervisor/
+
+# GO-TEST-HARNESS-RETIREMENT-R1: these three contours require only Go.
+.PHONY: check-migrated-harnesses
+check-migrated-harnesses: check-resolver-launcher check-sandbox-session-registry check-supervisor-seccomp-registry
 
 check-recovery:
 	bash tests/test_recovery_checks.sh

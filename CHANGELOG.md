@@ -1,5 +1,12 @@
 # История изменений
 
+## 2026-10-14 — WP-06: parity gate и CI трёх Go-контуров (Refs #46)
+
+- `GO-TEST-HARNESS-RETIREMENT-R1` и `ISSUE-46-PARITY.yaml` фиксируют решение OWNER и все девять удалённых Python cases; Python зависимых recovery/architecture checks сохраняется (документация).
+- `check-resolver-launcher` включает `cmd/coord-governance` с `TestLauncherDryRun` и `TestLauncherExecuteInvokesExecutorWithBoundProjectRoot`; CI `migrated-harnesses` запускает три targets с запрещёнными Python/pip executables.
+- `TestSandboxFailsClosedWithoutWorkspaceRoots` проверяет отказ Linux backend при отсутствующих workspace roots даже с доступным executable; `TestNonLinuxSandboxFailsClosed` проверяет unsupported backend; `TestSeccompProfileParses` больше не пропускает отсутствующий config.
+- `TestHTTPAdapterSupervisorFenceLiveProcess` сохраняет live HTTP и реальный child process из Python-сценария, проверяет ошибку, fencing и остановку процесса; `TestHTTPAdapterSupervisorFence` также проверяет termination.
+
 ## 2026-10-14 — chore(test): retire Python harnesses after Go parity confirmed, WP-06 (Refs #46)
 
 - Удалены три Python test-файла после полного Go parity, зелёного CI и AUDIT_ACCEPTED: `tests/test_resolver_launcher.py`, `tests/test_sandbox_session_registry.py`, `tests/test_supervisor_seccomp_registry.py` (документация).
