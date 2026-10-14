@@ -21,7 +21,8 @@ func (h admitResponseHTTP) Do(_ *http.Request) (*http.Response, error) {
 type fakeAdmitHTTP struct{}
 
 func (fakeAdmitHTTP) Do(_ *http.Request) (*http.Response, error) {
-	body := `{"sessionId":"s1","leaseTokenDigest":"sha256:x","registryRevision":"r1","generation":1,"status":"ADMITTED"}`
+	// The lowercase wire value proves Admit applies the configured status map.
+	body := `{"sessionId":"s1","leaseTokenDigest":"sha256:x","registryRevision":"r1","generation":1,"status":"admitted"}`
 	return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Header: http.Header{}}, nil
 }
 
@@ -61,7 +62,7 @@ func TestRegistryClientMockAdmission(t *testing.T) {
 			BaseURL: "https://registry.invalid",
 			Admit:   Operation{Method: "POST", Path: "/v1/agent-sessions:admit"},
 			StatusMap: map[string]Status{
-				"ADMITTED": StatusAdmitted,
+				"admitted": StatusAdmitted,
 			},
 			Timeout: time.Second,
 		},
