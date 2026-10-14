@@ -11,3 +11,21 @@ supervisor-seccomp-registry:
         - docs/**
         - .gitlab/ci/supervisor-seccomp-registry.yml
     - when: never
+
+# Keep this independent runtime check: it loads a real seccomp filter and is
+# not one of the three retired Python test harnesses.
+supervisor-seccomp-runtime:
+  stage: verify
+  image: debian:bookworm-slim
+  before_script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends python3 python3-yaml python3-seccomp libseccomp2
+  script:
+    - python3 -m py_compile scripts/*.py
+    - python3 scripts/seccomp_exec.py --profiles config/SECCOMP-PROFILES.yaml --profile python-agent-v1 -- /bin/true
+  rules:
+    - changes:
+        - scripts/**
+        - config/**
+        - .gitlab/ci/supervisor-seccomp-registry.yml
+    - when: never

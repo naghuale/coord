@@ -72,14 +72,16 @@ ci:
   pythonRequiredByMigratedTargets: false
   pythonRequiredByMigratedHarnessJob: false
   noPythonGuard: Python and pip executable names are replaced with failing commands during the target run.
+  retainedRuntimeJob: .gitlab/ci/supervisor-seccomp-registry.yml:supervisor-seccomp-runtime
+  retainedRuntimePythonReason: scripts/seccomp_exec.py loads a live seccomp filter; this separate runtime check is outside the three retired test harnesses.
   remainingPythonConsumers:
     - check-recovery and tests/test_recovery_checks.sh require PyYAML and jsonschema
     - check-architecture-sync requires PyYAML
   fullMakeCheckStillRequiresPython: true
   fullRepositoryJobStillRequiresPython: true
 runtimeLimits:
-  linuxSecurityLiveIntegration: NOT_EVALUATED
-  reason: No retired case installed a Bubblewrap namespace or live seccomp filter; production isolation certification is outside these harness replacements.
+  linuxSecurityLiveIntegration: PARTIAL
+  reason: No retired case installed a Bubblewrap namespace; the separate GitLab supervisor-seccomp-runtime job still loads the configured live seccomp filter.
   supervisorLiveHTTPAndChild: TestHTTPAdapterSupervisorFenceLiveProcess runs on Linux and macOS.
 finalAcceptance:
   review: REQUIRED_ON_FINAL_SHA
