@@ -1,0 +1,117 @@
+decision: R146
+class: R
+issue: 47
+status: accepted
+authority: AGENTS.md
+norms:
+  - AGENTS.md-active-coordinator-autonomy
+  - R107
+  - R142
+  - R145
+
+decisionDate: "2026-10-15"
+
+decisionProvenance: >
+  OWNER established this rule via RECOVERY-AUDIT-REMEDIATION-R1 (accepted),
+  which directed that Workstream B (active Coordinator progression after dispatch)
+  receives a separate Issue and R-number. GitHub issue
+  https://github.com/naghuale/coord/issues/47 is the durable project record
+  for this decision. R146 was reserved at the time of all-agent restart
+  (2026-10-15), with max confirmed = R145, no conflicts.
+
+provenanceRefs:
+  - kind: github-issue
+    value: "https://github.com/naghuale/coord/issues/47"
+  - kind: owner-decision
+    value: RECOVERY-AUDIT-REMEDIATION-R1
+
+context: >
+  After an agent assignment dispatch, the Coordinator was observed to treat
+  transport delivery or queue placement as evidence that the agent was running
+  and had admitted the assignment. This caused silent stalls: an assignment
+  could be DELIVERED to a broken or unresponsive session, and the Coordinator
+  would wait passively without verifying session liveness or performing
+  available independent work. The failure mode is distinct from OWNER or HUMAN
+  boundaries — it is a process-only defect that can be corrected by explicit
+  Coordinator obligation rules without changing trust boundaries or
+  normative scope of other accepted decisions.
+
+selectedOption: >
+  Establish R146: after any assignment dispatch, Coordinator MUST NOT treat
+  DELIVERED, QUEUED, or IDLE as evidence of ADMITTED or RUNNING.
+  DELIVERED != ADMITTED != RUNNING != COMPLETED.
+  Coordinator MUST: (1) verify actual AgentSession state by an authoritative
+  method; (2) confirm ADMITTED on exact subject SHA; (3) register assignment ID,
+  session ID, generation, and proven state; (4) execute available independent
+  work without waiting; (5) process available structured results immediately;
+  (6) reconcile QUEUED, IDLE, interrupted, or unknown sessions.
+  Coordinator MUST NOT close a transition with a promise of a future result
+  or an "awaiting Review/Audit" message. When session liveness cannot be
+  confirmed: human launch → HUMAN_ACTION_REQUIRED; absent runtime/Registry →
+  BLOCKED_EXTERNAL; OWNER_REQUIRED only on confirmed R142 boundary.
+  Implementation class: TD-R2 (affects AgentSession, fencing, assignment
+  dispatch, and recovery sequences). Requires independent Review and Audit.
+
+securityImpact: >
+  Passive waiting after dispatch can leave a broken or attacker-controlled
+  session nominally "assigned" while the Coordinator takes no corrective action.
+  R146 enforces active session verification and fail-closed behaviour when
+  session state is unknown. Coordinator cannot silently accept a stale session
+  as running. If session state cannot be confirmed, the transition must be
+  classified as HUMAN_ACTION_REQUIRED or BLOCKED_EXTERNAL, not ignored.
+
+effects:
+  - Coordinator MUST verify session admission after every dispatch
+  - DELIVERED state alone does not constitute evidence of ADMITTED
+  - IDLE state alone does not constitute evidence of RUNNING
+  - Coordinator MUST execute independent work when no ADMITTED result is available
+  - Session reconciliation is mandatory for QUEUED/IDLE/interrupted/unknown sessions
+  - Transition cannot close on a future promise; only on verified state
+
+excludedEffects:
+  - production AgentSession Runtime is not required to implement this rule
+  - external process launch capability is not assumed by this rule
+  - heartbeat and lease enforcement are not mandated by this rule (future ADR)
+  - R142 class boundaries are not changed
+  - issue #44 and #46 are not in scope
+
+mutation:
+  removeActiveVerificationRequirement:
+    description: Remove "Coordinator MUST verify actual AgentSession state" from AGENTS.md
+    result: not_yet_implemented
+    killedBy: NOT_IMPLEMENTED
+    note: >
+      Intended kill check ACTIVE_COORDINATOR_DISPATCH_PASS does not exist yet.
+      Static enforcement is intended by issue #47 implementation.
+  treatDeliveredAsAdmitted:
+    description: Allow Coordinator to treat DELIVERED as ADMITTED
+    result: not_yet_implemented
+    killedBy: NOT_IMPLEMENTED
+    note: >
+      Intended kill check LIVENESS_PARITY_PASS does not exist yet.
+      Kill will be demonstrated by action-map behavior tests in issue #47.
+  removeR146Artifact:
+    description: Delete docs/decisions/ACTIVE-COORDINATOR-DISPATCH-R146.yaml
+    result: not_yet_implemented
+    killedBy: NOT_IMPLEMENTED
+    note: >
+      Governance check enforcement for decisionRef exists
+      (check-document-registry validates path exists on disk); committed
+      artifact removal will fail at governance check when fully staged.
+
+review:
+  class: R
+  requirements:
+    - implementation in AGENTS.md and Coordinator State Machine (Workstream B scope)
+    - independent Reviewer (not Executor codex:workspace-c19)
+    - independent Auditor (TD-R2, not Executor or Reviewer)
+    - process contract tests (DELIVERED != ADMITTED etc.)
+    - session state inspection scenarios
+    - mutation regression
+
+rollback: >
+  Remove R146 section from AGENTS.md and Coordinator State Machine.
+  Set stageAllowed=false and commitAllowed=false for Workstream B.
+  Delete docs/decisions/ACTIVE-COORDINATOR-DISPATCH-R146.yaml.
+  Revert issue #47 status to FROZEN_PENDING_TRACKING.
+  All prior subjects under issue #44 remain valid.

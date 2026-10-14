@@ -3979,6 +3979,43 @@ documents:
       updates: COORDINATOR
       accountable: OWNER
     acceptance: {reviewer: required, auditor: false, owner: false}
+  - id: active-coordinator-dispatch-r146
+    path: docs/decisions/ACTIVE-COORDINATOR-DISPATCH-R146.yaml
+    class: process
+    status: accepted
+    purpose:
+      - "OWNER class R decision R146 (issue #47): after any assignment dispatch,
+        Coordinator MUST verify actual AgentSession admission state; DELIVERED !=
+        ADMITTED != RUNNING != COMPLETED; active session verification and
+        fail-closed process contract when session state is unknown"
+      - "process contract: accepted; static enforcement: intended by issue #47;
+        productionAgentSessionLaunch: NOT_IMPLEMENTED;
+        registryBackedHeartbeat: NOT_EVALUATED;
+        realSessionReconcileReplacement: NOT_IMPLEMENTED"
+    decisionRef: ACTIVE-COORDINATOR-DISPATCH-R146
+    usedBy:
+      - COORDINATOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - RECOVER_SESSION
+      - ASSIGNMENT_START
+      - OWNER_BOUNDARY_CHECK
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    currentNormativeAuthority: true
+    normativeAuthority: process
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: required
+      owner: only_for_class_R
 unregisteredDocumentPolicy:
   action: fail
   code: DOCUMENT_NOT_REGISTERED
