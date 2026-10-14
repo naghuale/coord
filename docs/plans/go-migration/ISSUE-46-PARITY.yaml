@@ -52,9 +52,12 @@ parity:
     cases:
       - python: SupervisorSeccompRegistryTests.test_http_adapter_and_supervisor_fence
         go:
-          - internal/supervisor/http_fence_test.go:TestHTTPAdapterSupervisorFence
+          - internal/agentsession/openapi_client_test.go:TestHeartbeatMapsTerminalRegistryStatuses
+          - internal/supervisor/http_fence_test.go:TestHTTPAdapterSupervisorFenceRevoked
+          - internal/supervisor/http_fence_test.go:TestHTTPAdapterSupervisorFenceLeaseDigest
           - internal/supervisor/http_fence_unix_test.go:TestHTTPAdapterSupervisorFenceLiveProcess
-        assertions: [real HTTP through OpenAPIClient, generation mismatch, error returned, fenced receipt, child process terminated with nonzero exit]
+        assertions: [real HTTP through OpenAPIClient, active heartbeat followed by revoked status, terminal status mapping, fenced receipt, child process terminated with nonzero exit]
+        additionalGoCoverage: [lease-token digest mismatch fences and terminates the supervised process]
       - python: SupervisorSeccompRegistryTests.test_seccomp_profile_parses
         go: [internal/sandbox/profiles_test.go:TestSeccompProfileParses]
         assertions: [config file required, python-agent-v1 exists, denyExplicit contains ptrace]

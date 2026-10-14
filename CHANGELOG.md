@@ -6,6 +6,7 @@
 - `check-resolver-launcher` включает `cmd/coord-governance` с `TestLauncherDryRun` и `TestLauncherExecuteInvokesExecutorWithBoundProjectRoot`; CI `migrated-harnesses` запускает три targets с запрещёнными Python/pip executables.
 - `TestSandboxFailsClosedWithoutWorkspaceRoots` проверяет отказ Linux backend при отсутствующих workspace roots даже с доступным executable; `TestNonLinuxSandboxFailsClosed` проверяет unsupported backend; `TestSeccompProfileParses` больше не пропускает отсутствующий config.
 - `TestHTTPAdapterSupervisorFenceLiveProcess` сохраняет live HTTP и реальный child process из Python-сценария, проверяет ошибку, fencing и остановку процесса; `TestHTTPAdapterSupervisorFence` также проверяет termination.
+- `TestHeartbeatMapsTerminalRegistryStatuses`, `TestHTTPAdapterSupervisorFenceRevoked` и `TestHTTPAdapterSupervisorFenceLeaseDigest` проверяют fail-closed mapping terminal wire statuses, отзыв на втором heartbeat и fencing при несовпадении lease digest; parity matrix отражает фактический Python-сценарий (`TestHTTPAdapterSupervisorFenceLiveProcess`).
 - Отдельный GitLab `supervisor-seccomp-runtime` сохраняет `py_compile` и загрузку живого seccomp-фильтра; migrated supervisor Go job остаётся без Python harness (документация).
 
 ## 2026-10-14 — chore(test): retire Python harnesses after Go parity confirmed, WP-06 (Refs #46)

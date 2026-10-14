@@ -42,3 +42,41 @@ func TestHeartbeatRetryKeepsIdempotencyKey(t *testing.T) {
 		t.Fatalf("keys=%v", h.keys)
 	}
 }
+
+func TestHeartbeatMapsTerminalRegistryStatuses(t *testing.T) {
+	for _, tc := range []struct {
+		wireStatus string
+		want       Status
+	}{
+		{wireStatus: "revoked", want: StatusFenced},
+		{wireStatus: "expired", want: StatusExpired},
+		{wireStatus: "rejected", want: StatusRejected},
+	} {
+		t.Run(tc.wireStatus, func(t *testing.T) {
+			body := `{"sessionId":"s1","generation":1,"leaseTokenDigest":"sha256:x","registryRevision":"r1","heartbeatSequence":1,"status":"` + tc.wireStatus + `"}`
+			c := OpenAPIClient{
+				Config: OpenAPIConfig{
+					BaseURL:   "https://registry.invalid",
+					Heartbeat: Operation{Method: "POST", Path: "/v1/sessions/{sessionId}:heartbeat"},
+					StatusMap: map[string]Status{
+						"revoked":  StatusFenced,
+						"expired":  StatusExpired,
+						"rejected": StatusRejected,
+					},
+				},
+				HTTP: admitResponseHTTP(body), Credential: StaticCredential("token"),
+				Retry: RetryPolicy{MaxAttempts: 1}, Sleep: noSleep{},
+			}
+			got, err := c.Heartbeat(context.Background(), HeartbeatRequest{
+				ProjectID: "coord", AssignmentID: "a1", SessionID: "s1", Generation: 1,
+				Sequence: 1, LeaseTokenDigest: "sha256:x",
+			})
+			if err != nil {
+				t.Fatalf("Heartbeat: %v", err)
+			}
+			if got.Status != tc.want {
+				t.Fatalf("Heartbeat status = %q, want mapped status %q", got.Status, tc.want)
+			}
+		})
+	}
+}
