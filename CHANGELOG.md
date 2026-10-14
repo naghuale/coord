@@ -1,5 +1,9 @@
 # История изменений
 
+## 2026-10-15 — fix(test): R08 ancestor guard mutation kill in TestDecisionAncestorGit (Refs #44)
+
+- `TestDecisionAncestorGit`: moved `gitCommitAll(t, outer)` to after fixture creation so the decision file is committed before `Check` runs; the root-mismatch guard (governance.go:247-249) is now the rejection cause, not uncommitted-file detection. Added Detail assertion (must contain "ancestor") and positive control with `RepoRoot=outer`. Mutation kill confirmed: deleting the guard leaves `resolvedDetected` unused (compile error) and, if disabled without deletion, allows `Check` to find the committed file producing no violation → test fails (документация).
+
 ## 2026-10-14 — WP-06: parity gate и CI трёх Go-контуров (Refs #46)
 
 - `GO-TEST-HARNESS-RETIREMENT-R1` и `ISSUE-46-PARITY.yaml` фиксируют решение OWNER и все девять удалённых Python cases; Python зависимых recovery/architecture checks сохраняется (документация).

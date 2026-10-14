@@ -498,17 +498,16 @@ documents:
 // TestDecisionAncestorGit verifies that an ancestor repository is rejected when
 // RepoRoot is set (R08: boundary check via rev-parse --show-toplevel).
 func TestDecisionAncestorGit(t *testing.T) {
-	// outer/ has a .git; inner/ has the decision file but no own .git.
+	// outer/ has a .git; inner/ is a subdirectory with the decision file.
 	outer := t.TempDir()
 	inner := filepath.Join(outer, "inner")
 	if err := os.MkdirAll(inner, 0750); err != nil {
 		t.Fatal(err)
 	}
 
-	// Commit something in the outer repo so it is a valid git repo.
-	gitCommitAll(t, outer)
-
-	// Build the decision file inside inner/ (never committed to outer).
+	// Build the decision file inside inner/ before committing, so that it is
+	// committed to the outer repo. This ensures the root-mismatch guard (R08)
+	// is the rejection cause, not DECISION_NOT_COMMITTED.
 	decisionsDir := filepath.Join(inner, "docs", "decisions")
 	if err := os.MkdirAll(decisionsDir, 0750); err != nil {
 		t.Fatal(err)
@@ -555,7 +554,14 @@ documents:
 		t.Fatal(err)
 	}
 
-	// RepoRoot is inner/, but git --show-toplevel will return outer/ (ancestor).
+	// Commit all fixtures into outer — the decision file is now in outer's
+	// committed tree. git --show-toplevel from inner/ returns outer/ (ancestor).
+	gitCommitAll(t, outer)
+
+	// RepoRoot is inner/, but git --show-toplevel returns outer/ → ancestor mismatch.
+	// Because the decision file is committed, the R08 guard is what fires.
+	// Deleting the guard (governance.go:247-249) would allow Check to proceed
+	// and find the file committed → no violation → this test would fail (mutation kill).
 	opts := CheckOptions{
 		RegistryPath:   filepath.Join(inner, "registry.yaml"),
 		ActionMapPath:  filepath.Join(inner, "action-map.yaml"),
@@ -570,6 +576,23 @@ documents:
 	}
 	if !hasCode(vs, "DECISION_NOT_COMMITTED") {
 		t.Errorf("expected DECISION_NOT_COMMITTED for ancestor git mismatch, got: %v", vs)
+	}
+	if len(vs) > 0 && !strings.Contains(vs[0].Detail, "ancestor") {
+		t.Errorf("expected 'ancestor' in violation detail, got: %v", vs[0].Detail)
+	}
+
+	// Positive control: with RepoRoot=outer the decision file is in the correct
+	// repository — no ancestor-rejection violation should be produced.
+	optsOuter := opts
+	optsOuter.RepoRoot = outer
+	vsPos, errPos := Check(optsOuter)
+	if errPos != nil {
+		t.Fatalf("positive control: expected no error for correct RepoRoot, got: %v", errPos)
+	}
+	for _, v := range vsPos {
+		if strings.Contains(v.Detail, "ancestor") {
+			t.Errorf("positive control: unexpected ancestor rejection: %v", v)
+		}
 	}
 }
 
