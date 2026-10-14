@@ -15,7 +15,7 @@ provenanceRefs:
     value: GO-TEST-HARNESS-RETIREMENT-R1
   - kind: github-issue
     value: https://github.com/naghuale/coord/issues/46
-decision:
+implementationRequirements:
   - Finish WP-06 within issue 46 without weakening acceptance criteria.
   - Map every retired Python scenario to Go, preserving negative and fail-closed semantics.
   - The three migrated Makefile targets and their dedicated CI job require only Go.
