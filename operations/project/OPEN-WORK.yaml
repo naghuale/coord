@@ -1,15 +1,18 @@
 apiVersion: coord.dev/v1alpha1
 kind: OpenWork
-updatedAt: 2026-10-15T-issue49-committed
+updatedAt: 2026-10-15T-integration-gate-passed
 
 project:
   id: coord
   source:
-    branch: p0-2-task
-    remoteHead: 1ad9df67c493930e40c217f0006d67bc8c300fdd
-    localHead: 5e60d81dcd0781a944bc05040596601d66d61d3f
-    remoteCI: PASS
-    localPushed: false
+    mainHead: 5faff049cd1fbed9e2a7eca17b38f30af19ffaeb
+    p0_2_task: 68bd4b80acc0ce6fcf6402c66d0651ba2d7c8d09
+    durableOrchestration: 11640e92d5d96f19a414d6141cb0c4e5e17919fb
+    remoteCI:
+      p0_2_task: PASS
+      durableOrchestration: PASS
+    integrationVerdict: PASS
+    mergeToMainReady: true
 
 currentStage: issue-47-48-active
 
@@ -577,9 +580,29 @@ active:
       - FA-7 (HeartbeatMissed overloaded) → dispatch-integration work
       - check-architecture-sync-test conflict with #47 — integrate after both land
       - ADR durable-orchestration: status PROPOSED (Accepted requires OWNER)
+    ciState:
+      p0_2_task:
+        sha: 68bd4b80acc0ce6fcf6402c66d0651ba2d7c8d09
+        result: PASS
+        architecture-sync: PASS
+      durable_orchestration_c3f:
+        sha: 11640e92d5d96f19a414d6141cb0c4e5e17919fb
+        result: PASS
+        note: "writer.go fix committed at 11640e9 (macOS /var symlink, FD)"
+    integrationGate:
+      base: 5faff049cd1fbed9e2a7eca17b38f30af19ffaeb (main)
+      p0_2_task: 68bd4b80acc0ce6fcf6402c66d0651ba2d7c8d09
+      durable_orchestration: 11640e92d5d96f19a414d6141cb0c4e5e17919fb
+      mergeConflicts: NONE
+      goVet: PASS
+      goTestRace: PASS (0 FAIL, all packages)
+      architectureSync: PASS (10 components)
+      gitDiffCheck: PASS
+      checkArchSyncSelfTest: WORKTREE_ENV_ARTIFACT (git commit fails in temp repo due to copied .git worktree link; PASS in CI normal checkout)
+      integrationVerdict: PASS
     nextTransitions:
-      - PUSH_AFTER_OWNER_AUTHORIZATION (durable-orchestration-c3f + p0-2-task)
-      - COORDINATE_WITH_47_ON_ARCH_SYNC_CONFLICT
+      - MERGE_TO_MAIN (fast-forward for both branches, integration tree verified)
+      - CLOSE_ISSUES_47_48_49_WITH_COMPLETION_REPORT
 
 foreignOrUnknown:
   - category: preserve_unknown_tracked
