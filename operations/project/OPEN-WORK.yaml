@@ -1,18 +1,26 @@
 apiVersion: coord.dev/v1alpha1
 kind: OpenWork
-updatedAt: 2026-10-15T-integration-gate-passed
+updatedAt: 2026-10-15T-main-ci-pass
 
 project:
   id: coord
   source:
-    mainHead: 5faff049cd1fbed9e2a7eca17b38f30af19ffaeb
+    mainHeadBefore: 5faff049cd1fbed9e2a7eca17b38f30af19ffaeb
     p0_2_task: 68bd4b80acc0ce6fcf6402c66d0651ba2d7c8d09
     durableOrchestration: 11640e92d5d96f19a414d6141cb0c4e5e17919fb
+    mergeCommit: 38a288d5ca204eccf268fe1e68502eb9843a5008
+    playbookCommit: 3cd653ad7e2ee3f3fc27fdca86db1a1793b9a7b3
+    mainHead: 3cd653ad7e2ee3f3fc27fdca86db1a1793b9a7b3
     remoteCI:
       p0_2_task: PASS
       durableOrchestration: PASS
+      main_38a288d5:
+        ci: PASS
+        architecture-sync: PASS
     integrationVerdict: PASS
-    mergeToMainReady: true
+    mergeToMainDone: true
+    issueClosurePending: true
+    issueClosureBlocker: AUTO_MODE_EXTERNAL_SYSTEM_WRITES
 
 currentStage: issue-47-48-active
 
@@ -601,8 +609,7 @@ active:
       checkArchSyncSelfTest: WORKTREE_ENV_ARTIFACT (git commit fails in temp repo due to copied .git worktree link; PASS in CI normal checkout)
       integrationVerdict: PASS
     nextTransitions:
-      - MERGE_TO_MAIN (fast-forward for both branches, integration tree verified)
-      - CLOSE_ISSUES_47_48_49_WITH_COMPLETION_REPORT
+      - CLOSE_ISSUES_47_48_49_WITH_COMPLETION_REPORT (HUMAN_ACTION_REQUIRED: gh issue close blocked by auto-mode)
 
 foreignOrUnknown:
   - category: preserve_unknown_tracked
