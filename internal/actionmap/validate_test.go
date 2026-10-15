@@ -100,6 +100,7 @@ recoveryTransitions:
     allowedActions: []
     forbiddenActions: []
     resultsIn: []
+    reasonCodes: [NEW_NORM_REQUIRED]
   PRESERVE_AND_STOP:
     when: invalid binding
     allowedActions: []
@@ -191,11 +192,22 @@ func TestUnknownExpectedResult(t *testing.T) {
 	}
 }
 
+func TestOwnerRequiredMissingReasonCode(t *testing.T) {
+	// OWNER_REQUIRED without any reasonCodes is fail-open: evidenceless boundary.
+	y := strings.ReplaceAll(minimalValidMap,
+		"  OWNER_REQUIRED:\n    when: new norm required\n    allowedActions: []\n    forbiddenActions: []\n    resultsIn: []\n    reasonCodes: [NEW_NORM_REQUIRED]",
+		"  OWNER_REQUIRED:\n    when: new norm required\n    allowedActions: []\n    forbiddenActions: []\n    resultsIn: []")
+	vs := violations(t, y)
+	if !hasCode(vs, "OWNER_REQUIRED_REASON_CODE_MISSING") {
+		t.Errorf("expected OWNER_REQUIRED_REASON_CODE_MISSING for empty reasonCodes, got: %v", vs)
+	}
+}
+
 func TestOwnerRequiredWithBadReasonCode(t *testing.T) {
 	// LINUX_RUNNER_UNAVAILABLE is a BLOCKED_EXTERNAL reason code, not OWNER_REQUIRED.
 	y := strings.ReplaceAll(minimalValidMap,
-		"  OWNER_REQUIRED:\n    when: new norm required\n    allowedActions: []\n    forbiddenActions: []\n    resultsIn: []",
-		"  OWNER_REQUIRED:\n    when: new norm required\n    allowedActions: []\n    forbiddenActions: []\n    resultsIn: []\n    reasonCodes: [LINUX_RUNNER_UNAVAILABLE]")
+		"reasonCodes: [NEW_NORM_REQUIRED]",
+		"reasonCodes: [LINUX_RUNNER_UNAVAILABLE]")
 	vs := violations(t, y)
 	if !hasCode(vs, "INVALID_OWNER_REASON_CODE") {
 		t.Errorf("expected INVALID_OWNER_REASON_CODE for LINUX_RUNNER_UNAVAILABLE, got: %v", vs)

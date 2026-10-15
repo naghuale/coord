@@ -163,8 +163,12 @@ func validate(am ActionMap, registeredIDs map[string]bool) []Violation {
 		}
 	}
 
-	// OWNER_REQUIRED reason codes must be from the owner-boundary allowlist.
+	// OWNER_REQUIRED must carry at least one evidence reason; an empty list is
+	// fail-open because any OWNER_REQUIRED invocation would be evidenceless.
 	if t, ok := am.RecoveryTransitions["OWNER_REQUIRED"]; ok {
+		if len(t.ReasonCodes) == 0 {
+			vs = append(vs, Violation{Code: "OWNER_REQUIRED_REASON_CODE_MISSING", Detail: "OWNER_REQUIRED transition must have at least one reason code"})
+		}
 		for _, rc := range t.ReasonCodes {
 			if !ownerRequiredReasonCodes[rc] {
 				vs = append(vs, Violation{Code: "INVALID_OWNER_REASON_CODE", Detail: fmt.Sprintf("OWNER_REQUIRED transition has invalid reason code %q", rc)})

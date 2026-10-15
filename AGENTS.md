@@ -507,6 +507,49 @@ frontend. Решение уже принято; координатор гото�
 Координатор MUST NOT преобразовывать `HUMAN_ACTION_REQUIRED` или
 `OWNER_NOTIFICATION` в `OWNER_REQUIRED`.
 
+### Автоматическая замена сессии, не принявшей assignment (R146)
+
+Transport delivery не подтверждает admission assignment. Это правило
+является продолжением «Запрет пассивного ожидания агентов (R146)» ниже и
+соответствует событию `SESSION_REPLACED` в Action Map.
+
+Coordinator обязан считать assignment непринятым, если агент:
+
+- не подтвердил assignment ID;
+- не подтвердил назначенную роль;
+- не подтвердил exact subject;
+- ответил результатом другого assignment;
+- остался в состоянии `IDLE`, `QUEUED` или `UNKNOWN`;
+- требует прямого действия пользователя при наличии подходящей replacement-сессии.
+
+Если подходящая replacement-сессия существует, Coordinator обязан:
+
+1. отозвать authority прежней сессии для assignment;
+2. проверить role eligibility и независимость replacement-сессии — для роли
+   Auditor по стабильному agent_id и истории исполнителей этого subject;
+3. выдать новый assignment;
+4. подтвердить `ADMITTED` на exact subject SHA;
+5. продолжить coordination workflow без обращения к OWNER или человеку.
+
+Coordinator запрещено:
+
+- пассивно ждать непринявшую сессию;
+- спрашивать OWNER, заменять ли агента;
+- просить пользователя выбрать replacement;
+- считать `DELIVERED` состоянием `ADMITTED`;
+- считать `IDLE` или `QUEUED` состоянием `RUNNING`.
+
+`HUMAN_ACTION_REQUIRED` допускается только при одновременном выполнении условий:
+
+- подходящая replacement-сессия отсутствует;
+- автоматический запуск невозможен;
+- продолжение требует физического запуска, интерактивной авторизации или
+  другого действия человека;
+- подготовлены точная инструкция и post-check.
+
+Если отсутствует не сессия, а runtime или Registry — результат
+`BLOCKED_EXTERNAL`, а не `HUMAN_ACTION_REQUIRED`.
+
 ### Decision Trace перед OWNER_REQUIRED
 
 До отправки вопроса OWNER координатор MUST зафиксировать:
