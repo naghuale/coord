@@ -331,12 +331,26 @@ active:
       admitted: true
       assignment: REVIEW-49-ORCHESTRATION-V2
       scope: "B1 fix only: TestUnstartedClaimReclaimSeparatesEpoch + M13 + makeCheck note"
+    historicalAudit:
+      auditor: opencode:workspace-o71
+      subject: d9478797189d6167f701f29ec543cac7257d39da0919af17a54405996f807e45
+      verdict: CHANGES_REQUIRED
+      status: HISTORICAL
+      b1Confirmed: true
+      b1BlastRadius: "not proven reachable — evidence gap, not live bypass"
+      additionalGap: "recoverActions epoch++ (store/orchestration.go:165) also uncovered by any mutant"
+      n1Reversal: "Task-fence removal IS killed by TestRealGovenance — o97 N1 classification was incorrect"
+      lint: "3 issues: errcheck runtime_test.go:529, staticcheck model.go:222, store/orchestration.go:85"
+      mutations: "12/12 independently reproduced"
     auditState:
       auditor: opencode:workspace-o71
+      assignment: AUDIT-49-ORCHESTRATION-V2
+      subject: d6795a817185421987ae005679f0f7bb9a6567740d63133993eb72266e368998
       state: RUNNING
       note: >
-        Auditing current/old frozen subject independently. B1 advisory received.
-        New AUDIT_ASSIGNMENT on corrected subject (d6795a81...) will follow after REVIEW_ACCEPTED.
+        Running parallel with o97 Round 2. Per OWNER: Audit does not wait for REVIEW_ACCEPTED.
+        Key checks: TestUnstartedClaimReclaimSeparatesEpoch killed by ClaimAction-only mutant,
+        recoverActions epoch also uncovered?, 3 lint findings present?
     declaredBoundaries:
       - ADR Proposed/un-numbered/non-normative (not Accepted)
       - production binding NOT_IMPLEMENTED (fake proof + next-gen intent)
