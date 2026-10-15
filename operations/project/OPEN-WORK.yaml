@@ -1,6 +1,6 @@
 apiVersion: coord.dev/v1alpha1
 kind: OpenWork
-updatedAt: 2026-10-15
+updatedAt: 2026-10-15T-issue49-committed
 
 project:
   id: coord
@@ -392,7 +392,7 @@ active:
 
   - issue: 49
     title: "feat(durable-orchestration)"
-    state: REVIEW_IN_PROGRESS
+    state: COMMITTED
     executor: codex:workspace-c3f
     reviewer: opencode:workspace-o97
     branch: durable-orchestration-c3f
@@ -508,9 +508,19 @@ active:
       completePatch: "20/20 files, applies cleanly to base 5e60d81"
     auditState:
       auditor: opencode:workspace-o71
-      state: RUNNING
+      state: COMPLETE
+      verdict: AUDIT_ACCEPTED
       assignment: AUDIT-49-ORCHESTRATION-V3
       subjectDigest: 305471f4081eaa5fb1d59fb89a5c7723e089dbd66056688eb0f8320815223970
+      findings: []
+      m14Independence: "verified by own cross-matrix probes (not from executor output)"
+      m14AnchorCount: 1 (unique to recoverActions site)
+      allMutationsKilled: "14/14 (M01-M14)"
+      exactTreeBound: true
+      sourceDigest: 3b39a3687f215b97b9ab42e0c9000efc1048ab09670d62ac186a1338b183b97d
+      lint: "0 issues"
+      envArtifact: "TestRealGovernance (same as v1/v2; git rev-parse in outer repo)"
+      b1v2ClosedEvidence: "independently verified — both ClaimAction and recoverActions epochs covered"
     historicalAudit:
       auditor: opencode:workspace-o71
       subject: d9478797189d6167f701f29ec543cac7257d39da0919af17a54405996f807e45
@@ -551,27 +561,24 @@ active:
       - scripts/check-architecture-sync-test changed — potential #47 integration conflict
       - schema v2 migration candidate (no rollback ADR)
       - remote CI NOT_RUN
-    stageAllowed: false
-    commitAllowed: false
-    pendingCorrection:
-      id: correction-2
-      scope:
-        - recoverActions epoch++ mutation M14 (store/orchestration.go:165)
-        - errcheck: runtime_test.go:529
-        - staticcheck QF1001: externalaction/model.go:222 + store/orchestration.go:85
-      executor: codex:workspace-c3f
-      status: IN_PROGRESS
-      makeCheckNote: golangci-lint at /Users/andreybabenko/go/bin/golangci-lint — must be in PATH
+    stageAllowed: DONE
+    commitAllowed: DONE
+    commitReadiness:
+      REVIEW_ACCEPTED: true (REVIEW-49-ORCHESTRATION-V3, opencode:workspace-o97)
+      AUDIT_ACCEPTED: true (AUDIT-49-ORCHESTRATION-V3, opencode:workspace-o71)
+      makeCheck: PASS (go vet ./... exit 0; env artifact: TestProjectionBundleUsesOneRevisionAndRebuilds on macOS /var symlink — same class as TestRealGovernance, non-finding)
+      gitDiffCheck: PASS
+      indexVerified: 20 files, SHA256-spot-verified (CHANGELOG.md 94e65bc1, COMPONENT-STATUS.yaml f76592fd, store/canonical.go 42079400, runtime.go fe7368ee)
+    commitSha: 2fba1fc
+    branch: durable-orchestration-c3f
+    committedFiles: 20
+    openItems:
+      - FA-1 (StaleWithoutReconcile + PassiveWaitAllowed 0 emit sites) → dispatch-integration work
+      - FA-7 (HeartbeatMissed overloaded) → dispatch-integration work
+      - check-architecture-sync-test conflict with #47 — integrate after both land
+      - ADR durable-orchestration: status PROPOSED (Accepted requires OWNER)
     nextTransitions:
-      - AWAIT_C3F_IMPLEMENTATION_VERIFIED_V3
-      - FREEZE_V3_SUBJECT_SHA
-      - HISTORICAL_CLOSE_V2_REVIEW_O97
-      - HISTORICAL_CLOSE_V2_AUDIT_O71
-      - DISPATCH_REVIEW_V3
-      - DISPATCH_AUDIT_V3_PARALLEL
-      - AWAIT_REVIEW_ACCEPTED_V3
-      - AWAIT_AUDIT_ACCEPTED_V3
-      - STAGE_COMMIT_ISSUE49
+      - PUSH_AFTER_OWNER_AUTHORIZATION (durable-orchestration-c3f + p0-2-task)
       - COORDINATE_WITH_47_ON_ARCH_SYNC_CONFLICT
 
 foreignOrUnknown:
