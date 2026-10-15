@@ -316,21 +316,36 @@ active:
       correctionStatus: IMPLEMENTATION_VERIFIED
       round2Scope: "B1 fix + makeCheck note in executor report"
       reviewerScratch: "${COORD_PROJECT_ROOT}/.scratch/tmp/rev49-o97"
-    correctedSubject:
+    v2Subject:
       subjectDigest: d6795a817185421987ae005679f0f7bb9a6567740d63133993eb72266e368998
-      patchDigest: sha256:4322ee297c90f62e5e77c87a37227251ab44fb0b26545546624ae28a80c221d3
-      executorReportDigest: sha256:fc474b7507377998c06e7224d5cbda3ace6bf4b607518bd127b3866734dcadd1
       changedFiles: 20
-      mutations: "13/13 killed (M01-M12 + M13 ClaimAction epoch)"
+      mutations: "13/13 killed"
       packetRoot: >
         /Users/andreybabenko/Downloads/workspace/workspace-01/.scratch/tmp/sessions/codex-issue49/1/runs/round2-claim-epoch/review-packet
+      knownIssues:
+        - "tracked.patch covers only 11/20 files — patchDigest not a valid reproduction anchor"
+        - "executor-report missing mutationSourceAllHashesMatchSubject key"
+        - "recoverActions epoch++ (line 165) still uncovered"
+        - "3 lint issues with golangci-lint in PATH"
+    historicalReviews:
+      - id: REVIEW-49-ORCHESTRATION-V2
+        reviewer: opencode:workspace-o97
+        subject: d6795a817185421987ae005679f0f7bb9a6567740d63133993eb72266e368998
+        verdict: REVIEW_ACCEPTED
+        status: HISTORICAL_REVIEW_V2
+        b1Fixed: true
+        b1Evidence: "o97 applied own mutant, TestUnstartedClaimReclaimSeparatesEpoch killed semantically"
+        m13Confirmed: "isolated to ClaimAction, not RecoverActions"
+        recoverActionsGap: "confirmed by o97 — each site individually unprotected"
+        n1Dispute: "o97 cannot reproduce o71's kill; clarification requested from o71"
+        nonBlocking:
+          - patchDigest not valid anchor (partial patch)
+          - mutationSourceAllHashesMatchSubject key dropped in v2 report
     reviewState:
       reviewer: opencode:workspace-o97
       state: RUNNING
-      round: 2
-      admitted: true
-      assignment: REVIEW-49-ORCHESTRATION-V2
-      scope: "B1 fix only: TestUnstartedClaimReclaimSeparatesEpoch + M13 + makeCheck note"
+      assignment: REVIEW-48-WATCHDOG-R1-CORRECTION
+      note: "o97 now running #48 targeted review in parallel"
     historicalAudit:
       auditor: opencode:workspace-o71
       subject: d9478797189d6167f701f29ec543cac7257d39da0919af17a54405996f807e45
