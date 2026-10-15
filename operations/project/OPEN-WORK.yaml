@@ -248,10 +248,14 @@ active:
       d1Review:
         reviewer: opencode:workspace-o97
         assignment: REVIEW-48-WATCHDOG-D1
-        state: RUNNING
-        scope: "D1 change only: isRejection sentinel boundary, EventSessionRejection event, 4 new tests"
-        subjectDigest: "d1CorrectionResult.frozenSubject"
-        mutationCarryOver: "M01-M12+MA/MB/MC from R1 cycle; o97 adds 2 new D1-specific mutants"
+        state: COMPLETE
+        verdict: REVIEW_ACCEPTED
+        findings: []
+        r2closed: >
+          metrics.go rewrite documents Wired/NOT_WIRED per counter with SESSION_REJECTION
+          as compensating audit mechanism and explicit "not active enforcement" warning.
+        d1Mutants: "BC (blanket-continue) KILLED; PA (propagate-all) KILLED; NOREC (audit removed) KILLED"
+        r1MutationsRegression: NONE
     d1Correction:
       executor: opencode:workspace-o42
       status: IMPLEMENTATION_VERIFIED
@@ -259,9 +263,8 @@ active:
       fa2: CLOSED (metrics.go Go doc comment is spec anchor — TD decision)
     auditState:
       auditor: opencode:workspace-oea
-      state: PAUSED
-      independence: PRESERVED
       state: RUNNING
+      independence: PRESERVED
       reason: "D1 IMPLEMENTATION_VERIFIED received. New SHA256 dispatched. Re-freezing on D1 subject."
       assignment: AUDIT-48-WATCHDOG-D1
       preCorrectMutationEvidence:
