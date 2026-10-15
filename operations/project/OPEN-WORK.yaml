@@ -234,6 +234,7 @@ active:
           description: >
             baseSha assigned 1ad9df67 but HEAD at audit time was 5e60d81.
             For corrected subject: pin 12 files by per-file hash, not just SHA.
+            RESOLVED in R1 cycle: per-file hashes now in frozenSubject.
         - id: F2
           name: O97_SCRATCH_ABSENT
           description: >
@@ -252,14 +253,65 @@ active:
             in the test file itself — self-referential half, cannot fail without
             editing the copy. New 6 tests MUST call real production code.
             Advisory forwarded to o42.
+      oeaPreWorkMutations:
+        subject: frozen (R1 subject, pre-D1)
+        result: 15/15 behavioural kills (M01-M12 + MA/MB/MC)
+        baseline: PASS
+        evidence: .scratch/tmp/audit-issue48/ (in oea scratch)
+        note: >
+          Evidence valid for pre-D1 frozen subject.
+          oea ran mutations from pristine copy (hashes verified before + after).
+          Concurrency incident: o42's D1 landed mid-run; pristine copy unaffected.
+          Will re-run on new SHA after IMPLEMENTATION_VERIFIED.
+      oeaFindingCandidates:
+        note: "Pre-work candidates only; no verdict issued. All subject to re-derivation on D1 tree."
+        - id: FA-1
+          name: R1_HALF_APPLIED
+          description: >
+            StaleWithoutReconcile + PassiveWaitAllowed have 0 emit sites.
+            DeliveredClassifiedAdmitted + QueuedClassifiedRunning have 1 site each.
+            Documentation presents 4 metrics as a set; only 2 are reachable.
+            Classification: documentation/honesty defect, not enforcement defect.
+            Cross-reference: matches R2 residual from o97. Severity TBD after D1 tree.
+        - id: FA-2
+          name: SPEC_SECTION_11_MISSING
+          description: >
+            o42 claimed spec section 11 rewrite (operational vs hard-violation).
+            oea searched all docs/ — zero hits for all four metric names.
+            docs/operations/CI-GATES-AND-METRICS.md is untracked and outside 12-file subject.
+            ACTION: Coordinator asked o42 to confirm file location and tracked status.
+            IMPLEMENTATION_VERIFIED blocked until spec edit is confirmed present in tracked file.
+        - id: FA-3
+          name: DECORATIVE_MUTANTS_PREEXISTING
+          description: >
+            7 pre-existing mutant helpers + MUTATION: markers in watchdog_test.go lines 1244-1616.
+            o42's "no hand-written copies" claim applies to 6 new tests only.
+            Each also asserts real production code — mutation kills carry weight.
+            Classification: open item, not blocking. Same as R1 review residual.
+        - id: FA-4
+          name: DEAD_CONFIG_AND_EVENT
+          description: >
+            PassiveWaitingPolicy.Allowed: declared, default false, never read in production.
+            EventHeartbeatReceived + HeartbeatReceived metric: never emitted.
+            Both predate R1 and are not claimed to work.
+            Classification: pre-existing dead code, not in D1 scope.
+        - id: FA-5
+          name: REJECTION_AUDIT_GAP
+          description: >
+            With D1 continue-on-rejection: rejected session error is dropped silently.
+            Only hard counter records it; previously error propagated to Run() (visible to operator).
+            For R146 (silent stalls are the failure mode), counter-only may be insufficient.
+            ACTION: Coordinator forwarded to o42 (consider diagnostic event) and o97 (check during D1 review).
+            Classification: question for D1 reviewer, not a finding against change not yet audited.
 
     stageAllowed: false
     commitAllowed: false
     nextTransitions:
-      - AWAIT_O42_IMPLEMENTATION_VERIFIED_R1
-      - FREEZE_NEW_EXACT_SUBJECT_SHA
-      - DISPATCH_TARGETED_REVIEW_NEW_SHA
-      - DISPATCH_AUDIT_NEW_SHA
+      - AWAIT_O42_IMPLEMENTATION_VERIFIED_D1
+      - CONFIRM_SPEC_EDIT_TRACKED_FILE
+      - FREEZE_NEW_EXACT_SUBJECT_SHA_POST_D1
+      - DISPATCH_REVIEW_48_D1_TO_O97
+      - DISPATCH_AUDIT_48_D1_TO_OEA
       - STAGE_WATCHDOG_EXACT_12_PATHS
       - COMMIT_ISSUE48_WATCHDOG
       - PUSH_AFTER_OWNER_AUTHORIZATION
