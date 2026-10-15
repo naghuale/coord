@@ -15,9 +15,13 @@ type ActionMap struct {
 // Fields match the four keys present in the committed ACTION-MAP.yaml.
 type EventEntry struct {
 	RequiredDocuments []string `yaml:"requiredDocuments"`
+	Transition        string   `yaml:"transition"`
+	RequiredActions   []string `yaml:"requiredActions"`
 	AllowedActions    []string `yaml:"allowedActions"`
 	ForbiddenActions  []string `yaml:"forbiddenActions"`
+	AllowedResults    []string `yaml:"allowedResults"`
 	ExpectedResults   []string `yaml:"expectedResults"`
+	OwnerRequired     *bool    `yaml:"ownerRequired"`
 }
 
 // RecoveryTransition is a single recovery transition specification.
@@ -35,6 +39,7 @@ var requiredRecoveryEvents = []string{
 	"SESSION_INTERRUPTED", "SESSION_RESUMED", "SESSION_REPLACED",
 	"CONTEXT_LOST", "WORKTREE_STATE_UNKNOWN",
 	"REQUIRED_SOURCE_MISSING", "SUBJECT_DRIFT_DETECTED",
+	"AGENT_ASSIGNMENT_DISPATCHED",
 }
 
 var requiredRecoveryTransitions = []string{
@@ -57,6 +62,8 @@ var knownExpectedResults = map[string]bool{
 	"RECOVER_COORDINATION_STATE": true, "PREPARE_CORRECTION": true,
 	"BLOCKED_EXTERNAL": true, "HUMAN_ACTION_REQUIRED": true,
 	"OWNER_REQUIRED": true, "PRESERVE_AND_STOP": true,
+	"AGENT_RUNNING": true, "AGENT_RESULT_RECEIVED": true,
+	"AGENT_SESSION_RECONCILE_REQUIRED": true,
 }
 
 // ownerRequiredReasonCodes is the closed set valid for OWNER_REQUIRED.

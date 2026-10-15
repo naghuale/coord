@@ -355,6 +355,72 @@ transition, insufficient evidence.
 
 ---
 
+## Assignment dispatch lifecycle
+
+Assignment lifecycle is process state and is independent of the external
+AgentSession lifecycle. The following states must be recorded separately:
+
+| State | Meaning |
+|---|---|
+| `CREATED` | Assignment сформирован, но не отправлен |
+| `DELIVERED` | Transport принял сообщение |
+| `QUEUED` | Сообщение ожидает обработки занятой сессией |
+| `ADMITTED` | Сессия проверила assignment и exact subject |
+| `RUNNING` | Получено подтверждение начала выполнения |
+| `RESULT_READY` | Структурированный результат записан |
+| `COMPLETED` | Coordinator проверил и принял результат |
+| `INTERRUPTED` | Выполнение прервано |
+| `FENCED` | Старая сессия утратила authority |
+| `UNKNOWN` | Состояние не доказано |
+
+`DELIVERED != ADMITTED != RUNNING != COMPLETED`. Transport receipt, `IDLE` и
+наличие сообщения в очереди не дают права выводить более позднее состояние.
+Для `ADMITTED` и `RUNNING` записываются assignment ID, exact subject SHA,
+session ID и generation с evidence источника.
+
+При `AGENT_ASSIGNMENT_DISPATCHED` Coordinator выполняет
+`ADVANCE_DISPATCHED_WORK`: проверяет привязку и состояние сессии, подтверждает
+admission и subject, запускает сессию только если это разрешено assignment и
+доступно технически, регистрирует monitoring state, обрабатывает готовые
+результаты и выполняет независимую работу. `QUEUED`, `IDLE`, interrupted и
+unknown требуют reconcile; при занятой сессии фиксируется pending admission,
+после чего Coordinator выбирает доступную независимую работу.
+
+При получении ReviewResult Coordinator немедленно проверяет subject и
+независимость Reviewer. `REVIEW_ACCEPTED` ведёт к созданию и запуску обязательного
+Audit; `CHANGES_REQUIRED` — к классификации замечаний, correction assignment и
+повторному Review. Оба перехода автономны, если граница R142 не доказана.
+
+Каждый вызов Coordinator обрабатывает ready events до тех пор, пока очередное
+действие не требует физического человека, заблокировано внешней capability,
+либо готовых событий нет и независимая работа исчерпана. После durable work
+цикл продолжает обработку новых событий. При `NO_READY_EVENT` результат
+перечисляет pending assignment, зафиксированное session state, expected event и
+уже выполненную независимую работу. Если независимая работа доступна,
+Coordinator MUST выполнить её до завершения. Обещание будущего уведомления
+недопустимо.
+
+Completion gate возвращает reason codes `PASSIVE_FUTURE_PROMISE`,
+`PENDING_SESSION_STATE_MISSING`, `DELIVERED_NOT_ADMITTED`,
+`QUEUED_NOT_RUNNING`, `COORDINATOR_STOPPED_EARLY`,
+`OWNER_BOUNDARY_NOT_PROVEN` или `SESSION_RECONCILE_REQUIRED` при нарушении
+соответствующего инварианта. `OWNER_REQUIRED` требует записанного доказательства
+границы OWNER; отсутствие результата само по себе такой границей не является.
+
+Обязательные поведенческие сценарии: delivered + `IDLE` запускает сессию и
+проверяет admission без вопроса OWNER; `BUSY` + `QUEUED` сохраняет pending
+admission, выполняет независимую работу и reconcile; готовый результат
+проверяется и обрабатывается сразу; `CHANGES_REQUIRED` создаёт correction
+assignment и повторяет Review без OWNER.
+
+Текущая CLI/daemon интеграция не запускает внешние AgentSession через этот
+переход. Пока launch/Registry capability не подключены, Coordinator возвращает
+`HUMAN_ACTION_REQUIRED` только для физического действия человека и
+`BLOCKED_EXTERNAL` при отсутствующем runtime/Registry; он не маркирует delivery
+как `RUNNING`.
+
+---
+
 ## Proposed: session lifecycle
 
 **Status:** Proposed — pending ADR-0009 (Session Supervisor).  

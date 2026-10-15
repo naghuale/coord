@@ -660,6 +660,96 @@ developmentProcess:
       action: do not execute without decision
       ownerRequired: true
 
+# Assignment lifecycle belongs to active coordinator process control. It is not
+# evidence that the product currently provides a production session launcher.
+assignmentLifecycle:
+  status: active-process-rule
+  states:
+    CREATED:
+      meaning: assignment сформирован
+    DELIVERED:
+      meaning: transport принял сообщение
+    QUEUED:
+      meaning: сообщение ожидает обработки занятой сессией
+    ADMITTED:
+      meaning: сессия проверила assignment и exact subject
+      requiresRecorded: [assignmentId, subjectSha, sessionId, generation, evidence]
+    RUNNING:
+      meaning: подтверждено начало выполнения
+      requiresRecorded: [assignmentId, subjectSha, sessionId, generation, evidence]
+    RESULT_READY:
+      meaning: структурированный результат записан
+    COMPLETED:
+      meaning: Coordinator проверил и принял результат
+    INTERRUPTED:
+      meaning: выполнение прервано
+    FENCED:
+      meaning: старая сессия утратила authority
+    UNKNOWN:
+      meaning: состояние не доказано
+  nonEquivalences:
+    - [DELIVERED, ADMITTED]
+    - [ADMITTED, RUNNING]
+    - [RUNNING, COMPLETED]
+  event:
+    AGENT_ASSIGNMENT_DISPATCHED:
+      transition: ADVANCE_DISPATCHED_WORK
+      must:
+        - inspect_session_state
+        - verify_assignment_binding
+        - verify_subject_sha
+        - establish_admission_state
+        - start_agent_if_authorized
+        - process_available_results
+        - perform_independent_coordination_work
+      mustNot:
+        - passively_wait_for_notification
+        - report_future_delivery
+        - treat_idle_as_running
+        - treat_queued_as_admitted
+        - ask_owner_what_to_do_next
+      results:
+        - AGENT_RUNNING
+        - AGENT_RESULT_RECEIVED
+        - AGENT_SESSION_RECONCILE_REQUIRED
+        - HUMAN_ACTION_REQUIRED
+        - BLOCKED_EXTERNAL
+      ownerRequired: false
+  advanceLoop:
+    processReadyEventsUntil:
+      - HUMAN_ACTION_REQUIRED
+      - BLOCKED_EXTERNAL
+      - OWNER_REQUIRED_with_proven_boundary
+      - NO_READY_EVENT_and_no_independent_work
+    afterDurableWork: process_newly_ready_events
+  completionGate:
+    rejects:
+      - PASSIVE_FUTURE_PROMISE
+      - PENDING_SESSION_STATE_MISSING
+      - DELIVERED_NOT_ADMITTED
+      - QUEUED_NOT_RUNNING
+      - COORDINATOR_STOPPED_EARLY
+      - OWNER_BOUNDARY_NOT_PROVEN
+      - SESSION_RECONCILE_REQUIRED
+    noReadyEventRequires:
+      - pending_assignment_session_state_and_expected_event
+      - completed_independent_work_inventory
+  behavioralScenarios:
+    idle_after_delivery:
+      given: {transportDelivery: true, sessionState: IDLE}
+      expect: {startIfAuthorized: true, verifyAdmission: true, ownerRequired: false}
+    busy_with_queued_assignment:
+      given: {sessionState: BUSY, deliveryState: QUEUED}
+      expect: {result: AGENT_SESSION_RECONCILE_REQUIRED, ownerRequired: false}
+      must: [record_pending_admission, select_independent_work, reconcile_agent_session]
+    reviewer_result_ready:
+      given: {verdict: REVIEW_ACCEPTED, exactSubjectVerified: true}
+      expect: [create_audit_assignment, start_auditor_if_authorized]
+    reviewer_changes_required:
+      given: {verdict: CHANGES_REQUIRED}
+      expect: [classify_findings, create_correction_assignment, repeat_review]
+      ownerRequired: false
+
 # ─────────────────────────────────────────────────────────────────────────────
 # SESSION LIFECYCLE (proposed — pending ADR-0009 Session Supervisor)
 # NOT normative for current product. Cannot be used as proof of current Coord

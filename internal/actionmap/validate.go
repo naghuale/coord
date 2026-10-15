@@ -85,6 +85,58 @@ func validate(am ActionMap, registeredIDs map[string]bool) []Violation {
 				vs = append(vs, Violation{Code: "UNREGISTERED_DOCUMENT", Detail: fmt.Sprintf("%s: requiredDocument %q not in registry", loc, docID)})
 			}
 		}
+		if ev.Transition != "" {
+			if _, ok := am.RecoveryTransitions[ev.Transition]; !ok {
+				vs = append(vs, Violation{Code: "UNDEFINED_EVENT_TRANSITION", Detail: fmt.Sprintf("%s: transition %q is not defined", loc, ev.Transition)})
+			}
+		}
+		for _, action := range ev.RequiredActions {
+			if !contains(ev.AllowedActions, action) {
+				vs = append(vs, Violation{Code: "REQUIRED_ACTION_NOT_ALLOWED", Detail: fmt.Sprintf("%s: required action %q is not allowed", loc, action)})
+			}
+			if contains(ev.ForbiddenActions, action) {
+				vs = append(vs, Violation{Code: "REQUIRED_ACTION_FORBIDDEN", Detail: fmt.Sprintf("%s: required action %q is forbidden", loc, action)})
+			}
+		}
+		for _, result := range ev.AllowedResults {
+			if !knownExpectedResults[result] {
+				vs = append(vs, Violation{Code: "UNKNOWN_ALLOWED_RESULT", Detail: fmt.Sprintf("%s: unknown allowedResult %q", loc, result)})
+			}
+			if len(ev.ExpectedResults) > 0 && !contains(ev.ExpectedResults, result) {
+				vs = append(vs, Violation{Code: "ALLOWED_RESULT_NOT_EXPECTED", Detail: fmt.Sprintf("%s: allowedResult %q is absent from expectedResults", loc, result)})
+			}
+		}
+	}
+
+	// Dispatch is a mandatory transition contract. Delivery, queueing and idle
+	// session state cannot be collapsed into admission or execution.
+	if ev, ok := am.Events["AGENT_ASSIGNMENT_DISPATCHED"]; ok {
+		if ev.Transition != "ADVANCE_DISPATCHED_WORK" {
+			vs = append(vs, Violation{Code: "INVALID_DISPATCH_TRANSITION", Detail: "AGENT_ASSIGNMENT_DISPATCHED must select ADVANCE_DISPATCHED_WORK"})
+		}
+		for _, action := range []string{
+			"inspect_session_state", "verify_assignment_binding", "verify_subject_sha",
+			"establish_admission_state", "start_agent_if_authorized",
+			"process_available_results", "perform_independent_coordination_work",
+		} {
+			if !contains(ev.RequiredActions, action) {
+				vs = append(vs, Violation{Code: "MISSING_DISPATCH_ACTION", Detail: fmt.Sprintf("AGENT_ASSIGNMENT_DISPATCHED lacks required action %q", action)})
+			}
+		}
+		for _, action := range []string{
+			"passively_wait_for_notification", "report_future_delivery",
+			"treat_idle_as_running", "treat_queued_as_admitted", "ask_owner_what_to_do_next",
+		} {
+			if !contains(ev.ForbiddenActions, action) {
+				vs = append(vs, Violation{Code: "MISSING_DISPATCH_PROHIBITION", Detail: fmt.Sprintf("AGENT_ASSIGNMENT_DISPATCHED lacks prohibition %q", action)})
+			}
+		}
+		if ev.OwnerRequired == nil || *ev.OwnerRequired {
+			vs = append(vs, Violation{Code: "INVALID_DISPATCH_OWNER_POLICY", Detail: "AGENT_ASSIGNMENT_DISPATCHED must set ownerRequired: false"})
+		}
+		if _, ok := am.RecoveryTransitions["ADVANCE_DISPATCHED_WORK"]; !ok {
+			vs = append(vs, Violation{Code: "MISSING_DISPATCH_TRANSITION", Detail: "ADVANCE_DISPATCHED_WORK is not defined"})
+		}
 	}
 
 	// Recovery transitions must be reachable from at least one event's expectedResults.

@@ -281,6 +281,28 @@ unstaged files само по себе не является основанием
   вопрос;
 - `PRESERVE_AND_STOP`: ничего не изменяй.
 
+После создания или отправки assignment не завершай работу сообщением об
+ожидании. Transport delivery, queued message и `idle` session не доказывают,
+что агент начал выполнение. Различай `DELIVERED`, `QUEUED`, `ADMITTED`,
+`RUNNING` и `COMPLETED`.
+
+Обязательно проверь AgentSession state, подтверди admission assignment и exact
+subject SHA, запусти сессию, если это разрешено и технически доступно, запиши
+assignment ID, session ID, generation и доказанное состояние, обработай готовые
+результаты и выполни доступную независимую coordination work. Для queued,
+idle, interrupted или unknown выполни reconcile. При отсутствии технического
+способа запуска используй `HUMAN_ACTION_REQUIRED` только для физического
+действия человека и `BLOCKED_EXTERNAL` для отсутствующего runtime/Registry.
+`OWNER_REQUIRED` допустим только при доказанной границе R142.
+
+Не завершай ответ фразами «ожидаю результат», «как только агент ответит»,
+«получу уведомление», «передам позже» или «жду Review/Audit». При отсутствии
+готовых событий верни `NO_READY_EVENT` со session status, pending event и
+выполненной независимой работой. Если независимая работа доступна, сначала
+выполни её. Обработай уже доступный `ReviewResult` немедленно: после принятого
+Review создай и запусти следующий обязательный Audit; после `CHANGES_REQUIRED`
+создай correction assignment и повтори Review без вопроса OWNER.
+
 Coordinator имеет право автономно восстанавливать assignments и operational
 coordination state, если восстановление не изменяет unknown work и однозначно
 следует из действующих норм.

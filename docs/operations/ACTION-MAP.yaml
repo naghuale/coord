@@ -78,6 +78,50 @@ events:
       - CONTINUE_AUTONOMOUSLY
       - BLOCKED
 
+  AGENT_ASSIGNMENT_DISPATCHED:
+    transition: ADVANCE_DISPATCHED_WORK
+    requiredDocuments:
+      - agents
+      - project-current
+      - project-open-work
+    requiredActions:
+      - inspect_session_state
+      - verify_assignment_binding
+      - verify_subject_sha
+      - establish_admission_state
+      - start_agent_if_authorized
+      - process_available_results
+      - perform_independent_coordination_work
+    allowedActions:
+      - inspect_session_state
+      - verify_assignment_binding
+      - verify_subject_sha
+      - establish_admission_state
+      - start_agent_if_authorized
+      - process_available_results
+      - perform_independent_coordination_work
+      - record_pending_admission
+      - reconcile_agent_session
+    forbiddenActions:
+      - passively_wait_for_notification
+      - report_future_delivery
+      - treat_idle_as_running
+      - treat_queued_as_admitted
+      - ask_owner_what_to_do_next
+    allowedResults:
+      - AGENT_RUNNING
+      - AGENT_RESULT_RECEIVED
+      - AGENT_SESSION_RECONCILE_REQUIRED
+      - HUMAN_ACTION_REQUIRED
+      - BLOCKED_EXTERNAL
+    expectedResults:
+      - AGENT_RUNNING
+      - AGENT_RESULT_RECEIVED
+      - AGENT_SESSION_RECONCILE_REQUIRED
+      - HUMAN_ACTION_REQUIRED
+      - BLOCKED_EXTERNAL
+    ownerRequired: false
+
   CODE_OR_DOCUMENT_CHANGED:
     requiredDocuments:
       - agents
@@ -449,6 +493,30 @@ events:
       - FREEZE_FOR_REVIEW
 
 recoveryTransitions:
+  ADVANCE_DISPATCHED_WORK:
+    when: assignment dispatched and transport delivery does not prove admission or execution
+    allowedActions:
+      - inspect_session_state
+      - verify_assignment_binding
+      - verify_subject_sha
+      - establish_admission_state
+      - start_agent_if_authorized
+      - process_available_results
+      - perform_independent_coordination_work
+      - record_pending_admission
+      - reconcile_agent_session
+    forbiddenActions:
+      - passively_wait_for_notification
+      - classify_delivered_as_running
+      - classify_queued_as_admitted
+      - promise_future_result
+    resultsIn:
+      - AGENT_RUNNING
+      - AGENT_RESULT_RECEIVED
+      - AGENT_SESSION_RECONCILE_REQUIRED
+      - HUMAN_ACTION_REQUIRED
+      - BLOCKED_EXTERNAL
+
   RESUME_ASSIGNMENT:
     when: assignment recovered, workspace binding valid, no unknown changes, no OWNER/HUMAN boundary
   FREEZE_FOR_REVIEW:

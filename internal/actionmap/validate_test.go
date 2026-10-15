@@ -50,7 +50,21 @@ events:
     allowedActions: []
     forbiddenActions: []
     expectedResults: [FREEZE_FOR_REVIEW, PRESERVE_AND_STOP]
+  AGENT_ASSIGNMENT_DISPATCHED:
+    transition: ADVANCE_DISPATCHED_WORK
+    requiredDocuments: [agents]
+    requiredActions: [inspect_session_state, verify_assignment_binding, verify_subject_sha, establish_admission_state, start_agent_if_authorized, process_available_results, perform_independent_coordination_work]
+    allowedActions: [inspect_session_state, verify_assignment_binding, verify_subject_sha, establish_admission_state, start_agent_if_authorized, process_available_results, perform_independent_coordination_work, record_pending_admission, reconcile_agent_session]
+    forbiddenActions: [passively_wait_for_notification, report_future_delivery, treat_idle_as_running, treat_queued_as_admitted, ask_owner_what_to_do_next]
+    allowedResults: [AGENT_RUNNING, AGENT_RESULT_RECEIVED, AGENT_SESSION_RECONCILE_REQUIRED, HUMAN_ACTION_REQUIRED, BLOCKED_EXTERNAL]
+    expectedResults: [AGENT_RUNNING, AGENT_RESULT_RECEIVED, AGENT_SESSION_RECONCILE_REQUIRED, HUMAN_ACTION_REQUIRED, BLOCKED_EXTERNAL]
+    ownerRequired: false
 recoveryTransitions:
+  ADVANCE_DISPATCHED_WORK:
+    when: dispatched assignment
+    allowedActions: [inspect_session_state]
+    forbiddenActions: [passively_wait_for_notification]
+    resultsIn: [AGENT_RUNNING]
   RESUME_ASSIGNMENT:
     when: assignment recovered
     allowedActions: []
@@ -222,6 +236,26 @@ func TestMissingRecoverCoordinationStateEdge(t *testing.T) {
 	vs := violations(t, y)
 	if !hasCode(vs, "MISSING_RECOVER_COORDINATION_STATE_EDGE") {
 		t.Errorf("expected MISSING_RECOVER_COORDINATION_STATE_EDGE, got: %v", vs)
+	}
+}
+
+func TestDispatchContractRejectsMissingRequiredAction(t *testing.T) {
+	y := strings.Replace(minimalValidMap,
+		"requiredActions: [inspect_session_state, verify_assignment_binding, verify_subject_sha, establish_admission_state, start_agent_if_authorized, process_available_results, perform_independent_coordination_work]",
+		"requiredActions: [verify_assignment_binding, verify_subject_sha, establish_admission_state, start_agent_if_authorized, process_available_results, perform_independent_coordination_work]", 1)
+	vs := violations(t, y)
+	if !hasCode(vs, "MISSING_DISPATCH_ACTION") {
+		t.Fatalf("removing required dispatch action must fail validation, got: %v", vs)
+	}
+}
+
+func TestDispatchContractRejectsFutureWaitPolicy(t *testing.T) {
+	y := strings.Replace(minimalValidMap,
+		"forbiddenActions: [passively_wait_for_notification, report_future_delivery, treat_idle_as_running, treat_queued_as_admitted, ask_owner_what_to_do_next]",
+		"forbiddenActions: [report_future_delivery, treat_idle_as_running, treat_queued_as_admitted, ask_owner_what_to_do_next]", 1)
+	vs := violations(t, y)
+	if !hasCode(vs, "MISSING_DISPATCH_PROHIBITION") {
+		t.Fatalf("removing passive-wait prohibition must fail validation, got: %v", vs)
 	}
 }
 
