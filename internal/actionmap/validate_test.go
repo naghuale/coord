@@ -95,6 +95,7 @@ recoveryTransitions:
     allowedActions: []
     forbiddenActions: []
     resultsIn: []
+    reasonCodes: [MFA_REQUIRED]
   OWNER_REQUIRED:
     when: new norm required
     allowedActions: []
@@ -217,11 +218,63 @@ func TestOwnerRequiredWithBadReasonCode(t *testing.T) {
 func TestHumanActionWithOwnerReasonCode(t *testing.T) {
 	// NEW_NORM_REQUIRED is an OWNER_REQUIRED reason code, not HUMAN_ACTION_REQUIRED.
 	y := strings.ReplaceAll(minimalValidMap,
-		"  HUMAN_ACTION_REQUIRED:\n    when: credential required\n    allowedActions: []\n    forbiddenActions: []\n    resultsIn: []",
-		"  HUMAN_ACTION_REQUIRED:\n    when: credential required\n    allowedActions: []\n    forbiddenActions: []\n    resultsIn: []\n    reasonCodes: [NEW_NORM_REQUIRED]")
+		"    reasonCodes: [MFA_REQUIRED]\n  OWNER_REQUIRED:",
+		"    reasonCodes: [NEW_NORM_REQUIRED]\n  OWNER_REQUIRED:")
 	vs := violations(t, y)
 	if !hasCode(vs, "INVALID_HUMAN_ACTION_REASON_CODE") {
 		t.Errorf("expected INVALID_HUMAN_ACTION_REASON_CODE, got: %v", vs)
+	}
+}
+
+func TestHumanActionRequiredMissingReasonCode(t *testing.T) {
+	// Invariants 1+2: HUMAN_ACTION_REQUIRED without reasonCodes is fail-open.
+	// Mutation target: removing the empty-list guard (len==0 check) must kill this test.
+	cases := []struct {
+		name string
+		yaml string
+	}{
+		{
+			name: "missing_key",
+			yaml: strings.ReplaceAll(minimalValidMap,
+				"    reasonCodes: [MFA_REQUIRED]\n  OWNER_REQUIRED:",
+				"  OWNER_REQUIRED:"),
+		},
+		{
+			name: "empty_list",
+			yaml: strings.ReplaceAll(minimalValidMap,
+				"    reasonCodes: [MFA_REQUIRED]\n  OWNER_REQUIRED:",
+				"    reasonCodes: []\n  OWNER_REQUIRED:"),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			vs := violations(t, tc.yaml)
+			if !hasCode(vs, "HUMAN_ACTION_REQUIRED_REASON_CODE_MISSING") {
+				t.Errorf("expected HUMAN_ACTION_REQUIRED_REASON_CODE_MISSING, got: %v", vs)
+			}
+		})
+	}
+}
+
+func TestHumanActionRequiredValidReasonCode(t *testing.T) {
+	// Invariant 3: a recognised human-action reason is accepted.
+	// MFA_REQUIRED is already in minimalValidMap; this is the positive control.
+	vs := violations(t, minimalValidMap)
+	if hasCode(vs, "HUMAN_ACTION_REQUIRED_REASON_CODE_MISSING") || hasCode(vs, "INVALID_HUMAN_ACTION_REASON_CODE") {
+		t.Errorf("valid map must not produce human-action reason violations, got: %v", vs)
+	}
+}
+
+func TestOwnerReasonNotAcceptedForHumanAction(t *testing.T) {
+	// Invariant 7: OWNER and HUMAN boundaries must not overlap.
+	for _, ownerCode := range []string{"NEW_NORM_REQUIRED", "TRUST_BOUNDARY_CHANGE", "FAIL_CLOSED_WEAKENING"} {
+		y := strings.ReplaceAll(minimalValidMap,
+			"    reasonCodes: [MFA_REQUIRED]\n  OWNER_REQUIRED:",
+			"    reasonCodes: ["+ownerCode+"]\n  OWNER_REQUIRED:")
+		vs := violations(t, y)
+		if !hasCode(vs, "INVALID_HUMAN_ACTION_REASON_CODE") {
+			t.Errorf("OWNER code %q must be rejected for HUMAN_ACTION_REQUIRED, got: %v", ownerCode, vs)
+		}
 	}
 }
 

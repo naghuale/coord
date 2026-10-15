@@ -550,6 +550,13 @@ recoveryTransitions:
     when: external Registry, provider, artifact or runner required
   HUMAN_ACTION_REQUIRED:
     when: credential, MFA, protected runner or physical action required
+    reasonCodes:
+      - MFA_REQUIRED
+      - CREDENTIAL_INPUT_REQUIRED
+      - PROTECTED_RUNNER_REQUIRED
+      - SYSTEM_DIALOG_REQUIRED
+      - PHYSICAL_FRONTEND_LAUNCH_REQUIRED
+      - INFRASTRUCTURE_ACCESS_REQUIRED
   OWNER_REQUIRED:
     when: new norm required, norm conflict, reserved decision
     reasonCodes:
