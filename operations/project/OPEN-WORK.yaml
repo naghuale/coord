@@ -180,11 +180,11 @@ active:
       bugFixed: "rejection branch was recording RUNNING as session state — fixed to DELIVERED/QUEUED"
       openItem: "7 pre-existing TestMutation*IsKilled tests have decorative halves — flagged for oea/o97"
       frozenSubject:
-        compositeDigest: sha256:286fc32ddcb021a9b7b0c4ab001fbe6779fe2560c72021cbac2097186352aa6d
+        note: "PRE-D1 subject — superseded by d1CorrectionResult.frozenSubject"
         fileHashes:
           "internal/watchdog/model.go": f7c6be7889b727174ba3f62d291ba208386ff048d1dafb3a6317371ae49f448f
           "internal/watchdog/policy.go": 871ad76f9aa911500c40f46d225a96ca953d94e69e8fdd6eca0615cdcfe36289
-          "internal/watchdog/clock.go": d24f6239db9aa10233c3ddd8a82274753bc1ee7732d715d2a129b7e0c555316b
+          "internal/watchdog/clock.go": d24f6239db9aa10233c3ddd8a82274753bc1ee7732d751d2a129b7e0c555316b
           "internal/watchdog/registry.go": 8e9c8a86f23a261fd492adf3588ffae06b197ddea274ed9324de42016d10034f
           "internal/watchdog/metrics.go": 98ff5abfe36cc8bcb17f19d9c7904cd099c0d99d664bb7677cf1a3d35b26ec17
           "internal/watchdog/watchdog.go": 6989b51151b97d02f17abe50cee123adfa0389e665d0ac415ec63981e434a279
@@ -194,32 +194,76 @@ active:
           "internal/coordinator/watchdog.go": ec9325e4da478a0b461968ec3a45db9affb460420933ce51c1312dc4062fef32
           "internal/coordinator/watchdog_test.go": 2d768a4ae9f1c6352c64794dc3b507bf0fcf8bb05bc72e126644827287fe81d0
           "internal/agentsession/heartbeat.go": 0e6aefc92d742b98f9657e7da004ad0e5bc37982843e6e47ace239cf5f014671
+    d1CorrectionResult:
+      executor: opencode:workspace-o42
+      status: IMPLEMENTATION_VERIFIED
+      fa2Decision: >
+        TD (class TD, ownerRequired: false). metrics.go Go doc comment on Metrics interface
+        is the spec anchor for operational-vs-hard distinction. Tracked, in allowed set,
+        authoritative contract location in a Go project. No separate docs/ file required.
+        FA-2 CLOSED.
+      testsAdded: 4
+      newTests:
+        - TestInspectAllContinuesAfterPerSessionRejection
+        - TestInspectAllPropagatesContainmentFailure
+        - TestRejectionAuditFailureDoesNotAbortSweep
+        - TestIsRejectionClassifiesOnlyInvalidTransitions
+      totalTests: "internal/watchdog: 49, internal/coordinator: 13"
+      mutationResults: >
+        A (blanket continue): KILLED. B (abort on any error): KILLED.
+        C (rejection audit removed): KILLED. R1 mutations A+B still killed. No regressions.
+      makeCheck: PASS
+      staged: NOTHING
+      frozenSubject:
+        note: "POST-D1 subject — authoritative for REVIEW-48-WATCHDOG-D1 and AUDIT-48-WATCHDOG-D1"
+        fileHashes:
+          "internal/watchdog/model.go": 49b9e2ddea489a96097a9cc7de5a0ff37572443ca38158ed74f365a4da46e37a
+          "internal/watchdog/policy.go": 871ad76f9aa911500c40f46d225a96ca953d94e69e8fdd6eca0615cdcfe36289
+          "internal/watchdog/clock.go": d24f6239db9aa10233c3ddd8a82274753bc1ee7732d715d2a129b7e0c555316b
+          "internal/watchdog/registry.go": 8e9c8a86f23a261fd492adf3588ffae06b197ddea274ed9324de42016d10034f
+          "internal/watchdog/metrics.go": db010d31a6d9344a08357eae3a168a56c2c1ecf8c67bdc7ab57da42484af5fc0
+          "internal/watchdog/watchdog.go": baffa184d4847ba8d350339429d23099d1185440f995007e19e11dd277ffa86e
+          "internal/watchdog/completion.go": 68a6da73256cb425c2a4c551fe1650dd32fd29def4d78b8455fb187fa7b5fc19
+          "internal/watchdog/fakeclock_test.go": 85b39ffe342be6e2f913a8e3491ef822aefdcb0fb642fd7ce338b632a766d9a4
+          "internal/watchdog/watchdog_test.go": b30f3868f2b9e66e83734beeb6abfa4d2839168a815d6134d0f9a9dfc78a7270
+          "internal/coordinator/watchdog.go": ec9325e4da478a0b461968ec3a45db9affb460420933ce51c1312dc4062fef32
+          "internal/coordinator/watchdog_test.go": 2d768a4ae9f1c6352c64794dc3b507bf0fcf8bb05bc72e126644827287fe81d0
+          "internal/agentsession/heartbeat.go": 0e6aefc92d742b98f9657e7da004ad0e5bc37982843e6e47ace239cf5f014671
     reviewState:
-      reviewer: opencode:workspace-o97
-      assignment: REVIEW-48-WATCHDOG-R1-CORRECTION
-      state: COMPLETE
-      verdict: REVIEW_ACCEPTED
-      findingD1:
-        classification: TD
-        coordinatorDecision: "option (b) — continue loop, hard counter records violation"
-        status: DISPATCHED_TO_O42
-      findingR2:
-        classification: non-blocking
-        resolution: "Add note in spec — pending dispatch integration"
-      residuals:
-        - "7 decorative mutant tests — open item"
-        - "Composite digest recipe unpublished — drop from integrity set"
+      r1Review:
+        reviewer: opencode:workspace-o97
+        assignment: REVIEW-48-WATCHDOG-R1-CORRECTION
+        state: COMPLETE
+        verdict: REVIEW_ACCEPTED
+        findingD1:
+          classification: TD
+          coordinatorDecision: "option (a) — sentinel-specific continue + EventSessionRejection audit event"
+          status: IMPLEMENTED_VERIFIED
+        findingR2:
+          classification: non-blocking
+          resolution: "Add note in spec — pending dispatch integration"
+        residuals:
+          - "7 decorative mutant tests — open item"
+          - "Composite digest recipe unpublished — dropped from integrity set"
+      d1Review:
+        reviewer: opencode:workspace-o97
+        assignment: REVIEW-48-WATCHDOG-D1
+        state: RUNNING
+        scope: "D1 change only: isRejection sentinel boundary, EventSessionRejection event, 4 new tests"
+        subjectDigest: "d1CorrectionResult.frozenSubject"
+        mutationCarryOver: "M01-M12+MA/MB/MC from R1 cycle; o97 adds 2 new D1-specific mutants"
     d1Correction:
       executor: opencode:workspace-o42
-      status: IN_PROGRESS
-      change: "inspectAll: continue on per-session rejection, abort only on systemic error"
-      requiredTest: "one anomalous session → hard counter incremented AND other sessions still inspected"
+      status: IMPLEMENTATION_VERIFIED
+      change: "inspectAll: sentinel-specific continue + EventSessionRejection per rejected session"
+      fa2: CLOSED (metrics.go Go doc comment is spec anchor — TD decision)
     auditState:
       auditor: opencode:workspace-oea
       state: PAUSED
       independence: PRESERVED
-      reason: "D1 fix pending — watchdog.go subject will change. Awaiting D1 IMPLEMENTATION_VERIFIED."
-      assignment: AUDIT-48-WATCHDOG-R1-CORRECTION
+      state: RUNNING
+      reason: "D1 IMPLEMENTATION_VERIFIED received. New SHA256 dispatched. Re-freezing on D1 subject."
+      assignment: AUDIT-48-WATCHDOG-D1
       preCorrectMutationEvidence:
         mutations: M01-M12 (12/12 killed)
         method: applied to real production files (not test-local copies)
@@ -312,11 +356,9 @@ active:
     stageAllowed: false
     commitAllowed: false
     nextTransitions:
-      - AWAIT_O42_IMPLEMENTATION_VERIFIED_D1
-      - CONFIRM_SPEC_EDIT_TRACKED_FILE
-      - FREEZE_NEW_EXACT_SUBJECT_SHA_POST_D1
-      - DISPATCH_REVIEW_48_D1_TO_O97
-      - DISPATCH_AUDIT_48_D1_TO_OEA
+      - AWAIT_REVIEW_48_D1_VERDICT_FROM_O97
+      - AWAIT_AUDIT_48_D1_VERDICT_FROM_OEA
+      - FREEZE_FINAL_SUBJECT_AFTER_VERDICTS
       - STAGE_WATCHDOG_EXACT_12_PATHS
       - COMMIT_ISSUE48_WATCHDOG
       - PUSH_AFTER_OWNER_AUTHORIZATION
