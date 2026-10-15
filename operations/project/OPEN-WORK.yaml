@@ -197,13 +197,28 @@ active:
     reviewState:
       reviewer: opencode:workspace-o97
       assignment: REVIEW-48-WATCHDOG-R1-CORRECTION
-      state: RUNNING
-      admitted: true
-      scope: "R1 changes only: metrics.go, watchdog.go, watchdog_test.go"
+      state: COMPLETE
+      verdict: REVIEW_ACCEPTED
+      findingD1:
+        classification: TD
+        coordinatorDecision: "option (b) — continue loop, hard counter records violation"
+        status: DISPATCHED_TO_O42
+      findingR2:
+        classification: non-blocking
+        resolution: "Add note in spec — pending dispatch integration"
+      residuals:
+        - "7 decorative mutant tests — open item"
+        - "Composite digest recipe unpublished — drop from integrity set"
+    d1Correction:
+      executor: opencode:workspace-o42
+      status: IN_PROGRESS
+      change: "inspectAll: continue on per-session rejection, abort only on systemic error"
+      requiredTest: "one anomalous session → hard counter incremented AND other sessions still inspected"
     auditState:
       auditor: opencode:workspace-oea
-      state: RUNNING
+      state: PAUSED
       independence: PRESERVED
+      reason: "D1 fix pending — watchdog.go subject will change. Awaiting D1 IMPLEMENTATION_VERIFIED."
       assignment: AUDIT-48-WATCHDOG-R1-CORRECTION
       preCorrectMutationEvidence:
         mutations: M01-M12 (12/12 killed)
