@@ -175,6 +175,41 @@ active:
       - COMMIT_ISSUE48_WATCHDOG
       - PUSH_AFTER_OWNER_AUTHORIZATION
 
+  - issue: 49
+    title: "feat(durable-orchestration)"
+    state: REVIEW_IN_PROGRESS
+    executor: codex:workspace-c3f
+    reviewer: opencode:workspace-o97
+    branch: durable-orchestration-c3f
+    isolatedClone: true
+    sharedTreeUntouched: true
+    implementationVerified:
+      status: true
+      baseSha: 5e60d81dcd0781a944bc05040596601d66d61d3f
+      makeCheck: PASS
+      tests: "33 orchestration scenarios + 1 coordd composition"
+      mutations: "M01-M12 12/12 killed"
+      changedFiles: 20
+      agentsMdChanged: false
+      remoteCI: NOT_RUN
+    reviewPacket: >
+      /Users/andreybabenko/Downloads/workspace/workspace-01/.scratch/tmp/sessions/codex-issue49/1/runs/2rV5oc1n/review-packet
+    subjectSHA256: d9478797189d6167f701f29ec543cac7257d39da0919af17a54405996f807e45
+    declaredBoundaries:
+      - ADR Proposed/un-numbered/non-normative (not Accepted)
+      - production binding NOT_IMPLEMENTED (fake proof + next-gen intent)
+      - no live adapter, no full scheduler, no periodic heartbeat, no LLM CandidateDecision
+      - scripts/check-architecture-sync-test changed — potential #47 integration conflict
+      - schema v2 migration candidate (no rollback ADR)
+      - remote CI NOT_RUN
+    stageAllowed: false
+    commitAllowed: false
+    nextTransitions:
+      - AWAIT_REVIEW_ACCEPTED_O97
+      - DISPATCH_AUDIT_AFTER_REVIEW
+      - AWAIT_AUDIT_ACCEPTED
+      - COORDINATE_WITH_47_ON_ARCH_SYNC_CONFLICT
+
 foreignOrUnknown:
   - category: preserve_unknown_tracked
     count: 23
