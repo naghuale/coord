@@ -357,15 +357,28 @@ active:
       n1Reversal: "Task-fence removal IS killed by TestRealGovenance — o97 N1 classification was incorrect"
       lint: "3 issues: errcheck runtime_test.go:529, staticcheck model.go:222, store/orchestration.go:85"
       mutations: "12/12 independently reproduced"
+    historicalAuditV2:
+      auditor: opencode:workspace-o71
+      subject: d6795a817185421987ae005679f0f7bb9a6567740d63133993eb72266e368998
+      verdict: CHANGES_REQUIRED
+      status: HISTORICAL_AUDIT_V2
+      b1FixQuality: "CORRECT AND SUFFICIENT for ClaimAction site"
+      recoverActionsGap: "confirmed still open in v2"
+      lintStillOpen: true
+      n1Resolution: >
+        o71 RETRACTED kill claim — was environment artifact (TestRealGovenance fails
+        identically with and without mutant in copy under outer git repo). N1 is NOT a
+        finding. Task-fence protection is indirect-only via canonical state invariants.
+        o97 was correct from the start.
+      v3MinimumAcceptance:
+        - M14 with unique anchor to recoverActions site only (not bare Epoch++ which appears twice)
+        - M14 killed by test existing test set cannot satisfy
+        - Lint fixed or explicitly declared non-blocking
+        - Optional: direct negative test for Task-fence workflowAuthority (N1 indirect-only)
     auditState:
       auditor: opencode:workspace-o71
-      assignment: AUDIT-49-ORCHESTRATION-V2
-      subject: d6795a817185421987ae005679f0f7bb9a6567740d63133993eb72266e368998
-      state: RUNNING
-      note: >
-        Running parallel with o97 Round 2. Per OWNER: Audit does not wait for REVIEW_ACCEPTED.
-        Key checks: TestUnstartedClaimReclaimSeparatesEpoch killed by ClaimAction-only mutant,
-        recoverActions epoch also uncovered?, 3 lint findings present?
+      state: PAUSED
+      note: "AUDIT_PAUSED — awaiting AUDIT_ASSIGNMENT for v3"
     declaredBoundaries:
       - ADR Proposed/un-numbered/non-normative (not Accepted)
       - production binding NOT_IMPLEMENTED (fake proof + next-gen intent)
