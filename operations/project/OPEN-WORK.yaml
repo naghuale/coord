@@ -19,8 +19,10 @@ project:
         architecture-sync: PASS
     integrationVerdict: PASS
     mergeToMainDone: true
-    issueClosurePending: true
-    issueClosureBlocker: AUTO_MODE_EXTERNAL_SYSTEM_WRITES
+    issueClosure:
+      issue48: CLOSED
+      issue49: CLOSED
+      issue47: OPEN (VERIFY_ISSUE_47_ROLE_INDEPENDENCE pending)
 
 currentStage: issue-47-48-active
 
@@ -630,7 +632,7 @@ active:
       checkArchSyncSelfTest: WORKTREE_ENV_ARTIFACT (git commit fails in temp repo due to copied .git worktree link; PASS in CI normal checkout)
       integrationVerdict: PASS
     nextTransitions:
-      - CLOSE_ISSUES_47_48_49_WITH_COMPLETION_REPORT (HUMAN_ACTION_REQUIRED: gh issue close blocked by auto-mode)
+      - VERIFY_ISSUE_47_ROLE_INDEPENDENCE (Executor oec, Reviewer/Auditor agent IDs absent from durable records)
 
 foreignOrUnknown:
   - category: preserve_unknown_tracked
