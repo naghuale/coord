@@ -192,9 +192,23 @@ active:
       changedFiles: 20
       agentsMdChanged: false
       remoteCI: NOT_RUN
-    reviewPacket: >
-      /Users/andreybabenko/Downloads/workspace/workspace-01/.scratch/tmp/sessions/codex-issue49/1/runs/2rV5oc1n/review-packet
-    subjectSHA256: d9478797189d6167f701f29ec543cac7257d39da0919af17a54405996f807e45
+    frozenSubjectIdentity:
+      baseSha: 5e60d81dcd0781a944bc05040596601d66d61d3f
+      subjectSHA256: d9478797189d6167f701f29ec543cac7257d39da0919af17a54405996f807e45
+      patchDigest: sha256:4322ee297c90f62e5e77c87a37227251ab44fb0b26545546624ae28a80c221d3
+      executorReportDigest: sha256:ea06acc51304da9e54756b8fee3cb63380c0f76d123f4ef33fe36d10a543e9b9
+      adrV2SHA256: bc1c64953fab0abcca880314baac4be9635811ca0224ff948f799d6021bade8c
+      packetRoot: >
+        /Users/andreybabenko/Downloads/workspace/workspace-01/.scratch/tmp/sessions/codex-issue49/1/runs/2rV5oc1n/review-packet
+    reviewState:
+      reviewer: opencode:workspace-o97
+      state: RUNNING
+      admitted: true
+      independenceConfirmed: true
+    auditState:
+      auditor: opencode:workspace-o71
+      state: RUNNING
+      admitted: PENDING
     declaredBoundaries:
       - ADR Proposed/un-numbered/non-normative (not Accepted)
       - production binding NOT_IMPLEMENTED (fake proof + next-gen intent)
