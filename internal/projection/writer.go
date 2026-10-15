@@ -30,26 +30,40 @@ func (w *Writer) Publish(s store.CanonicalState) error {
 	if !filepath.IsAbs(w.Root) {
 		return fmt.Errorf("projection root must be absolute")
 	}
-	// Refuse symlinks at every existing component before creating/writing files.
+	// Walk upward through non-existing path components. The first existing
+	// component must be a real directory. A symlink there means the path
+	// was injected to escape the namespace — reject immediately.
+	// Components above the deepest existing ancestor are trusted OS/system
+	// paths (e.g. /var→/private/var on macOS) and are not checked.
 	path := w.Root
 	for {
 		info, err := os.Lstat(path)
-		if err == nil && info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("projection symlink path rejected")
+		if os.IsNotExist(err) {
+			parent := filepath.Dir(path)
+			if parent == path {
+				break
+			}
+			path = parent
+			continue
 		}
-		if err != nil && !os.IsNotExist(err) {
+		if err != nil {
 			return err
 		}
-		parent := filepath.Dir(path)
-		if parent == path {
-			break
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("projection symlink path rejected")
 		}
-		path = parent
+		break
 	}
 	if err := os.MkdirAll(w.Root, 0700); err != nil {
 		return err
 	}
-	currentPath := filepath.Join(w.Root, "current.json")
+	// Canonicalize root via EvalSymlinks to handle OS-level path aliases
+	// (e.g. /var→/private/var on macOS) for consistent bundle-internal ops.
+	root, err := filepath.EvalSymlinks(w.Root)
+	if err != nil {
+		return err
+	}
+	currentPath := filepath.Join(root, "current.json")
 	var current Manifest
 	if b, err := os.ReadFile(currentPath); err == nil {
 		if err = json.Unmarshal(b, &current); err != nil {
@@ -58,14 +72,14 @@ func (w *Writer) Publish(s store.CanonicalState) error {
 		if current.Revision > s.Revision {
 			return nil
 		}
-		if current.Revision == s.Revision && w.validBundle(current) {
+		if current.Revision == s.Revision && w.validBundle(current, root) {
 			return nil
 		}
 	} else if !os.IsNotExist(err) {
 		return err
 	}
-	dir := filepath.Join(w.Root, "revisions", strconv.FormatUint(s.Revision, 10))
-	for _, p := range []string{filepath.Join(w.Root, "revisions"), dir} {
+	dir := filepath.Join(root, "revisions", strconv.FormatUint(s.Revision, 10))
+	for _, p := range []string{filepath.Join(root, "revisions"), dir} {
 		if info, err := os.Lstat(p); err == nil && info.Mode()&os.ModeSymlink != 0 {
 			return fmt.Errorf("projection bundle symlink rejected")
 		}
@@ -111,11 +125,11 @@ func (w *Writer) Publish(s store.CanonicalState) error {
 	// to canonical state, avoiding a projection->revision->projection feedback loop.
 	return atomicfile.Write(currentPath, b)
 }
-func (w *Writer) validBundle(m Manifest) bool {
+func (w *Writer) validBundle(m Manifest, root string) bool {
 	if m.Generator != "coord-orchestration-v1" || len(m.Files) != 3 {
 		return false
 	}
-	dir := filepath.Join(w.Root, "revisions", strconv.FormatUint(m.Revision, 10))
+	dir := filepath.Join(root, "revisions", strconv.FormatUint(m.Revision, 10))
 	for _, name := range []string{"CURRENT.yaml", "OPEN-WORK.yaml", "LEDGER.yaml"} {
 		b, err := os.ReadFile(filepath.Join(dir, name))
 		if err != nil || externalaction.Digest(json.RawMessage(b)) != m.Files[name] {
