@@ -714,7 +714,9 @@ active:
         normAncestor: YES
         verdict: INTEGRATION_GATE_PASS
       filesChanged: 4
-      state: PUSH_PENDING_HUMAN_ACTION
+      state: PR_OPEN_AWAITING_CI
+      pr: https://github.com/naghuale/coord/pull/50
+      pushed: true
       siblingFinding:
         id: A1-HUMAN-ACTION-REQUIRED-REASON-CODES
         source: AUDIT-ACTIONMAP-OWNER-REASON-O42 finding A1
@@ -731,10 +733,10 @@ active:
         remediation: OWNER_NOTIFICATION (non-blocking, commits use env var override)
 
     nextTransitions:
-      - PUSH_integration/owners-reason (HUMAN_ACTION_REQUIRED — git push origin integration/owners-reason)
-      - AWAIT_CI_ON_INTEGRATION (after push, wait for GitHub CI)
-      - MERGE_TO_MAIN_AFTER_CI_PASS
+      - AWAIT_CI_ON_PR50 (integration/owners-reason pushed, PR #50 open)
+      - MERGE_TO_MAIN_AFTER_CI_PASS (gh pr merge 50 --merge)
       - CREATE_ISSUE_FOR_A1_SIBLING (HUMAN_ACTION_REQUIRED_REASON_CODE_MISSING)
+      - CLOSE_ISSUE_47_AFTER_MERGE
 
 foreignOrUnknown:
   - category: preserve_unknown_tracked
