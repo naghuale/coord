@@ -22,7 +22,7 @@ project:
     issueClosure:
       issue48: CLOSED
       issue49: CLOSED
-      issue47: OPEN (VERIFY_ISSUE_47_ROLE_INDEPENDENCE pending)
+      issue47: OPEN — AUDIT_REQUIRED (AUDIT-47-R146-OEC dispatched to opencode:workspace-oec)
 
 currentStage: issue-47-48-active
 
@@ -102,9 +102,18 @@ active:
     commitSha: 68bd4b8
     branch: p0-2-task
     committedFiles: 8
+    auditState:
+      assignment: AUDIT-47-R146-OEC
+      auditor: opencode:workspace-oec
+      state: DISPATCHED
+      subjectSha: 68bd4b80acc0ce6fcf6402c66d0651ba2d7c8d09
+      integrationSha: 38a288d5ca204eccf268fe1e68502eb9843a5008
+      independenceReason: >
+        oec was executor of WP-47-02 and is independent from any prior Review/Audit agent.
+        Previous audit (role conflict o71) classified as INVALID_FOR_INDEPENDENCE_GATE.
+      previousAuditStatus: INVALID_FOR_INDEPENDENCE_GATE (executor/auditor identity overlap in Completion Report)
     nextTransitions:
-      - PUSH_AFTER_OWNER_AUTHORIZATION
-      - PUSH_AFTER_OWNER_AUTHORIZATION
+      - AWAIT_AUDIT_47_FROM_OEC
 
   - issue: 48
     title: "Heartbeat watchdog runtime"
@@ -632,7 +641,7 @@ active:
       checkArchSyncSelfTest: WORKTREE_ENV_ARTIFACT (git commit fails in temp repo due to copied .git worktree link; PASS in CI normal checkout)
       integrationVerdict: PASS
     nextTransitions:
-      - VERIFY_ISSUE_47_ROLE_INDEPENDENCE (Executor oec, Reviewer/Auditor agent IDs absent from durable records)
+      - AWAIT_AUDIT_47_FROM_OEC (auditAssignment DELIVERED to opencode:workspace-oec)
 
 foreignOrUnknown:
   - category: preserve_unknown_tracked
