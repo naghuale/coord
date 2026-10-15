@@ -40,17 +40,30 @@ active:
 
     nextWorkPackage:
       id: WP-47-02
-      title: "Coordinator process rules — AGENTS.md hunk classification"
-      status: SCOPE_VERIFICATION_REQUIRED
+      title: "Coordinator process rules — AGENTS.md hunk classification + patch"
+      status: PATCH_GENERATION_IN_PROGRESS
       executor: opencode:workspace-oec
-      action: READ_ONLY_HUNK_CLASSIFICATION
-      allowedPaths:
-        - AGENTS.md
-      goal: >
-        Classify each hunk in AGENTS.md diff as: #47 (R146 Coordinator rules),
-        foreign (other issue), or PRESERVE_UNKNOWN. Return patch proposal for
-        #47-only hunks. If mixed hunks found, split proposal by ownership.
-        Do not stage. Do not modify any file.
+      classificationResult:
+        totalHunks: 18
+        issue47Approved:
+          - lines: "476-482"
+            description: "HUMAN_ACTION_REQUIRED boundary (R146 clause)"
+          - lines: "490-493"
+            description: "QUESTION_SUPPRESSED expansion (anti-passive-wait)"
+          - lines: "622-659"
+            description: "New section R146 core (all 6 MUST clauses)"
+          - lines: "666-677"
+            description: "Autonomy scenarios table with R146 rows"
+        foreign: 10 hunks (other workstreams — Document Map, R143, R142, Commit Readiness, etc.)
+        preserveUnknown: 2 hunks (431-435, 606-612 — ownership uncertain)
+        traceabilityFix:
+          classification: FD
+          description: >
+            Section heading lacks R146 label; neighbouring sections carry R142/R143/R145.
+            Add "(R146)" to "### Запрет пассивного ожидания агентов" heading.
+      patchAction: GENERATE_PATCH_FOR_COORDINATOR_REVIEW
+      patchTarget: "${COORD_PROJECT_ROOT}/.scratch/tmp/wp47-02-agents-patch.diff"
+      stageGate: BLOCKED_WAITING_FOR_ISSUE48_COMMIT
       stageAllowed: false
       commitAllowed: false
 
