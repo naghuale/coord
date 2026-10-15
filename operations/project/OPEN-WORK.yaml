@@ -100,12 +100,12 @@ active:
 
   - issue: 48
     title: "Heartbeat watchdog runtime"
-    state: R1_CORRECTION_IN_PROGRESS
+    state: R1_REVIEW_IN_PROGRESS
     note: >
       Watchdog scope is #48, not #47. Corrected by OWNER scope reconciliation
       2026-10-15.
     executor: opencode:workspace-o42
-    executorState: RUNNING
+    executorState: COMPLETE
     subject: WORKING_TREE
     paths:
       - internal/watchdog/model.go
@@ -169,13 +169,42 @@ active:
         status: FIXED_VERIFIED
         description: "appendEvent helper, dropped audit events resolved"
 
+    r1CorrectionResult:
+      executor: opencode:workspace-o42
+      status: IMPLEMENTATION_VERIFIED
+      makeCheck: PASS
+      testsAdded: 6
+      mutationsAdded: 2
+      mutationResults: "A:5killed B:7killed (real production source, no compile-error kills)"
+      specSection11: REWRITTEN
+      bugFixed: "rejection branch was recording RUNNING as session state — fixed to DELIVERED/QUEUED"
+      openItem: "7 pre-existing TestMutation*IsKilled tests have decorative halves — flagged for oea/o97"
+      frozenSubject:
+        compositeDigest: sha256:286fc32ddcb021a9b7b0c4ab001fbe6779fe2560c72021cbac2097186352aa6d
+        fileHashes:
+          "internal/watchdog/model.go": f7c6be7889b727174ba3f62d291ba208386ff048d1dafb3a6317371ae49f448f
+          "internal/watchdog/policy.go": 871ad76f9aa911500c40f46d225a96ca953d94e69e8fdd6eca0615cdcfe36289
+          "internal/watchdog/clock.go": d24f6239db9aa10233c3ddd8a82274753bc1ee7732d715d2a129b7e0c555316b
+          "internal/watchdog/registry.go": 8e9c8a86f23a261fd492adf3588ffae06b197ddea274ed9324de42016d10034f
+          "internal/watchdog/metrics.go": 98ff5abfe36cc8bcb17f19d9c7904cd099c0d99d664bb7677cf1a3d35b26ec17
+          "internal/watchdog/watchdog.go": 6989b51151b97d02f17abe50cee123adfa0389e665d0ac415ec63981e434a279
+          "internal/watchdog/completion.go": 68a6da73256cb425c2a4c551fe1650dd32fd29def4d78b8455fb187fa7b5fc19
+          "internal/watchdog/fakeclock_test.go": 85b39ffe342be6e2f913a8e3491ef822aefdcb0fb642fd7ce338b632a766d9a4
+          "internal/watchdog/watchdog_test.go": 18ec13def2ada6fe0319972095a8a6cf8a4aee44996837d57d0f07d533e795bf
+          "internal/coordinator/watchdog.go": ec9325e4da478a0b461968ec3a45db9affb460420933ce51c1312dc4062fef32
+          "internal/coordinator/watchdog_test.go": 2d768a4ae9f1c6352c64794dc3b507bf0fcf8bb05bc72e126644827287fe81d0
+          "internal/agentsession/heartbeat.go": 0e6aefc92d742b98f9657e7da004ad0e5bc37982843e6e47ace239cf5f014671
+    reviewState:
+      reviewer: opencode:workspace-o97
+      assignment: REVIEW-48-WATCHDOG-R1-CORRECTION
+      state: RUNNING
+      admitted: true
+      scope: "R1 changes only: metrics.go, watchdog.go, watchdog_test.go"
     auditState:
       auditor: opencode:workspace-oea
-      state: PAUSED
+      state: RUNNING
       independence: PRESERVED
-      reason: >
-        R1 correction pending. New exact subject SHA required after o42
-        IMPLEMENTATION_VERIFIED. Audit will restart on new SHA.
+      assignment: AUDIT-48-WATCHDOG-R1-CORRECTION
       preCorrectMutationEvidence:
         mutations: M01-M12 (12/12 killed)
         method: applied to real production files (not test-local copies)
@@ -284,16 +313,30 @@ active:
             check-architecture-sync-test conflict with #47 — disjoint hunks, benign.
             Needs deliberate integration check after both land.
       correctionAssignee: codex:workspace-c3f
-      correctionStatus: DISPATCHED
+      correctionStatus: IMPLEMENTATION_VERIFIED
       round2Scope: "B1 fix + makeCheck note in executor report"
       reviewerScratch: "${COORD_PROJECT_ROOT}/.scratch/tmp/rev49-o97"
+    correctedSubject:
+      subjectDigest: d6795a817185421987ae005679f0f7bb9a6567740d63133993eb72266e368998
+      patchDigest: sha256:4322ee297c90f62e5e77c87a37227251ab44fb0b26545546624ae28a80c221d3
+      executorReportDigest: sha256:fc474b7507377998c06e7224d5cbda3ace6bf4b607518bd127b3866734dcadd1
+      changedFiles: 20
+      mutations: "13/13 killed (M01-M12 + M13 ClaimAction epoch)"
+      packetRoot: >
+        /Users/andreybabenko/Downloads/workspace/workspace-01/.scratch/tmp/sessions/codex-issue49/1/runs/round2-claim-epoch/review-packet
+    reviewState:
+      reviewer: opencode:workspace-o97
+      state: RUNNING
+      round: 2
+      admitted: true
+      assignment: REVIEW-49-ORCHESTRATION-V2
+      scope: "B1 fix only: TestUnstartedClaimReclaimSeparatesEpoch + M13 + makeCheck note"
     auditState:
       auditor: opencode:workspace-o71
       state: RUNNING
-      admitted: PENDING
       note: >
-        B1 forwarded as advisory. o71 auditing current frozen subject independently.
-        New audit assignment will follow after c3f corrects B1 and re-freezes subject.
+        Auditing current/old frozen subject independently. B1 advisory received.
+        New AUDIT_ASSIGNMENT on corrected subject (d6795a81...) will follow after REVIEW_ACCEPTED.
     declaredBoundaries:
       - ADR Proposed/un-numbered/non-normative (not Accepted)
       - production binding NOT_IMPLEMENTED (fake proof + next-gen intent)
