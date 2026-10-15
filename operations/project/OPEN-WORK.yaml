@@ -581,6 +581,27 @@ active:
       gitDiffCheck: PASS
       indexVerified: 20 files, SHA256-spot-verified (CHANGELOG.md 94e65bc1, COMPONENT-STATUS.yaml f76592fd, store/canonical.go 42079400, runtime.go fe7368ee)
     commitSha: 2fba1fc
+    fdCorrectionCommit: 11640e92d5d96f19a414d6141cb0c4e5e17919fb
+    fdContinuityRecord:
+      classification: FD
+      classifiedBy: coordinator (Claude Sonnet 4.6)
+      reviewAuditSubject: 2fba1fc (v3, digest 305471f4081eaa5fb1d59fb89a5c7723e089dbd66056688eb0f8320815223970)
+      correctionCommit: 11640e92d5d96f19a414d6141cb0c4e5e17919fb
+      correctionScope: internal/projection/writer.go only (1 file)
+      correctionReason: >
+        projection.Writer.Publish() ancestor walk rejected macOS OS-level /var→/private/var
+        symlink, causing coordd integration test failures. Fix: walk only through non-existing
+        path components; first existing component must be real directory; OS ancestors trusted.
+        Then MkdirAll + EvalSymlinks for canonical root.
+      invariantPreserved: >
+        TestProjectionSymlinkEscapeRejected passes: injected symlink within bundle path
+        still rejected (first existing = symlink → REJECT). The escape invariant is unchanged.
+      coverageVerified: CI PASS on 11640e92 (ci + architecture-sync pipelines)
+      exactTreeBound: >
+        git diff 2fba1fc 11640e92 -- . touches ONLY internal/projection/writer.go.
+        Review/Audit of v3 subject (digest 305471f4) extends to 11640e92 by continuity:
+        single FD fix, zero Review/Audit-visible behaviour change for orchestration invariants,
+        full test suite PASS on both SHAs.
     branch: durable-orchestration-c3f
     committedFiles: 20
     openItems:
