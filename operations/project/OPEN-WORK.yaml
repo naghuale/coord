@@ -103,19 +103,16 @@ active:
     branch: p0-2-task
     committedFiles: 8
     auditState:
-      assignment: AUDIT-47-R146-O79
-      auditor: opencode:workspace-o79
+      assignment: AUDIT-47-R146-C3F
+      auditor: codex:workspace-c3f
       state: DISPATCHED
       subjectSha: 68bd4b80acc0ce6fcf6402c66d0651ba2d7c8d09
       integrationSha: 38a288d5ca204eccf268fe1e68502eb9843a5008
       independenceVerified: >
-        o79 not present in any ops commit for #47 (executor/reviewer/author checks PASS).
-      previousAssignment:
-        assignment: AUDIT-47-R146-OEC
-        auditor: opencode:workspace-oec
-        state: NOT_ADMITTED (RESPONSE_ASSIGNMENT_MISMATCH — oec responded about issue #48)
-        action: REVOKED
-      previousAuditStatus: INVALID_FOR_INDEPENDENCE_GATE (executor/auditor identity overlap in Completion Report)
+        c3f was executor of #49 (durable orchestration), not #47. Not reviewer/author of #47.
+      deadAgentsRevoked:
+        - AUDIT-47-R146-OEC: oec NOT_ADMITTED (RESPONSE_ASSIGNMENT_MISMATCH)
+        - AUDIT-47-R146-O79: o79 DEAD (no response to identification request)
     nextTransitions:
       - AWAIT_AUDIT_47_FROM_O79
 
@@ -656,8 +653,9 @@ active:
         files:
           - AGENTS.md
         status: REVIEW_DISPATCHED
-        reviewer: opencode:workspace-o97
-        reviewAssignment: REVIEW-AGENTS-REPLACEMENT-O97
+        reviewer: opencode:workspace-o42
+        reviewAssignment: REVIEW-AGENTS-REPLACEMENT-O42
+        deadReviewerRevoked: REVIEW-AGENTS-REPLACEMENT-O97 (o97 DEAD)
         diffCheck: PASS
         lines: 38 (+0-)
         decisionRef: R146
@@ -676,8 +674,8 @@ active:
         reviewRequired: true
         auditRequired: true
     nextTransitions:
-      - AWAIT_AUDIT_47_FROM_O79 (AUDIT-47-R146-O79 dispatched to opencode:workspace-o79)
-      - AWAIT_REVIEW_NORMATIVE_CORRECTION (REVIEW-AGENTS-REPLACEMENT-O97 dispatched to opencode:workspace-o97)
+      - AWAIT_AUDIT_47_FROM_C3F (AUDIT-47-R146-C3F dispatched to codex:workspace-c3f)
+      - AWAIT_REVIEW_NORMATIVE_CORRECTION (REVIEW-AGENTS-REPLACEMENT-O42 dispatched to opencode:workspace-o42)
 
 foreignOrUnknown:
   - category: preserve_unknown_tracked
