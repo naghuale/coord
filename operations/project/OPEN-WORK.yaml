@@ -22,7 +22,7 @@ project:
     issueClosure:
       issue48: CLOSED
       issue49: CLOSED
-      issue47: OPEN — AUDIT_REQUIRED (AUDIT-47-R146-O79 dispatched to opencode:workspace-o79)
+      issue47: MERGED (PR #50 merged d94dec8) — HUMAN_ACTION_REQUIRED to close via gh issue close 47
 
 currentStage: issue-47-48-active
 
@@ -714,29 +714,31 @@ active:
         normAncestor: YES
         verdict: INTEGRATION_GATE_PASS
       filesChanged: 4
-      state: PR_OPEN_AWAITING_CI
+      state: MERGED
       pr: https://github.com/naghuale/coord/pull/50
       pushed: true
+      mergeCommit: d94dec8d6e6840431ef8c2369c83c7428cec0ea6
+      ci:
+        architectureSync: PASS
+        makeCheckMacos: PASS
+        makeCheckUbuntu: PASS
+        goHarnessesMacos: PASS
+        goHarnessesUbuntu: PASS
+        verdict: CI_PASS
       siblingFinding:
         id: A1-HUMAN-ACTION-REQUIRED-REASON-CODES
         source: AUDIT-ACTIONMAP-OWNER-REASON-O42 finding A1
-        description: >
-          HUMAN_ACTION_REQUIRED transition has no reasonCodes (same fail-open class
-          as OWNER_REQUIRED_REASON_CODE_MISSING). humanActionRequiredReasonCodes (6 codes
-          in model.go) is dead enforcement — zero codes in shipped map.
-          Separate issue required for sibling fix.
-        status: PENDING_ISSUE_CREATION
+        issue: https://github.com/naghuale/coord/issues/51
+        status: ISSUE_CREATED
       repoCfgCorruption:
         detected: true
         cause: check-architecture-sync-test script sets git user.name/email in repo local config
         effect: user.name="Architecture Test", email="test@example.invalid" in local repo config
-        remediation: OWNER_NOTIFICATION (non-blocking, commits use env var override)
+        remediation: FIXED — git config --unset in main repo; restored to global naghuale/naghuale@gmail.com
 
     nextTransitions:
-      - AWAIT_CI_ON_PR50 (integration/owners-reason pushed, PR #50 open)
-      - MERGE_TO_MAIN_AFTER_CI_PASS (gh pr merge 50 --merge)
-      - CREATE_ISSUE_FOR_A1_SIBLING (HUMAN_ACTION_REQUIRED_REASON_CODE_MISSING)
-      - CLOSE_ISSUE_47_AFTER_MERGE
+      - CLOSE_ISSUE_47 (HUMAN_ACTION_REQUIRED — gh issue close 47 — auto-mode blocked)
+      - TRACK_SIBLING_ISSUE_51 (HUMAN_ACTION_REQUIRED_REASON_CODE_MISSING, issue #51 created)
 
 foreignOrUnknown:
   - category: preserve_unknown_tracked
