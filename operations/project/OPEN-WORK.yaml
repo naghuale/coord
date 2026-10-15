@@ -61,8 +61,20 @@ active:
           description: >
             Section heading lacks R146 label; neighbouring sections carry R142/R143/R145.
             Add "(R146)" to "### Запрет пассивного ожидания агентов" heading.
-      patchAction: GENERATE_PATCH_FOR_COORDINATOR_REVIEW
-      patchTarget: "${COORD_PROJECT_ROOT}/.scratch/tmp/wp47-02-agents-patch.diff"
+      patchAction: PATCH_READY
+      patchFile: "${COORD_PROJECT_ROOT}/.scratch/tmp/wp47-02-agents-patch.diff"
+      patchVerification:
+        lines: 107
+        bytes: 9602
+        hunks: 3
+        foreignContentScan: CLEAN
+        dryRunCheck: exit 0
+        headingTraceability: confirmed ("R146" present in hunk 3)
+        coordinatorVerdict: PATCH_ACCEPTED
+      applyNotes: >
+        Working-tree AGENTS.md also needs heading edit at APPLY time
+        ("### Запрет пассивного ожидания агентов" → add "(R146)").
+        INDEX and working-tree must match after apply.
       stageGate: BLOCKED_WAITING_FOR_ISSUE48_COMMIT
       stageAllowed: false
       commitAllowed: false
@@ -160,9 +172,42 @@ active:
     auditState:
       auditor: opencode:workspace-oea
       state: PAUSED
+      independence: PRESERVED
       reason: >
         R1 correction pending. New exact subject SHA required after o42
         IMPLEMENTATION_VERIFIED. Audit will restart on new SHA.
+      preCorrectMutationEvidence:
+        mutations: M01-M12 (12/12 killed)
+        method: applied to real production files (not test-local copies)
+        baseline: PASS
+        note: >
+          M08 original was compile-error kill — discarded.
+          M08b (semantically dead but compilable gate) is valid behavioral kill.
+          Evidence is for old subject only; will re-run on new SHA.
+      flagsForNextCycle:
+        - id: F1
+          name: BASE_DRIFT
+          description: >
+            baseSha assigned 1ad9df67 but HEAD at audit time was 5e60d81.
+            For corrected subject: pin 12 files by per-file hash, not just SHA.
+        - id: F2
+          name: O97_SCRATCH_ABSENT
+          description: >
+            rev-watchdog-o97/repo not found; could not verify o97's 12-file parity.
+            Parity check unsatisfied, not passed.
+        - id: F3
+          name: SUBJECT_BY_DIRECTORY
+          description: >
+            All 12 paths are untracked; git status collapses to 3 directories.
+            Any new file in those dirs silently joins subject. Require explicit
+            per-file hash manifest in IMPLEMENTATION_VERIFIED report.
+        - id: F4
+          name: HALF_SELF_REFERENTIAL_MUTANTS
+          description: >
+            Existing TestMutation*IsKilled tests use hand-written mutant functions
+            in the test file itself — self-referential half, cannot fail without
+            editing the copy. New 6 tests MUST call real production code.
+            Advisory forwarded to o42.
 
     stageAllowed: false
     commitAllowed: false
