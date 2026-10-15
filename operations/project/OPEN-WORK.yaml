@@ -689,7 +689,7 @@ active:
     nextTransitions:
       - AWAIT_AUDIT_47_FROM_C3F (AUDIT-47-R146-C3F dispatched to codex:workspace-c3f)
       - MERGE_NORMATIVE_CORRECTION_TO_MAIN (correction/agents-replacement-rule → main, HUMAN_ACTION_REQUIRED)
-      - AWAIT_REVIEW_ACTIONMAP_TECHNICAL (REVIEW-ACTIONMAP-OWNER-REASON-C3F dispatched to c3f)
+      - AWAIT_AUDIT_ACTIONMAP_TECHNICAL (AUDIT-ACTIONMAP-OWNER-REASON-O42 dispatched to o42)
         technicalTree: 0d684a849e0d827140505424fe16b08ff27d6ea0
         baseSha: 3cd653ab9d659fd7d0030b5dd59c63da8e73b552
         worktree: /Users/andreybabenko/Downloads/workspace/workspace-01/.scratch/tmp/actionmap-owner-reason-fix
