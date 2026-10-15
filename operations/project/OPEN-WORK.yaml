@@ -263,10 +263,30 @@ active:
       fa2: CLOSED (metrics.go Go doc comment is spec anchor — TD decision)
     auditState:
       auditor: opencode:workspace-oea
-      state: RUNNING
+      state: COMPLETE
+      verdict: AUDIT_ACCEPTED
       independence: PRESERVED
-      reason: "D1 IMPLEMENTATION_VERIFIED received. New SHA256 dispatched. Re-freezing on D1 subject."
       assignment: AUDIT-48-WATCHDOG-D1
+      findings:
+        - id: FA-1
+          classification: resolved-as-documented
+          severity: non-blocking
+          note: "metrics.go declares gap truthfully; underlying gap deferred to dispatch-integration"
+        - id: FA-2
+          classification: resolved
+          note: "metrics.go Go doc comment confirmed accurate and present"
+        - id: FA-3
+          classification: pre-existing
+          severity: non-blocking
+          note: "7 decorative mutants unchanged; real assertions verified by M01/M02/M03/M07/M10/M11"
+        - id: FA-7
+          classification: new
+          severity: non-blocking
+          note: "HeartbeatMissed overloaded for dropped audit event — carry to dispatch-integration"
+      mutationResults: >
+        20/20 killed (M01-M12 + MA/MB/MC carried + 5 new MD1-MD5).
+        MD1 (fail-open): KILLED by TestInspectAllPropagatesContainmentFailure.
+        MD3 (D1 reverted): KILLED by TestInspectAllContinuesAfterPerSessionRejection.
       preCorrectMutationEvidence:
         mutations: M01-M12 (12/12 killed)
         method: applied to real production files (not test-local copies)
@@ -356,13 +376,16 @@ active:
             ACTION: Coordinator forwarded to o42 (implement option a) and o97 (verify at D1 review).
             Classification: question for D1 reviewer, not a finding against change not yet audited.
 
-    stageAllowed: false
-    commitAllowed: false
+    commitReadiness:
+      REVIEW_ACCEPTED: true
+      AUDIT_ACCEPTED: true
+      makeCheck: PENDING_COORDINATOR_VERIFY
+    stageAllowed: "exact 12 paths only — see d1CorrectionResult.frozenSubject"
+    commitAllowed: true
     nextTransitions:
-      - AWAIT_REVIEW_48_D1_VERDICT_FROM_O97
-      - AWAIT_AUDIT_48_D1_VERDICT_FROM_OEA
-      - FREEZE_FINAL_SUBJECT_AFTER_VERDICTS
+      - VERIFY_12_FILE_HASHES_IN_WORKING_TREE
       - STAGE_WATCHDOG_EXACT_12_PATHS
+      - MAKE_CHECK_PASS
       - COMMIT_ISSUE48_WATCHDOG
       - PUSH_AFTER_OWNER_AUTHORIZATION
 
