@@ -45,6 +45,31 @@ events:
       - CONTINUE_AUTONOMOUSLY
       - BLOCKED
 
+  CURRENT_ISSUE_CLOSED:
+    requiredDocuments:
+      - agents
+      - project-current
+      - project-open-work
+    allowedActions:
+      - identify_next_ready_issue
+      - verify_issue_scope
+      - create_assignment
+      - select_eligible_executor
+      - dispatch_assignment
+      - verify_admission
+      - verify_running
+    forbiddenActions:
+      - ask_owner_to_start
+      - ask_user_to_continue
+      - request_confirmation_for_ready_issue
+      - passive_wait
+      - promise_future_dispatch
+    expectedResults:
+      - CONTINUE_AUTONOMOUSLY
+      - BLOCKED_EXTERNAL
+      - HUMAN_ACTION_REQUIRED
+      - OWNER_REQUIRED
+
   ISSUE_CREATED:
     requiredDocuments:
       - agents
