@@ -737,7 +737,49 @@ active:
         remediation: FIXED — git config --unset in main repo; restored to global naghuale/naghuale@gmail.com
 
     nextTransitions:
-      - START_ISSUE_51 (HUMAN_ACTION_REQUIRED_REASON_CODE_MISSING sibling fix — same validator, same class)
+      - ISSUE_51_PR_PENDING_CI
+
+issue51:
+  title: "fix(actionmap): HUMAN_ACTION_REQUIRED reason code validation"
+  state: PR_CI_PENDING
+  baseSha: d94dec8d6e6840431ef8c2369c83c7428cec0ea6
+  techCommit: df95952ee9100efe68c1bff9b3d70f0b245f7175
+  subjectTree: 1f1e4fa0cb01c7aae0169697087dee7995affcbb
+  r1Fix: added empty_list case to TestHumanActionRequiredMissingReasonCode
+  reviewVerdict: REVIEW_ACCEPTED (opencode:workspace-o42, REVIEW-51-ACTIONMAP-HUMAN-REASON-O42)
+  auditVerdict: AUDIT_ACCEPTED (codex:workspace-c3f, AUDIT-51-ACTIONMAP-HUMAN-REASON-C3F, 14/14 checks, 0 findings)
+  integrationBranch: integration/human-reason
+  integrationSha: 5235292127a74a17caa1c5a97b3fc11a01001b07
+  integrationGate: PASS (42/42)
+  pr: https://github.com/naghuale/coord/pull/54
+  ci: PENDING
+
+issue52:
+  title: "feat(watchdog): ValidateCoordinatorCompletion + CURRENT_ISSUE_CLOSED action map event"
+  state: REVIEW_DISPATCHED
+  baseSha: d94dec8d6e6840431ef8c2369c83c7428cec0ea6
+  subjectTree: 5200d004bc7ba97e4a7a864998511c84ac421e44
+  files:
+    - docs/operations/ACTION-MAP.yaml
+    - internal/watchdog/coordinator_result.go
+    - internal/watchdog/coordinator_result_test.go
+  decisionClass: TD-R2
+  reviewer: opencode:workspace-o42 (REVIEW-52-COMPLETION-GATE-O42)
+  reviewState: DISPATCHED
+  mutations: 3/3 killed (ConfirmationRequested, DeterministicTransition, AvailableAssignment)
+
+issue53:
+  title: "norm(agents): запрет подтверждения детерминированного перехода"
+  state: AUDIT_DISPATCHED
+  baseSha: d94dec8d6e6840431ef8c2369c83c7428cec0ea6
+  subjectTree: ce7270a98693561ec1c80d3c62e9262b28336dfe
+  patchDigest: sha256:3be64c55c1d727eea8e38d0a037f815e921a182787c4ac2f17937d941ebc1948
+  files:
+    - AGENTS.md
+  decisionClass: TD
+  reviewVerdict: REVIEW_ACCEPTED (codex:workspace-c3f, REVIEW-53-AGENTS-COMPLETION-GATE-RULE-C3F, 10/10 checks, 0 findings)
+  auditState: DISPATCHED (opencode:workspace-o42, AUDIT-53-AGENTS-COMPLETION-GATE-RULE-O42)
+  incidentRef: DETERMINISTIC_TRANSITION_NOT_EXECUTED (asked «Начинаем?» after #47 close)
 
 foreignOrUnknown:
   - category: preserve_unknown_tracked
