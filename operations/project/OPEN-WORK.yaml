@@ -92,9 +92,9 @@ active:
       stageAllowed: conditional
       commitAllowed: false
 
+    issue48UnblockSha: c7434b2
     nextTransitions:
-      - WP_47_02_HUNK_CLASSIFICATION (oec)
-      - AWAIT_ISSUE48_COMMIT
+      - APPLY_WP47_02_PATCH_TO_AGENTS_MD
       - STAGE_COMMIT_ISSUE47_REMAINING
       - PUSH_AFTER_OWNER_AUTHORIZATION
 
@@ -379,15 +379,21 @@ active:
     commitReadiness:
       REVIEW_ACCEPTED: true
       AUDIT_ACCEPTED: true
-      makeCheck: PENDING_COORDINATOR_VERIFY
-    stageAllowed: "exact 12 paths only — see d1CorrectionResult.frozenSubject"
-    commitAllowed: true
+      makeCheck: PASS (exit 0, 71 packages, 0 lint issues)
+      gitDiffCheck: PASS
+    state: COMMITTED
+    commitSha: c7434b2
+    branch: p0-2-task
+    committedFiles: 12
+    openItems:
+      - FA-1 gap (StaleWithoutReconcile + PassiveWaitAllowed) → dispatch-integration work
+      - FA-7 (HeartbeatMissed overloaded) → dispatch-integration work
+      - 7 decorative TestMutation*IsKilled halves → next touch of watchdog_test.go
+    stageAllowed: DONE
+    commitAllowed: DONE
     nextTransitions:
-      - VERIFY_12_FILE_HASHES_IN_WORKING_TREE
-      - STAGE_WATCHDOG_EXACT_12_PATHS
-      - MAKE_CHECK_PASS
-      - COMMIT_ISSUE48_WATCHDOG
       - PUSH_AFTER_OWNER_AUTHORIZATION
+      - APPLY_WP47_02_PATCH_UNBLOCKED
 
   - issue: 49
     title: "feat(durable-orchestration)"
