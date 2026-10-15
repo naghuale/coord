@@ -277,9 +277,11 @@ active:
           name: SPEC_SECTION_11_MISSING
           description: >
             o42 claimed spec section 11 rewrite (operational vs hard-violation).
-            oea searched all docs/ — zero hits for all four metric names.
+            oea searched docs/ for all four metric names (camelCase + snake_case) — zero hits.
+            Negative result is narrow: may be outside docs/ (Go doc comment, untracked markdown,
+            different heading depth, different section numbering).
             docs/operations/CI-GATES-AND-METRICS.md is untracked and outside 12-file subject.
-            ACTION: Coordinator asked o42 to confirm file location and tracked status.
+            ACTION: Coordinator asked o42 to state specific file path + tracked status.
             IMPLEMENTATION_VERIFIED blocked until spec edit is confirmed present in tracked file.
         - id: FA-3
           name: DECORATIVE_MUTANTS_PREEXISTING
@@ -301,7 +303,10 @@ active:
             With D1 continue-on-rejection: rejected session error is dropped silently.
             Only hard counter records it; previously error propagated to Run() (visible to operator).
             For R146 (silent stalls are the failure mode), counter-only may be insufficient.
-            ACTION: Coordinator forwarded to o42 (consider diagnostic event) and o97 (check during D1 review).
+            o97 prior: option (a) — emit one event per skipped rejection — is stronger.
+            Counter is aggregate+unlabelled; operator cannot identify stuck session.
+            If events emitted: appendEvent failure MUST NOT reintroduce loop abort.
+            ACTION: Coordinator forwarded to o42 (implement option a) and o97 (verify at D1 review).
             Classification: question for D1 reviewer, not a finding against change not yet audited.
 
     stageAllowed: false
