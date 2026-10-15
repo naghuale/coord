@@ -873,3 +873,50 @@ func replayHelper(stateDir string) {
 	_, _ = fmt.Fprintf(os.Stdout, "REPLAYED sent=%d outbox=%d status=%s\n", tp.sent, len(run.Outbox), run.Status)
 	_ = coordinator.Close()
 }
+
+func TestCoorddPublishesCanonicalRevisionBundle(t *testing.T) {
+	cfg := testConfig(t)
+	cfg.ControlAddr, cfg.MetricsAddr = freeLoopbackAddrs(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- run(ctx, cfg, func(context.Context, coorddconfig.Config) (transport.Transport, func() error, error) {
+			return &idleTransport{session: "coordd", in: make(chan envelope.Envelope)}, func() error { return nil }, nil
+		})
+	}()
+	path := filepath.Join(cfg.StateDir, "operations", "current.json")
+	timer := time.NewTimer(5 * time.Second)
+	defer timer.Stop()
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	var data []byte
+	for {
+		var err error
+		data, err = os.ReadFile(path)
+		if err == nil {
+			break
+		}
+		select {
+		case err := <-done:
+			t.Fatalf("coordd stopped before projection: %v", err)
+		case <-ticker.C:
+		case <-timer.C:
+			t.Fatal("coordd never wired projection runtime")
+		}
+	}
+	var manifest struct {
+		Revision uint64            `json:"sourceRevision"`
+		Files    map[string]string `json:"files"`
+	}
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if len(manifest.Files) != 3 {
+		t.Fatal("incomplete projection bundle")
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("coordd shutdown: %v", err)
+	}
+}

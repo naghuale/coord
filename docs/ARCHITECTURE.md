@@ -288,3 +288,9 @@ fence. Полный порядок при равных timestamps и clock skew 
 и подписанный `coord/telepathy` byte Client. Host и worker имеют собственные
 checkpoints и session/worktree locks. Это one-run deployment без canonical
 Crewflow adapter и автоматического supervisor recovery. См. [TELEPATHY_HOST.md](TELEPATHY_HOST.md).
+
+## Durable orchestration candidate
+
+<!-- durable-orchestration-candidate -->
+
+Existing coordd now has an isolated deterministic action-dispatch/recovery hook backed by CanonicalState schema v2. Typed actions, Task events, Inbox acceptance and acknowledgement intents share canonical commits. Revision-bound operations projections are rebuildable. This candidate is partial: no live adapters, production replacement Run/session binding, full project scheduler, or LLM authority path. See [implementation boundaries](plans/durable-orchestration/IMPLEMENTATION.md) and the unnumbered [Proposed ADR](plans/durable-orchestration/ADR-PROPOSED.md); the Proposed design is not normative authority. Existing canonical command, ownership and role independence boundaries remain applicable.

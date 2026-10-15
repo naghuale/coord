@@ -4,6 +4,7 @@ import (
 	"coord/agentsession"
 	"coord/envelope"
 	"coord/fsm"
+	"coord/internal/externalaction"
 	"coord/roles"
 	"coord/task"
 	"coord/taskid"
@@ -17,7 +18,7 @@ import (
 	"time"
 )
 
-const CanonicalSchemaVersion uint32 = 1
+const CanonicalSchemaVersion uint32 = 2
 
 // ErrFenceExhausted prevents Task.Fence from wrapping to an earlier writer epoch.
 var ErrFenceExhausted = errors.New("task fence exhausted")
@@ -66,6 +67,8 @@ func InboxKey(actorID, messageID string) string {
 
 // CanonicalState is the versioned durable boundary for Coord-owned state.
 type CanonicalState struct {
+	Revision           uint64                          `json:"revision"`
+	Orchestration      externalaction.State            `json:"orchestration"`
 	SchemaVersion      uint32                          `json:"schema_version"`
 	Tasks              map[taskid.ID]task.Task         `json:"tasks"`
 	Runs               map[string]fsm.Run              `json:"runs"`
@@ -79,6 +82,7 @@ type CanonicalState struct {
 func EmptyCanonicalState() CanonicalState {
 	return CanonicalState{
 		SchemaVersion:      CanonicalSchemaVersion,
+		Orchestration:      externalaction.Empty(),
 		Tasks:              map[taskid.ID]task.Task{},
 		Runs:               map[string]fsm.Run{},
 		Events:             []task.DomainEvent{},
@@ -92,6 +96,13 @@ func EmptyCanonicalState() CanonicalState {
 // NormalizeCanonicalState initializes collections added compatibly to schema
 // v1. Older v1 snapshots have no AgentSession fields until their next save.
 func NormalizeCanonicalState(state CanonicalState) CanonicalState {
+	legacy := state.SchemaVersion == 1
+	if legacy {
+		state.SchemaVersion = CanonicalSchemaVersion
+	}
+	if legacy && state.Orchestration.Actions == nil && state.Orchestration.Observations == nil && state.Orchestration.Receipts == nil && state.Orchestration.Events == nil {
+		state.Orchestration = externalaction.Empty()
+	}
 	if state.AgentSessions == nil {
 		state.AgentSessions = map[string]agentsession.Session{}
 	}
@@ -173,6 +184,18 @@ func ValidateCanonicalState(state CanonicalState) error {
 	if state.SchemaVersion != CanonicalSchemaVersion {
 		return fmt.Errorf("unsupported canonical schema version %d", state.SchemaVersion)
 	}
+	if err := externalaction.Validate(state.Orchestration, state.Revision); err != nil {
+		return err
+	}
+	for _, a := range state.Orchestration.Actions {
+		r, ok := state.Runs[a.Binding.RunID]
+		_, taskOK := state.Tasks[taskid.ID(a.Binding.TaskID)]
+		_, sessionOK := state.AgentSessions[a.Binding.SessionID]
+		if !ok || !taskOK || !sessionOK || r.TaskID.String() != a.Binding.TaskID {
+			return fmt.Errorf("external action binding references missing canonical aggregate")
+		}
+	}
+
 	if state.Tasks == nil || state.Runs == nil || state.Events == nil || state.Inbox == nil || state.Outbox == nil {
 		return fmt.Errorf("canonical state collections must be present")
 	}
@@ -601,6 +624,13 @@ func (s *CanonicalStore) UpdateCanonical(fn func(*CanonicalState) error) error {
 	if err := fn(&next); err != nil {
 		return err
 	}
+	if reflect.DeepEqual(s.state, next) {
+		return nil
+	}
+	if s.state.Revision == ^uint64(0) {
+		return fmt.Errorf("canonical revision exhausted")
+	}
+	next.Revision = s.state.Revision + 1
 	if err := ValidateCanonicalState(next); err != nil {
 		return err
 	}
@@ -675,6 +705,10 @@ func (s *CanonicalStore) applyInboxCommandLocked(actorID, messageID string, task
 		return InboxReceipt{}, false, fmt.Errorf("command receipt revision does not match updated Task")
 	}
 	next.Inbox[key] = receipt
+	if s.state.Revision == ^uint64(0) {
+		return InboxReceipt{}, false, fmt.Errorf("canonical revision exhausted")
+	}
+	next.Revision = s.state.Revision + 1
 	if err := ValidateCanonicalState(next); err != nil {
 		return InboxReceipt{}, false, err
 	}
@@ -698,6 +732,9 @@ func (s *CanonicalStore) applyInboxCommandLocked(actorID, messageID string, task
 func ValidateCanonicalTransition(previous, next CanonicalState) error {
 	previous = NormalizeCanonicalState(previous)
 	next = NormalizeCanonicalState(next)
+	if err := externalaction.ValidateTransition(previous.Orchestration, next.Orchestration, next.Revision); err != nil {
+		return err
+	}
 	if err := agentsession.ValidateTransition(previous.AgentSessions, next.AgentSessions, previous.AgentSessionEvents, next.AgentSessionEvents); err != nil {
 		return err
 	}

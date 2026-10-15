@@ -30,6 +30,7 @@ def run_case(name, mutate, expected):
             '<!-- project-dependency-graph -->',
             '<!-- startup-card-read-api -->',
             '<!-- session-registry-supervisor -->',
+            '<!-- durable-orchestration-candidate -->',
         ]) + '\n'
         tgt_anchors = '\n'.join([
             '<!-- canonical-persistence -->',
@@ -41,6 +42,7 @@ def run_case(name, mutate, expected):
             '<!-- project-dependency-graph -->',
             '<!-- startup-card-read-api -->',
             '<!-- session-registry-supervisor -->',
+            '<!-- durable-orchestration-candidate -->',
         ]) + '\n'
         (repo/"docs/ARCHITECTURE.md").write_text(arch_anchors)
         (repo/"docs/TARGET-ARCHITECTURE.md").write_text(tgt_anchors)

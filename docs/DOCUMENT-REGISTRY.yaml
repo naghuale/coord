@@ -4016,6 +4016,34 @@ documents:
       reviewer: required
       auditor: required
       owner: only_for_class_R
+  - id: durable-orchestration-adr-proposed
+    path: docs/plans/durable-orchestration/ADR-PROPOSED.md
+    class: design
+    status: proposed
+    purpose: ["Proposed durable orchestration design; issue 49; not current normative authority"]
+    usedBy: [COORDINATOR, EXECUTOR, REVIEWER, AUDITOR]
+    readWhen: [ASSIGNMENT_START]
+    updateWhen: [COMPONENT_IMPLEMENTATION_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    currentNormativeAuthority: false
+    normativeAuthority: proposed_direction
+    ownership: {creates: COORDINATOR, updates: EXECUTOR, accountable: OWNER}
+    acceptance: {reviewer: required, auditor: required, owner: required}
+  - id: durable-orchestration-implementation-candidate
+    path: docs/plans/durable-orchestration/IMPLEMENTATION.md
+    class: architecture_status
+    status: active
+    purpose: ["Implementation candidate boundaries and validation for issue 49"]
+    usedBy: [COORDINATOR, EXECUTOR, REVIEWER, AUDITOR]
+    readWhen: [ASSIGNMENT_START]
+    updateWhen: [COMPONENT_IMPLEMENTATION_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    currentNormativeAuthority: false
+    normativeAuthority: none
+    ownership: {creates: EXECUTOR, updates: EXECUTOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: required, owner: false}
 unregisteredDocumentPolicy:
   action: fail
   code: DOCUMENT_NOT_REGISTERED

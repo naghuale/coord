@@ -8,6 +8,8 @@ import (
 	"coord/daemon"
 	"coord/internal/coorddconfig"
 	"coord/internal/filelock"
+	"coord/internal/orchestration"
+	"coord/internal/projection"
 	"coord/roles"
 	"coord/store"
 	"coord/telepathy"
@@ -181,6 +183,13 @@ func runWithWriterFactories(ctx context.Context, cfg coorddconfig.Config, factor
 		return &startupFailure{section: "runtime", ownership: "released", namespaceLock: "released", exitCode: 1, err: errors.Join(fmt.Errorf("create coordinator: %w", err), closeTransport(), registry.Close(), canonical.Close())}
 	}
 	coordinator.RoleRegistry = registry
+	// No live external-action adapter is qualified in this slice. Existing intents
+	// recover durably; an unavailable adapter fails closed without launching agents.
+	if canonicalStore, ok := canonical.(*store.CanonicalStore); ok {
+		workflow := orchestration.New(canonicalStore, nil, "coordd", time.Now)
+		workflow.Projector = &projection.Writer{Root: filepath.Join(cfg.StateDir, "operations")}
+		coordinator.Workflow = workflow
+	}
 	host, err := daemon.New(coordinator, daemon.Config{
 		ControlAddr: cfg.ControlAddr, MetricsAddr: cfg.MetricsAddr,
 		ControlToken: cfg.ControlToken, ShutdownTimeout: 10 * time.Second,
