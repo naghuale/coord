@@ -1,6 +1,6 @@
 apiVersion: coord.dev/v1alpha1
 kind: ProjectCheckpoint
-checkpointAt: 2026-10-10
+checkpointAt: 2026-10-15
 
 projectId: coord
 projectRoot:
@@ -13,153 +13,236 @@ sessionLaunchCwd:
 source:
   repository: https://github.com/naghuale/coord.git
   integrationBranch: p0-2-task
-  integrationHead: b490f48
+  integrationHead: 1ad9df67c493930e40c217f0006d67bc8c300fdd
+  remoteCI: PASS
   note: >
-    p0-2-task @ 9af98dd includes:
-    3b9322e (#30 Discussion Graph),
-    92e6e94 (#35 unreachable guard removed),
-    ee71f2e (ops/ledger-bootstrap R145),
-    a782ddd (globalRoot invariant fix),
-    2a9c8b0 (#36 whitespace AgentID check),
-    c8f2fda (#30 residual Discussion tests update),
-    6b07211 (portability-bootstrap: CONTEXT-INDEX + 4-layer model),
-    3276e85 (portability-bootstrap v2: ops paths + passConditions fix),
-    dea1fa4 (#38 remove hardcoded /tmp),
-    603761c (completion-report: Completion Report standard),
-    a13957c (completion-report v2: GitHub Issue publishing + text fields),
-    908af6e (completion-report v3: READY_FOR_INTEGRATION in schema),
-    f192b69 (#39 RFC-0001 Proposed registered),
-    2ec0468 (#39 RFC-0001 Accepted by OWNER),
-    5465e80 (#40 AGENTS.md sync),
-    8582d15 (#37 wrapper symlink containment),
-    9863dbd (#41 coordinator state machine spec),
-    837c5f0 (#41 arch sync kit 9 components),
-    66a15ba (#41 CI fix PyYAML graceful),
-    180cac7 (#37 fix socket path for wrapper),
-    1f12fe4 (docs: OwnerBoundaryCheck gate),
-    7c23875 (docs: LOCAL_CONFIG_SYNC as FD),
-    d31df66 (docs: coordinator autonomy presumption and next-action algorithm),
-    cd7aa5b (#42 Shadow Validation package),
-    a261fc3 (#42 docs: TARGET-ARCHITECTURE + CHANGELOG),
-    c8c1416 (#42 fix: deep-snapshot read-only invariant + CHANGELOG evidence),
-    ee07eed (ADR-0007 CHANGES_REQUIRED FD cleanup),
-    aa90ea5 (ADR-0008 CHANGES_REQUIRED FD cleanup),
-    c177be1 (AGENT_INSTRUCTIONS CHANGES_REQUIRED FD cleanup),
-    9af98dd (#6 canonical Executor RESULT path R117/R124),
-    5522da8 (ARCHITECTURE.md CHANGES_REQUIRED FD cleanup),
-    b490f48 (CURRENT_VERSION.md CHANGES_REQUIRED FD cleanup).
+    Published authority: 1ad9df67 (CI PASS).
+    Local commit 5e60d81 (issue #47 WP-47-01: R146 Document Registry binding)
+    is NOT pushed; fullMakeCheck NOT_EVALUATED in clean env (local jsonschema dep).
+    Go checks PASS, Review ACCEPTED (o97), Audit ACCEPTED (oea).
+
+localState:
+  localHead: 5e60d81dcd0781a944bc05040596601d66d61d3f
+  pushedToRemote: false
+  staged: []
+  unpublishedCommits:
+    - sha: 5e60d81
+      issue: 47
+      title: "docs(decision): add Document Registry binding for OWNER class R decision R146"
+      review: REVIEW_ACCEPTED
+      audit: AUDIT_ACCEPTED
+      goChecks: PASS
+      fullMakeCheckCleanEnv: NOT_EVALUATED
+      remoteCI: NOT_EVALUATED
+      pushed: false
+
+workingTree:
+  modifiedTrackedFiles: 31
+  untrackedFiles: 62
+  staged: 0
+  breakdown:
+    issue47_proven:
+      paths:
+        - AGENTS.md
+        - docs/operations/ACTION-MAP.yaml
+        - docs/operations/COORDINATOR-STATE-MACHINE.md
+        - docs/operations/schemas/coordinator-state-machine.yaml
+        - docs/templates/COORDINATOR-RECOVERY-PROMPT.md
+        - internal/actionmap/model.go
+        - internal/actionmap/validate.go
+        - internal/actionmap/validate_test.go
+      count: 8
+      status: hunk_verified_no_mixed_hunks
+      stageAllowed: conditional
+      commitAllowed: false
+
+    issue48_proven:
+      paths:
+        - internal/watchdog/model.go
+        - internal/watchdog/policy.go
+        - internal/watchdog/clock.go
+        - internal/watchdog/registry.go
+        - internal/watchdog/metrics.go
+        - internal/watchdog/watchdog.go
+        - internal/watchdog/completion.go
+        - internal/watchdog/fakeclock_test.go
+        - internal/watchdog/watchdog_test.go
+        - internal/coordinator/watchdog.go
+        - internal/coordinator/watchdog_test.go
+        - internal/agentsession/heartbeat.go
+      count: 12
+      status: CHANGES_REQUIRED
+      executor: opencode:workspace-o42
+      stageAllowed: false
+      commitAllowed: false
+
+    preserve_unknown_tracked:
+      count: 23
+      paths:
+        - .gitignore
+        - README.md
+        - cmd/coord/bootstrap.md
+        - cmd/coord/sessions_test.go
+        - docs/AGENT_INSTRUCTIONS.md
+        - docs/DEFECT_PATTERNS.md
+        - docs/DEVELOPMENT.md
+        - docs/EXPERIMENTS.md
+        - docs/OPERATIONS.md
+        - docs/QUICKSTART.md
+        - docs/ROADMAP.md
+        - docs/ROLE_PROMPTS.md
+        - docs/ROLE_SESSIONS.md
+        - docs/SESSION_CLI.md
+        - docs/TARGET-ARCHITECTURE.md
+        - docs/TASK-MODEL.md
+        - docs/TELEPATHY_HOST.md
+        - docs/TRANSPORT.md
+        - docs/UX_AUDIT.md
+        - docs/VERIFICATION.md
+        - docs/architecture/COMPONENT-STATUS.yaml
+        - docs/operations/ARCHITECTURE-SYNC-PROCESS.md
+        - scripts/check-architecture-sync-test
+      ownershipConfidence: UNKNOWN
+      mutationAllowed: false
+
+    preserve_unknown_untracked:
+      count: 50
+      examples:
+        - .github/workflows/action-map.yml
+        - .gitlab-ci.example.yml
+        - .gitlab/ci/action-map-metrics.yml
+        - .gitlab/ci/action-map.yml
+        - GITLAB-CI-INTEGRATION.md
+        - ci/baselines/action-map/README.md
+        - ci/baselines/action-map/manifest.yaml
+        - docs/operations/ACTION-MAP.md
+        - docs/operations/CI-GATES-AND-METRICS.md
+        - docs/operations/evaluation/action-map/
+        - docs/operations/scenarios/action-map/
+        - docs/rfc/RFC-0002-AI-AGENT-ENGINEERING-GOVERNANCE.md
+        - docs/templates/AGENT-BOOTSTRAP-TEMPLATE.md
+        - scripts/activate-action-map-baseline
+        - scripts/check-action-map
+        - scripts/check-document-registry
+        - scripts/check-defect-patterns
+      ownershipConfidence: UNKNOWN
+      mutationAllowed: false
+      note: >
+        Python scripts (check-defect-patterns, check-document-registry, etc.)
+        are PROHIBITED from staging after Go migration (issue #45).
 
 issues:
   completed:
     - issue: 30
-      title: Discussion Graph implementation
       commit: 3b9322e
-      state: COMPLETE
-
     - issue: 35
-      title: Remove unreachable RoleSelection nil guard
-      class: TD
       commit: 92e6e94
-      review: ACCEPTED
-      ci: PASS
-      state: COMPLETE
-
     - issue: 36
-      title: Reject whitespace AgentID in ApplyAgentCommand
-      class: TD-R2
-      commits: [2a9c8b0, c8f2fda]
-      reviewer: codex:workspace-c9d
-      reviewVerdict: ACCEPTED
-      auditor: opencode:workspace-o73
-      auditVerdict: AUDIT_ACCEPTED
-      ci: PASS
-      state: COMPLETE
-
-    - id: r145-ops-ledger-bootstrap
-      title: Operations Ledger bootstrap spec (R145)
-      commits: [ee71f2e, a782ddd]
-      reviewer: opencode:workspace-o73
-      reviewVerdict: ACCEPTED
-      state: COMPLETE
-
-  active:
-    - id: portability-bootstrap
-      title: "Project context portability: CONTEXT-INDEX + 4-layer model + context-check schema"
-      commits: [6b07211, 3276e85]
-      reviewer: codex:workspace-c70
-      reviewVerdict: ACCEPTED
-      auditor: opencode:workspace-o73
-      auditVerdict: AUDIT_ACCEPTED
-      ci: PASS
-      state: COMPLETE
-
-    - id: completion-report
-      title: "Completion Report standard: format, GitHub Issue publishing, close conditions"
-      commits: [603761c, a13957c, 908af6e]
-      reviewer: codex:workspace-c9d
-      reviewerVerdict: ACCEPTED
-      reviewer2: opencode:workspace-o73
-      reviewer2Verdict: REVIEW_ACCEPTED
-      auditor: N/A — not TD-R2 (docs only)
-      ci: PASS
-      state: COMPLETE
-
-    - issue: 39
-      title: "RFC-0001: Local Project Workspace, Operations Ledger and Context Management"
-      executor: codex:workspace-c9d
-      reviewer: opencode:workspace-o73
-      reviewVerdict: REVIEW_ACCEPTED
-      auditor: N/A — not TD-R2 (docs only)
-      commit: 2ec0468
-      ci: PENDING
-      state: CLOSED
-      result: RFC-0001_ACCEPTED
-      ownerDecision: "OWNER (naghuale) accepted 2026-10-10"
-      completionReport: "https://github.com/naghuale/coord/issues/39#issuecomment-6093268487"
-      detailsLoaded: false
-
-    - issue: 6
-      title: Canonical Executor RESULT path (R117/R124)
-      class: TD
-      commit: 9af98dd
-      ci: PENDING
-      state: READY_FOR_REVIEW
-
-  active:
-    - issue: 41
-      title: Coordinator State Machine Specification + Architecture Sync Kit
-      class: FD
-      commits: [9863dbd, 837c5f0, 66a15ba]
-      reviewer: codex:workspace-c9d
-      reviewVerdict: REVIEW_ACCEPTED
-      auditor: opencode:workspace-o57
-      auditVerdict: AUDIT_ACCEPTED
-      ci: PASS
-      state: COMPLETE
-      completionReport: "https://github.com/naghuale/coord/issues/41#issuecomment-6094660954"
-
+      commit: 5522da8
     - issue: 37
-      title: Migrate coordinator → repositories/coord
-      state: COMPLETE
-      note: directory migrated; COORD_REPOSITORY_ROOT = workspace-01/repositories/coord; make check PASS; norms updated
+      commits: [8582d15, 180cac7]
+    - issue: 38
+      commit: dea1fa4
+    - issue: 39
+      commit: 2ec0468
+    - issue: 41
+      commit: 9863dbd
+    - issue: 42
+      commit: c8c1416
+    - issue: 44
+      commit: 1ad9df67
+      state: COMPLETE_REMOTE_CI_PASS
+    - issue: 45
+      note: Go migration complete (Python governance scripts PROHIBITED)
+    - issue: 46
+      note: Pre-issue work included in #44 baseline
 
-  blocked:
-    - issue: 34
-      status: BLOCKED
+  active:
+    - issue: 47
+      title: >
+        Active Coordinator dispatch R146 — process/state-machine subject
+      scope:
+        - AGENTS.md (R146 rules, active coordinator obligations)
+        - docs/operations/ACTION-MAP.yaml (AGENT_ASSIGNMENT_DISPATCHED event)
+        - docs/operations/COORDINATOR-STATE-MACHINE.md (dispatch lifecycle)
+        - docs/operations/schemas/coordinator-state-machine.yaml
+        - docs/templates/COORDINATOR-RECOVERY-PROMPT.md
+        - internal/actionmap/model.go
+        - internal/actionmap/validate.go
+        - internal/actionmap/validate_test.go
+      wp47_01:
+        commit: 5e60d81
+        title: Document Registry binding for R146
+        status: LOCAL_COMMITTED_NOT_PUBLISHED
+        review: REVIEW_ACCEPTED
+        audit: AUDIT_ACCEPTED
+      remainingScope:
+        status: HUNK_VERIFIED_AWAITING_COMMIT
+        stageAllowed: conditional
+        commitAllowed: false
+        gate: >
+          make check PASS in clean env + OWNER push authorization
 
-workspaceModel:
-  allAgentsLaunchFromGlobalRoot: true
-  systemTmp: deny
-  COORD_REPOSITORY_ROOT: workspace-01/repositories/coord
+    - issue: 48
+      title: Heartbeat watchdog runtime
+      scope:
+        - internal/watchdog/* (12 files)
+        - internal/coordinator/watchdog.go
+        - internal/coordinator/watchdog_test.go
+        - internal/agentsession/heartbeat.go
+      note: >
+        Watchdog scope belongs to #48, NOT #47.
+        Coordinator previously tracked watchdog under #47 — corrected by OWNER
+        scope reconciliation 2026-10-15.
+      status: CHANGES_REQUIRED
+      executor: opencode:workspace-o42
+      corrections:
+        - B1: TestDeliveredIsNotRunning missing
+        - B2: fence/dispatch ordering not asserted
+        - B3: hard metrics tautological (no production call sites)
+        - lifecycle: RunWithWatchdog lifecycle hang (c3f observation, forwarded to o42)
+      stageAllowed: false
+      commitAllowed: false
+      gate: >
+        IMPLEMENTATION_VERIFIED (o42) + REVIEW_ACCEPTED + AUDIT_ACCEPTED +
+        make check PASS + exact subject frozen
 
-stage: post-rfc-0001
+agentSessions:
+  active:
+    - id: opencode:workspace-o42
+      role: EXECUTOR
+      issue: 48
+      assignment: issue-48-watchdog-corrections-round2
+      state: RUNNING
+      lastActivity: corrections-dispatched
+      heartbeat: NOT_EVALUATED
 
-security:
-  prohibitedActions:
-    - do not modify workspace-00/legacy-qwen
-    - do not reset or delete workspace-2-codex or workspace-2-opencode
-    - do not force-push or rewrite published history
-    - do not mix changes from different issues in one commit
-    - do not translate Proposed ADR to Accepted (OWNER only)
-    - do not weaken fail-closed behavior
-    - do not accept new product norms as OWNER
+  idle:
+    - id: opencode:workspace-o97
+      role: REVIEWER
+      lastCompleted: review-issue47-watchdog-slice (CHANGES_REQUIRED)
+      available: true
+
+    - id: opencode:workspace-oea
+      role: AUDITOR
+      lastCompleted: audit-wp47-01-r146-registry (AUDIT_ACCEPTED)
+      available: true
+
+    - id: codex:workspace-c3f
+      role: READER
+      lastCompleted: project-audit-read-only
+      available: true
+
+pendingActions:
+  ownerRequired:
+    - push 5e60d81 to remote (explicit push authorization needed)
+    - push ops/coord/project state updates
+    - GitHub issue #47 body update (stale: FROZEN_PENDING_TRACKING)
+    - GitHub issue #48 body update (misleading: claims IMPLEMENTED)
+
+  coordinatorNext:
+    - await o42 IMPLEMENTATION_VERIFIED (round 2: B1/B2/B3 + lifecycle)
+    - dispatch o97 for watchdog re-review after IMPLEMENTATION_VERIFIED
+    - dispatch Auditor for watchdog after REVIEW_ACCEPTED
+    - stage + commit issue #48 watchdog subject
+    - stage + commit issue #47 remaining 8 files

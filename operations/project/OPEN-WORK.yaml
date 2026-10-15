@@ -1,169 +1,116 @@
 apiVersion: coord.dev/v1alpha1
 kind: OpenWork
-updatedAt: 2026-10-10
+updatedAt: 2026-10-15
 
 project:
   id: coord
   source:
     branch: p0-2-task
-    commit: 9af98dd
+    remoteHead: 1ad9df67c493930e40c217f0006d67bc8c300fdd
+    localHead: 5e60d81dcd0781a944bc05040596601d66d61d3f
+    remoteCI: PASS
+    localPushed: false
 
-currentStage: workspace-migration
+currentStage: issue-47-48-active
 
-active: []
+active:
+  - issue: 47
+    title: "Active Coordinator dispatch R146 — process/state-machine scope"
+    state: LOCAL_COMMITTED_NOT_PUBLISHED
+    integrationSubject:
+      commit: 5e60d81
+      description: "WP-47-01: Document Registry binding for R146"
+      status: NOT_PUSHED
+      review: REVIEW_ACCEPTED
+      audit: AUDIT_ACCEPTED
+      fullMakeCheckCleanEnv: NOT_EVALUATED
+    workingTreeSubject:
+      paths:
+        - AGENTS.md
+        - docs/operations/ACTION-MAP.yaml
+        - docs/operations/COORDINATOR-STATE-MACHINE.md
+        - docs/operations/schemas/coordinator-state-machine.yaml
+        - docs/templates/COORDINATOR-RECOVERY-PROMPT.md
+        - internal/actionmap/model.go
+        - internal/actionmap/validate.go
+        - internal/actionmap/validate_test.go
+      status: HUNK_VERIFIED_AWAITING_COMMIT
+      stageAllowed: conditional
+      commitAllowed: false
+    nextTransitions:
+      - AWAIT_ISSUE48_COMMIT
+      - STAGE_ISSUE47_REMAINING
+      - COMMIT_ISSUE47_REMAINING
+      - PUSH_AFTER_OWNER_AUTHORIZATION
 
-completedThisSession:
-  - issue: 6
-    title: Canonical Executor RESULT path (R117/R124)
-    class: TD
-    commit: 9af98dd
-    mergedTo: p0-2-task
-    ci: PENDING
-    state: READY_FOR_REVIEW
+  - issue: 48
+    title: "Heartbeat watchdog runtime"
+    state: IMPLEMENTATION_CORRECTION
     note: >
-      fail-closed gate in coordinator.go; RecordExecutorResult in store;
-      ExecutorOutcome/ExecutorResult types; validateTaskResultEvents Executor;
-      3 target tests; make check PASS
+      Watchdog scope is #48, not #47. Corrected by OWNER scope reconciliation
+      2026-10-15. Previously mis-tracked under #47.
+    executor: opencode:workspace-o42
+    executorState: RUNNING
+    subject: WORKING_TREE
+    paths:
+      - internal/watchdog/model.go
+      - internal/watchdog/policy.go
+      - internal/watchdog/clock.go
+      - internal/watchdog/registry.go
+      - internal/watchdog/metrics.go
+      - internal/watchdog/watchdog.go
+      - internal/watchdog/completion.go
+      - internal/watchdog/fakeclock_test.go
+      - internal/watchdog/watchdog_test.go
+      - internal/coordinator/watchdog.go
+      - internal/coordinator/watchdog_test.go
+      - internal/agentsession/heartbeat.go
+    openFindings:
+      - id: B1
+        description: "TestDeliveredIsNotRunning missing — DELIVERED→RUNNING mutation survives"
+      - id: B2
+        description: "fence/dispatch ordering not asserted — ordering mutation survives"
+      - id: B3
+        description: "hard metrics have zero production call sites — TestMutationHardMetricsStayZero tautological"
+      - id: LC1
+        description: "RunWithWatchdog lifecycle hang — nil stateMachine return does not cancel ctx"
+        source: "codex:workspace-c3f observation"
+        blocking: TBD_by_o42
+    stageAllowed: false
+    commitAllowed: false
+    nextTransitions:
+      - AWAIT_IMPLEMENTATION_VERIFIED_ROUND2
+      - DISPATCH_REVIEW_AFTER_VERIFIED
+      - DISPATCH_AUDIT_AFTER_REVIEW_ACCEPTED
+      - STAGE_WATCHDOG_EXACT_12_PATHS
+      - COMMIT_ISSUE48_WATCHDOG
+      - PUSH_AFTER_OWNER_AUTHORIZATION
 
-  - id: current-version-md-changes-required
-    title: CURRENT_VERSION.md CHANGES_REQUIRED FD cleanup
-    class: FD
-    commit: b490f48
-    mergedTo: p0-2-task
-    state: COMPLETE
+foreignOrUnknown:
+  - category: preserve_unknown_tracked
+    count: 23
+    decision: PRESERVE_UNKNOWN
+    mutationAllowed: false
+    scopeReconciliationRequired: true
+
+  - category: preserve_unknown_untracked
+    count: 50
+    decision: PRESERVE_UNKNOWN
+    mutationAllowed: false
     note: >
-      blocking: MUST NOT blockquote added; P0-2 "завершение" replaced by
-      "Позднейшая пометка" + "не означает закрытие всей границы"; live evidence
-      path marked non-portable. significant: "Что запускать"→"запускалось";
-      cmd/coord as legacy not coordd; Telepathy 0.8.0 historical-only;
-      "Real model: false"→natural language; commits separated into new section.
-      make check PASS.
+      Includes action-map ecosystem scripts, CI configs, evaluation scenarios,
+      RFC documents. Python governance scripts PROHIBITED from staging (issue #45).
 
-  - id: architecture-md-changes-required
-    title: ARCHITECTURE.md CHANGES_REQUIRED FD cleanup
-    class: FD
-    commit: 5522da8
-    mergedTo: p0-2-task
-    state: COMPLETE
-    note: >
-      blocking: result section contradiction fixed, recovery guarantee corrected;
-      significant: TARGET-ARCHITECTURE link, atomic mutation scope, Shadow Validation
-      ROADMAP source, Discussion Graph actor provenance; editorial: Coordinator vs
-      coordd, proposed labels, section name, Telepathy link, backtick identifiers.
-      make check PASS.
+livenessRules:
+  deliveredIsNotAdmitted: true
+  admittedIsNotRunning: true
+  runningRequiresFreshHeartbeat: true
+  staleRequiresReconcile: true
 
-  - id: adr-0007-changes-required
-    title: ADR-0007 PROJECT-BRIEF CHANGES_REQUIRED FD cleanup
-    class: FD
-    commit: ee07eed
-    mergedTo: p0-2-task
-    state: COMPLETE
-
-  - id: adr-0008-changes-required
-    title: ADR-0008 AUTONOMOUS-COMMIT CHANGES_REQUIRED FD cleanup
-    class: FD
-    commit: aa90ea5
-    mergedTo: p0-2-task
-    state: COMPLETE
-
-  - id: agent-instructions-changes-required
-    title: AGENT_INSTRUCTIONS CHANGES_REQUIRED FD cleanup
-    class: FD
-    commit: c177be1
-    mergedTo: p0-2-task
-    state: COMPLETE
-
-  - issue: 37
-    state: COMPLETE
-    commits: [8582d15, 180cac7, 1f12fe4, 7c23875]
-    mergedTo: p0-2-task
-    ci: PASS
-    note: wrapper REVIEW_ACCEPTED (Codex); directory migrated to repositories/coord; bootstrap file created; make check PASS
-
-  - id: coordinator-autonomy-norms
-    state: COMPLETE
-    commit: d31df66
-    mergedTo: p0-2-task
-    ci: PASS
-    note: "10-point normative update: autonomy presumption, priority order, false-choice ban, OWNER_NOTIFICATION, Decision Trace, prohibited OWNER reasons, new SM states, behavioral scenarios, metrics"
-
-  - issue: 42
-    state: COMPLETE
-    commits: [cd7aa5b, a261fc3, c8c1416]
-    mergedTo: p0-2-task
-    reviewer: codex:workspace-c9d
-    reviewVerdict: REVIEW_ACCEPTED
-    ci: PENDING
-    note: "Shadow Validation (ADR-0001 step 10): ACCEPTED c8c1416; 12 tests, deep-snapshot mutation detection"
-    completionReport: "https://github.com/naghuale/coord/issues/42#issuecomment-6095308291"
-
-  - issue: 41
-    state: COMPLETE
-    commits: [9863dbd, 837c5f0, 66a15ba]
-    mergedTo: p0-2-task
-    ci: PASS
-    note: Coordinator State Machine spec + Architecture Sync Kit (9 components)
-    completionReport: "https://github.com/naghuale/coord/issues/41#issuecomment-6094660954"
-
-
-  - id: portability-bootstrap
-    state: COMPLETE
-    commits: [6b07211, 3276e85]
-    mergedTo: p0-2-task
-    ci: PASS
-
-  - issue: 38
-    state: COMPLETE
-    commit: dea1fa4
-    mergedTo: p0-2-task
-    ci: PASS
-    note: systemTmp enforcement now active
-
-  - id: completion-report
-    state: COMPLETE
-    commits: [603761c, a13957c, 908af6e]
-    mergedTo: p0-2-task
-    p0-2-task-head: 908af6e
-    ci: PASS
-    note: Completion Report standard added to OPERATIONS-LEDGER; GitHub Issue publishing rule; close conditions
-
-  - issue: 39
-    state: CLOSED
-    result: RFC-0001_ACCEPTED
-    commit: 2ec0468
-    mergedTo: p0-2-task
-    p0-2-task-head: 2ec0468
-    ci: PENDING
-    ownerDecision: "OWNER (naghuale) accepted 2026-10-10"
-    completionReport: "https://github.com/naghuale/coord/issues/39#issuecomment-6093268487"
-    detailsLoaded: false
-
-blocked:
-  - issue: 34
-    reason: WAITING_FOR_ADR-0009-and-Session-Supervisor
-
-openDecisions:
-  - id: telepathy-update
-    description: >
-      telepathy 0.8.0 installed; 0.9.0 available.
-      Update requires: node /Users/andreybabenko/.claude/plugins/cache/telepathy/telepathy/0.8.0/dist/update-all.mjs
-      Requires OWNER approval before running.
-
-completedRecent:
-  - issue: 35
-    state: COMPLETE
-    commit: 92e6e94
-    ci: PASS
-    review: ACCEPTED
-
-  - id: r145-bootstrap
-    title: Operations Ledger bootstrap (R145)
-    state: COMPLETE
-    commits: [ade55e8, 94ef203, ee71f2e, a782ddd]
-    review: ACCEPTED
-    mergedTo: p0-2-task
-
-  - id: globalroot-invariant
-    title: GlobalRoot invariant — all agents from COORD_GLOBAL_ROOT
-    state: COMPLETE
-    note: "projects.yaml updated to env-var schema; memory updated; worktrees migrated"
+operationalBoundaries:
+  ownerRequired: []
+  humanActionRequired: []
+  blockedExternal:
+    - description: "push 5e60d81 and ops state — awaiting OWNER push authorization"
+    - description: "GitHub issue #47 body update (stale: FROZEN_PENDING_TRACKING)"
+    - description: "GitHub issue #48 body update (misleading: claims watchdog IMPLEMENTED)"
