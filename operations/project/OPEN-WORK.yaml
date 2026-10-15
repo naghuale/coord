@@ -649,14 +649,17 @@ active:
         patchFile: /Users/andreybabenko/Downloads/workspace/workspace-01/.scratch/tmp/agents-replacement-rule-v2.patch
         patchDigest: sha256:538da339c0fcd395c417296277f9446643adef5d03c8fd551c9e2931e4d430a5
         baseSha: 3cd653ab9d659fd7d0030b5dd59c63da8e73b552
-        commitSha: 437a3b3d4a4265489da1ca446332000113c3512e
+        commitSha: c6a472efab74b243209ac7ac6caf6413fa0a0fcc
         treeHash: 4d34227a75b20b9312f8351684c4839fe02ed551
         blobHash: 20fbe7c82f5303e80588243b353829d3d79075be
         files:
           - AGENTS.md
-        status: REVIEW_RE_DISPATCHED
+        status: AUDIT_DISPATCHED
         reviewer: opencode:workspace-o42
         reviewAssignment: REVIEW-AGENTS-REPLACEMENT-O42-V2
+        reviewVerdict: REVIEW_ACCEPTED
+        auditor: codex:workspace-c3f
+        auditAssignment: AUDIT-AGENTS-REPLACEMENT-C3F
         deadReviewerRevoked: REVIEW-AGENTS-REPLACEMENT-O97 (o97 DEAD)
         diffCheck: PASS
         lines: 43 (+0-)
@@ -667,9 +670,11 @@ active:
         directMainCommitAllowed: false
         reviewRound1:
           result: CHANGES_REQUIRED
-          reviewer: opencode:workspace-o42
           findings: [F1: wrong treeHash, F2: missing R146 attribution, F3: RUNNING gate beyond R146, F4: BLOCKED_EXTERNAL missing, F5: generic independence, F6: no SESSION_REPLACED ref]
-          fixApplied: F1-F6 all addressed in commitSha 437a3b3d
+        reviewRound2:
+          result: REVIEW_ACCEPTED
+          reviewer: opencode:workspace-o42
+          allFindingsFixed: true
       technicalSubject:
         tracking: dispatch-integration milestone
         status: IMPLEMENTATION_REQUIRED
@@ -682,7 +687,7 @@ active:
         auditRequired: true
     nextTransitions:
       - AWAIT_AUDIT_47_FROM_C3F (AUDIT-47-R146-C3F dispatched to codex:workspace-c3f)
-      - AWAIT_REVIEW_NORMATIVE_CORRECTION_V2 (REVIEW-AGENTS-REPLACEMENT-O42-V2 re-dispatched to opencode:workspace-o42)
+      - AWAIT_AUDIT_NORMATIVE_CORRECTION (AUDIT-AGENTS-REPLACEMENT-C3F dispatched to codex:workspace-c3f)
 
 foreignOrUnknown:
   - category: preserve_unknown_tracked
