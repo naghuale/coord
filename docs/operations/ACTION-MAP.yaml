@@ -552,5 +552,14 @@ recoveryTransitions:
     when: credential, MFA, protected runner or physical action required
   OWNER_REQUIRED:
     when: new norm required, norm conflict, reserved decision
+    reasonCodes:
+      - NEW_NORM_REQUIRED
+      - ACCEPTED_NORM_CONFLICT
+      - RESERVED_OWNER_DECISION
+      - TRUST_BOUNDARY_CHANGE
+      - DATA_BOUNDARY_CHANGE
+      - PROVIDER_BOUNDARY_CHANGE
+      - FAIL_CLOSED_WEAKENING
+      - RISK_ACCEPTANCE_REQUIRED
   PRESERVE_AND_STOP:
     when: invalid workspace binding, evidence damage risk, unknown staged changes, or real authority conflict
