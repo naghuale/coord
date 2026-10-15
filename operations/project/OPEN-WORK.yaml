@@ -644,8 +644,35 @@ active:
       gitDiffCheck: PASS
       checkArchSyncSelfTest: WORKTREE_ENV_ARTIFACT (git commit fails in temp repo due to copied .git worktree link; PASS in CI normal checkout)
       integrationVerdict: PASS
+    pendingCorrection:
+      normativeSubject:
+        id: correction/agents-replacement-rule
+        branch: correction/agents-replacement-rule
+        worktree: /Users/andreybabenko/Downloads/workspace/workspace-01/.scratch/tmp/correction-agents-replacement
+        patchFile: /Users/andreybabenko/Downloads/workspace/workspace-01/.scratch/tmp/agents-replacement-rule.patch
+        files:
+          - AGENTS.md
+        status: FREEZE_FOR_REVIEW
+        diffCheck: PASS
+        lines: 38 (+0-)
+        decisionRef: R146
+        decisionClass: FD (syncs already-accepted R146 replacement norm)
+        reviewRequired: true
+        auditRequired: true
+        directMainCommitAllowed: false
+      technicalSubject:
+        tracking: dispatch-integration milestone
+        status: IMPLEMENTATION_REQUIRED
+        files:
+          - internal/coordinator/
+          - internal/agentsession/
+          - internal/actionmap/
+        ownerRequired: false
+        reviewRequired: true
+        auditRequired: true
     nextTransitions:
       - AWAIT_AUDIT_47_FROM_O79 (AUDIT-47-R146-O79 dispatched to opencode:workspace-o79)
+      - REVIEW_NORMATIVE_CORRECTION (correction/agents-replacement-rule, AGENTS.md only, FREEZE_FOR_REVIEW)
 
 foreignOrUnknown:
   - category: preserve_unknown_tracked
