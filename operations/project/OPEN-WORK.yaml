@@ -650,9 +650,14 @@ active:
         branch: correction/agents-replacement-rule
         worktree: /Users/andreybabenko/Downloads/workspace/workspace-01/.scratch/tmp/correction-agents-replacement
         patchFile: /Users/andreybabenko/Downloads/workspace/workspace-01/.scratch/tmp/agents-replacement-rule.patch
+        patchDigest: sha256:4a5a174090586405ebbd1867a2871de05cf31fbfe19f3b282ff5416ad05259e7
+        baseSha: 3cd653ab9d659fd7d0030b5dd59c63da8e73b552
+        treeHash: db45a17b03b916f46a8afb9ea264fa73808283bb
         files:
           - AGENTS.md
-        status: FREEZE_FOR_REVIEW
+        status: REVIEW_DISPATCHED
+        reviewer: opencode:workspace-o97
+        reviewAssignment: REVIEW-AGENTS-REPLACEMENT-O97
         diffCheck: PASS
         lines: 38 (+0-)
         decisionRef: R146
@@ -672,7 +677,7 @@ active:
         auditRequired: true
     nextTransitions:
       - AWAIT_AUDIT_47_FROM_O79 (AUDIT-47-R146-O79 dispatched to opencode:workspace-o79)
-      - REVIEW_NORMATIVE_CORRECTION (correction/agents-replacement-rule, AGENTS.md only, FREEZE_FOR_REVIEW)
+      - AWAIT_REVIEW_NORMATIVE_CORRECTION (REVIEW-AGENTS-REPLACEMENT-O97 dispatched to opencode:workspace-o97)
 
 foreignOrUnknown:
   - category: preserve_unknown_tracked
