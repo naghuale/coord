@@ -16,17 +16,46 @@ currentStage: issue-47-48-active
 active:
   - issue: 47
     title: "Active Coordinator dispatch R146 — process/state-machine scope"
-    state: LOCAL_COMMITTED_NOT_PUBLISHED
-    integrationSubject:
-      commit: 5e60d81
-      description: "WP-47-01: Document Registry binding for R146"
-      status: NOT_PUSHED
-      review: REVIEW_ACCEPTED
-      audit: AUDIT_ACCEPTED
-      fullMakeCheckCleanEnv: NOT_EVALUATED
-    workingTreeSubject:
-      paths:
+    state: IN_PROGRESS
+
+    completedWorkPackages:
+      - id: WP-47-01
+        title: "Document Registry binding for R146"
+        commit: 5e60d81
+        status: COMPLETE
+        review: REVIEW_ACCEPTED
+        audit: AUDIT_ACCEPTED
+        registryBinding:
+          class: process
+          currentNormativeAuthority: true
+          normativeAuthority: process
+        rejectedAssignmentFields:
+          - "class: normative — not in accepted taxonomy"
+          - "issue: 47 — field does not exist in Document struct"
+          - "normativeAuthority: true — field is string type, not boolean"
+        note: >
+          OWNER confirmed 2026-10-15: class=process is correct.
+          normativeAuthority captures normative force; class captures document
+          taxonomy. Rewrite prohibited.
+
+    nextWorkPackage:
+      id: WP-47-02
+      title: "Coordinator process rules — AGENTS.md hunk classification"
+      status: SCOPE_VERIFICATION_REQUIRED
+      executor: opencode:workspace-oec
+      action: READ_ONLY_HUNK_CLASSIFICATION
+      allowedPaths:
         - AGENTS.md
+      goal: >
+        Classify each hunk in AGENTS.md diff as: #47 (R146 Coordinator rules),
+        foreign (other issue), or PRESERVE_UNKNOWN. Return patch proposal for
+        #47-only hunks. If mixed hunks found, split proposal by ownership.
+        Do not stage. Do not modify any file.
+      stageAllowed: false
+      commitAllowed: false
+
+    remainingHunkVerifiedScope:
+      paths:
         - docs/operations/ACTION-MAP.yaml
         - docs/operations/COORDINATOR-STATE-MACHINE.md
         - docs/operations/schemas/coordinator-state-machine.yaml
@@ -37,10 +66,11 @@ active:
       status: HUNK_VERIFIED_AWAITING_COMMIT
       stageAllowed: conditional
       commitAllowed: false
+
     nextTransitions:
+      - WP_47_02_HUNK_CLASSIFICATION (oec)
       - AWAIT_ISSUE48_COMMIT
-      - STAGE_ISSUE47_REMAINING
-      - COMMIT_ISSUE47_REMAINING
+      - STAGE_COMMIT_ISSUE47_REMAINING
       - PUSH_AFTER_OWNER_AUTHORIZATION
 
   - issue: 48

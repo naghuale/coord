@@ -170,18 +170,41 @@ issues:
         - internal/actionmap/model.go
         - internal/actionmap/validate.go
         - internal/actionmap/validate_test.go
-      wp47_01:
-        commit: 5e60d81
-        title: Document Registry binding for R146
-        status: LOCAL_COMMITTED_NOT_PUBLISHED
-        review: REVIEW_ACCEPTED
-        audit: AUDIT_ACCEPTED
-      remainingScope:
-        status: HUNK_VERIFIED_AWAITING_COMMIT
-        stageAllowed: conditional
-        commitAllowed: false
-        gate: >
-          make check PASS in clean env + OWNER push authorization
+      completedWorkPackages:
+        - id: WP-47-01
+          title: Document Registry binding for R146
+          commit: 5e60d81
+          status: COMPLETE
+          review: REVIEW_ACCEPTED
+          audit: AUDIT_ACCEPTED
+          registryBinding:
+            class: process
+            currentNormativeAuthority: true
+            normativeAuthority: process
+          ownerConfirmed: "2026-10-15"
+          note: >
+            OWNER confirmed class=process is correct taxonomy.
+            Rejected assignment fields: class=normative (not in enum),
+            issue=47 (field not in Document struct), normativeAuthority=true (must be string).
+            Rewrite/repeat-review/repeat-audit prohibited.
+
+    nextWorkPackage:
+      id: WP-47-02
+      title: "Coordinator process rules — AGENTS.md hunk classification"
+      status: SCOPE_VERIFICATION_REQUIRED
+      executor: opencode:workspace-oec
+      action: READ_ONLY_HUNK_CLASSIFICATION
+      allowedPaths:
+        - AGENTS.md
+      stageAllowed: false
+      commitAllowed: false
+
+    remainingHunkVerifiedScope:
+      status: HUNK_VERIFIED_AWAITING_COMMIT
+      stageAllowed: conditional
+      commitAllowed: false
+      gate: >
+        make check PASS in clean env + OWNER push authorization
 
     - issue: 48
       title: Heartbeat watchdog runtime
