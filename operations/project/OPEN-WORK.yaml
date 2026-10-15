@@ -76,26 +76,21 @@ active:
         ("### Запрет пассивного ожидания агентов" → add "(R146)").
         INDEX and working-tree must match after apply.
       stageGate: BLOCKED_WAITING_FOR_ISSUE48_COMMIT
-      stageAllowed: false
-      commitAllowed: false
+      stageAllowed: DONE
+      commitAllowed: DONE
 
     remainingHunkVerifiedScope:
-      paths:
-        - docs/operations/ACTION-MAP.yaml
-        - docs/operations/COORDINATOR-STATE-MACHINE.md
-        - docs/operations/schemas/coordinator-state-machine.yaml
-        - docs/templates/COORDINATOR-RECOVERY-PROMPT.md
-        - internal/actionmap/model.go
-        - internal/actionmap/validate.go
-        - internal/actionmap/validate_test.go
-      status: HUNK_VERIFIED_AWAITING_COMMIT
-      stageAllowed: conditional
-      commitAllowed: false
+      status: COMMITTED
+      stageAllowed: DONE
+      commitAllowed: DONE
 
     issue48UnblockSha: c7434b2
+    state: COMMITTED
+    commitSha: 68bd4b8
+    branch: p0-2-task
+    committedFiles: 8
     nextTransitions:
-      - APPLY_WP47_02_PATCH_TO_AGENTS_MD
-      - STAGE_COMMIT_ISSUE47_REMAINING
+      - PUSH_AFTER_OWNER_AUTHORIZATION
       - PUSH_AFTER_OWNER_AUTHORIZATION
 
   - issue: 48
@@ -505,8 +500,17 @@ active:
       tests: "35 orchestration scenarios + 1 coordd composition"
     reviewState:
       reviewer: opencode:workspace-o97
-      state: RUNNING
+      state: COMPLETE
+      verdict: REVIEW_ACCEPTED
       assignment: REVIEW-49-ORCHESTRATION-V3
+      findings: []
+      m14Independence: "verified both directions (M14 kills recoverActions only; M13 still independent)"
+      completePatch: "20/20 files, applies cleanly to base 5e60d81"
+    auditState:
+      auditor: opencode:workspace-o71
+      state: RUNNING
+      assignment: AUDIT-49-ORCHESTRATION-V3
+      subjectDigest: 305471f4081eaa5fb1d59fb89a5c7723e089dbd66056688eb0f8320815223970
     historicalAudit:
       auditor: opencode:workspace-o71
       subject: d9478797189d6167f701f29ec543cac7257d39da0919af17a54405996f807e45
