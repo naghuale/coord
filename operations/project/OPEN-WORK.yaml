@@ -458,11 +458,26 @@ active:
         nonBlocking:
           - patchDigest not valid anchor (partial patch)
           - mutationSourceAllHashesMatchSubject key dropped in v2 report
+    v3Subject:
+      subjectDigest: 305471f4081eaa5fb1d59fb89a5c7723e089dbd66056688eb0f8320815223970
+      patchDigest: sha256:5081b50c511896ef60cf16d3cde8a249d07051b161389cb8d4abff77c93bea74
+      executorReportDigest: sha256:4e9829a17c4a15a7fca3878ad02d422cb3153eab48782fac20b684d9dc06449e
+      changedFiles: 20
+      mutations: "14/14 killed (M01-M13 + M14)"
+      mutationSourceAllHashesMatchSubject: true
+      sourceDigest: 3b39a3687f215b97b9ab42e0c9000efc1048ab09670d62ac186a1338b183b97d
+      packetRoot: >
+        /Users/andreybabenko/Downloads/workspace/workspace-01/.scratch/tmp/sessions/codex-issue49/1/runs/round3-final/review-packet
+      coordinatorVerified: SUBJECT_VERIFIED (verify-subject.py)
+      changes: >
+        M14 (TestRecoveryFencesClaimEpochBeforeLateResult, unique anchor for recoverActions site);
+        3 lint fixes (errcheck + 2 QF1001); complete.patch all 20 paths;
+        mutationSourceAllHashesMatchSubject restored.
+      tests: "35 orchestration scenarios + 1 coordd composition"
     reviewState:
       reviewer: opencode:workspace-o97
       state: RUNNING
-      assignment: REVIEW-48-WATCHDOG-R1-CORRECTION
-      note: "o97 now running #48 targeted review in parallel"
+      assignment: REVIEW-49-ORCHESTRATION-V3
     historicalAudit:
       auditor: opencode:workspace-o71
       subject: d9478797189d6167f701f29ec543cac7257d39da0919af17a54405996f807e45
