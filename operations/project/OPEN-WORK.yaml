@@ -22,7 +22,7 @@ project:
     issueClosure:
       issue48: CLOSED
       issue49: CLOSED
-      issue47: MERGED (PR #50 merged d94dec8) — HUMAN_ACTION_REQUIRED to close via gh issue close 47
+      issue47: CLOSED (auto-closed by PR #50 merge d94dec8)
 
 currentStage: issue-47-48-active
 
@@ -737,8 +737,7 @@ active:
         remediation: FIXED — git config --unset in main repo; restored to global naghuale/naghuale@gmail.com
 
     nextTransitions:
-      - CLOSE_ISSUE_47 (HUMAN_ACTION_REQUIRED — gh issue close 47 — auto-mode blocked)
-      - TRACK_SIBLING_ISSUE_51 (HUMAN_ACTION_REQUIRED_REASON_CODE_MISSING, issue #51 created)
+      - START_ISSUE_51 (HUMAN_ACTION_REQUIRED_REASON_CODE_MISSING sibling fix — same validator, same class)
 
 foreignOrUnknown:
   - category: preserve_unknown_tracked
