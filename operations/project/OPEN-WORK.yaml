@@ -737,11 +737,11 @@ active:
         remediation: FIXED — git config --unset in main repo; restored to global naghuale/naghuale@gmail.com
 
     nextTransitions:
-      - ISSUE_51_PR_PENDING_CI
+      - ALL_SIBLING_ISSUES_MERGED
 
 issue51:
   title: "fix(actionmap): HUMAN_ACTION_REQUIRED reason code validation"
-  state: PR_CI_PENDING
+  state: MERGED
   baseSha: d94dec8d6e6840431ef8c2369c83c7428cec0ea6
   techCommit: df95952ee9100efe68c1bff9b3d70f0b245f7175
   subjectTree: 1f1e4fa0cb01c7aae0169697087dee7995affcbb
@@ -752,34 +752,55 @@ issue51:
   integrationSha: 5235292127a74a17caa1c5a97b3fc11a01001b07
   integrationGate: PASS (42/42)
   pr: https://github.com/naghuale/coord/pull/54
-  ci: PENDING
+  ci: PASS
+  mergeCommit: 65d899b211da1cc5b5eb52b72fb1920836b322e3
 
 issue52:
   title: "feat(watchdog): ValidateCoordinatorCompletion + CURRENT_ISSUE_CLOSED action map event"
-  state: REVIEW_DISPATCHED
+  state: MERGED
   baseSha: d94dec8d6e6840431ef8c2369c83c7428cec0ea6
-  subjectTree: 5200d004bc7ba97e4a7a864998511c84ac421e44
+  subjectTree: 4ca8ac99e9092618888182ec1e3272f8523301d3
   files:
     - docs/operations/ACTION-MAP.yaml
     - internal/watchdog/coordinator_result.go
     - internal/watchdog/coordinator_result_test.go
   decisionClass: TD-R2
-  reviewer: opencode:workspace-o42 (REVIEW-52-COMPLETION-GATE-O42)
-  reviewState: DISPATCHED
-  mutations: 3/3 killed (ConfirmationRequested, DeterministicTransition, AvailableAssignment)
+  reviewVerdict: REVIEW_ACCEPTED (opencode:workspace-o42, REVIEW-52-COMPLETION-GATE-O42-V2, 14/14)
+  auditVerdict: AUDIT_ACCEPTED (codex:workspace-c3f, AUDIT-52-COMPLETION-GATE-C3F, 14/14, 0 findings)
+  reviewChangesRequired:
+    f1: gofmt (FIXED)
+    f2: ErrConflictingBoundary exported sentinel (FIXED)
+    f3f4: doc comments boundary justification (FIXED)
+  integrationBranch: integration/completion-gate
+  integrationSha: 0b1b9066ca4172bcb0a7525e4c7969118f13dc5a
+  integrationGate: PASS (42/42)
+  pr: https://github.com/naghuale/coord/pull/55
+  ci: PASS
+  mergeCommit: b7c5d3a33122383d2a87859de23bb7acfbace997
 
 issue53:
   title: "norm(agents): запрет подтверждения детерминированного перехода"
-  state: AUDIT_DISPATCHED
+  state: MERGED
   baseSha: d94dec8d6e6840431ef8c2369c83c7428cec0ea6
-  subjectTree: ce7270a98693561ec1c80d3c62e9262b28336dfe
-  patchDigest: sha256:3be64c55c1d727eea8e38d0a037f815e921a182787c4ac2f17937d941ebc1948
+  subjectTree: cc34d4719ed9ed790e04acaa60ae2bed90fc026a
   files:
     - AGENTS.md
   decisionClass: TD
-  reviewVerdict: REVIEW_ACCEPTED (codex:workspace-c3f, REVIEW-53-AGENTS-COMPLETION-GATE-RULE-C3F, 10/10 checks, 0 findings)
-  auditState: DISPATCHED (opencode:workspace-o42, AUDIT-53-AGENTS-COMPLETION-GATE-RULE-O42)
+  reviewVerdict: REVIEW_ACCEPTED (codex:workspace-c3f, REVIEW-53-AGENTS-COMPLETION-GATE-RULE-C3F, 10/10, 0 findings)
+  auditVerdict: AUDIT_ACCEPTED (opencode:workspace-o42, AUDIT-53-AGENTS-COMPLETION-GATE-RULE-O42-V2, 0 blocking findings)
+  auditChangesRequired:
+    a1: removed UNSUPPORTED_CONFIRMATION_REQUEST; references ask_owner_what_to_do_next (FIXED)
+    a2: changed "отклоняется Completion Gate" to "Completion Gate обязан его отклонять" (FIXED)
+  integrationBranch: integration/completion-gate-rule
+  integrationSha: 207a24c51f007923a38f537d65f9d6f8be21a36f
+  integrationGate: PASS (42/42)
+  pr: https://github.com/naghuale/coord/pull/56
+  ci: PASS
+  mergeCommit: 028c1e2d83305ab06ad2994326f4c1d6c4de7656
   incidentRef: DETERMINISTIC_TRANSITION_NOT_EXECUTED (asked «Начинаем?» after #47 close)
+  openItems:
+    - A4 (non-blocking): HUMAN-ACTION-PLAYBOOK.md absent from DOCUMENT-REGISTRY — pre-existing, tracked
+    - vocab drift #52/#53: ask_owner_what_to_do_next vs request_confirmation_for_ready_issue — intentional cross-layer, documented
 
 foreignOrUnknown:
   - category: preserve_unknown_tracked
