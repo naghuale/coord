@@ -108,6 +108,11 @@ func (d *Daemon) notReadyReason() string {
 	if !d.transportReady.Load() {
 		return "transport_receive_not_initialized"
 	}
+	if d.coordinator.Workflow != nil {
+		if err := d.coordinator.Workflow.Completion(); err != nil {
+			return "orchestration_pending"
+		}
+	}
 	if d.coordinator.RecoveryPending() {
 		return "supervisor_recovery_pending"
 	}
@@ -143,6 +148,9 @@ func (d *Daemon) Run(ctx context.Context) (runErr error) {
 	}
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	if err := d.coordinator.RecoverWorkflow(ctx); err != nil {
+		return fmt.Errorf("workflow recovery: %w", err)
 	}
 	if err := d.coordinator.Tick(ctx); err != nil {
 		return fmt.Errorf("startup tick: %w", err)

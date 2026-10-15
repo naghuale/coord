@@ -290,3 +290,26 @@ components:
     documents:
       currentAnchor: session-registry-supervisor
       targetAnchor: session-registry-supervisor
+
+  - id: durable-orchestration-candidate
+    title: Deterministic durable orchestration candidate
+    status: partial
+    normativeSources:
+      - docs/ADR-0004-RUNTIME-AND-DAEMON-MODEL.md
+      - docs/ADR-0005-STORAGE-MODEL.md
+    implemented:
+      - canonical external actions, claims and durable dispatch-start
+      - ambiguous action recovery with observation before redispatch
+      - canonical session revocation and fake stop-proof-gated replacement intent
+      - revision-consistent rebuildable projections and existing coordd hooks
+    missing:
+      - qualified live adapters and production replacement Run binding
+      - complete Issue Review Audit CI scheduler
+      - CandidateDecision and accepted-norm evidence validation
+    evidence:
+      symbols: [EnqueueAction, RecoverActions, AcceptObservation, WorkflowRuntime]
+      tests: [TestCrashAfterDispatchBeforeResponseObservesBeforeRetry, TestConfirmedFenceAndStopProofPrecedeReplacement, TestCoorddPublishesCanonicalRevisionBundle]
+      issues: [49]
+    documents:
+      currentAnchor: durable-orchestration-candidate
+      targetAnchor: durable-orchestration-candidate

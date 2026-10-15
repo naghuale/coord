@@ -1,5 +1,11 @@
 # История изменений
 
+## 2026-10-15 — Durable orchestration implementation candidate (Refs #49)
+
+- Existing coordd loop gains canonical external-action dispatch/recovery hooks; schema v2 retains action requests, claim epochs, ambiguous outcomes, observations and acknowledgement intents alongside Task events and Inbox receipts (`TestCompletionAndReceiptIntentCommitTogether`).
+- Crash/restart observes unresolved operations before redispatch; accepted logical fence revokes the old AgentSession; fake stop proof gates the replacement intent. Revision bundles rebuild CURRENT/OPEN-WORK/Ledger from one snapshot (`TestCrashAfterDispatchBeforeResponseObservesBeforeRetry`, `TestProjectionBundleUsesOneRevisionAndRebuilds`).
+- No live adapters or production replacement Run/session binding; Proposed ADR remains non-normative. Tests and compiling mutations cover the isolated deterministic slice (документация).
+
 ## 2026-10-15 — fix(test): R08 ancestor guard mutation kill in TestDecisionAncestorGit (Refs #44)
 
 - `TestDecisionAncestorGit`: moved `gitCommitAll(t, outer)` to after fixture creation so the decision file is committed before `Check` runs; the root-mismatch guard (governance.go:247-249) is now the rejection cause, not uncommitted-file detection. Added Detail assertion (must contain "ancestor") and positive control with `RepoRoot=outer`. Mutation kill confirmed: deleting the guard leaves `resolvedDetected` unused (compile error) and, if disabled without deletion, allows `Check` to find the committed file producing no violation → test fails (документация).

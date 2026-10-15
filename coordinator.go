@@ -39,7 +39,19 @@ func DefaultConfig() Config {
 	return Config{30 * time.Second, 5 * time.Second, 5 * time.Second, time.Second, retry.Default(), time.Now}
 }
 
+// WorkflowRuntime is implemented by deterministic canonical orchestration.
+// It shares this daemon owner; it is not a second coordinator loop.
+type WorkflowRuntime interface {
+	Recover(context.Context) error
+	Tick(context.Context) error
+	Completion() error
+	OwnsRun(string) bool
+}
+
 type Coordinator struct {
+	workflowRecovered bool
+
+	Workflow     WorkflowRuntime
 	mu           sync.Mutex
 	tp           transport.Transport
 	store        store.RunStore
@@ -232,6 +244,9 @@ func (c *Coordinator) Handle(ctx context.Context, e envelope.Envelope) error {
 		c.Metrics.Inc("malformed_messages_total")
 		return err
 	}
+	if c.Workflow != nil && e.Run != "" && c.Workflow.OwnsRun(e.Run) {
+		return fmt.Errorf("orchestrated Run requires canonical command boundary")
+	}
 	if e.To != c.tp.WhoAmI() {
 		return fmt.Errorf("wrong recipient")
 	}
@@ -414,10 +429,18 @@ func (c *Coordinator) rejectIdentity(ctx context.Context, r fsm.Run, e envelope.
 
 // Tick performs bounded retries. Transport retries preserve the attempt and owner.
 func (c *Coordinator) Tick(ctx context.Context) error {
+	if c.Workflow != nil {
+		if err := c.Workflow.Tick(ctx); err != nil {
+			return err
+		}
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	now := c.cfg.Now()
 	for id, r := range c.store.All() {
+		if c.Workflow != nil && c.Workflow.OwnsRun(id) {
+			continue
+		}
 		if r.Terminal() {
 			if err := c.flush(ctx, id); err != nil {
 				return err
@@ -561,7 +584,23 @@ func (c *Coordinator) Run(ctx context.Context) error {
 // RunWithReadiness initializes the transport receive stream, invokes onReady,
 // and then runs the coordinator loop. onReady is called exactly once, after
 // Receive has been acquired and before any incoming message is handled.
+func (c *Coordinator) RecoverWorkflow(ctx context.Context) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.workflowRecovered || c.Workflow == nil {
+		return nil
+	}
+	if err := c.Workflow.Recover(ctx); err != nil {
+		return err
+	}
+	c.workflowRecovered = true
+	return nil
+}
+
 func (c *Coordinator) RunWithReadiness(ctx context.Context, onReady func()) error {
+	if err := c.RecoverWorkflow(ctx); err != nil {
+		return err
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
