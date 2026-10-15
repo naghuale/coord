@@ -654,12 +654,13 @@ active:
         blobHash: 20fbe7c82f5303e80588243b353829d3d79075be
         files:
           - AGENTS.md
-        status: AUDIT_DISPATCHED
+        status: MERGE_READY
         reviewer: opencode:workspace-o42
         reviewAssignment: REVIEW-AGENTS-REPLACEMENT-O42-V2
         reviewVerdict: REVIEW_ACCEPTED
         auditor: codex:workspace-c3f
         auditAssignment: AUDIT-AGENTS-REPLACEMENT-C3F
+        auditVerdict: AUDIT_ACCEPTED
         deadReviewerRevoked: REVIEW-AGENTS-REPLACEMENT-O97 (o97 DEAD)
         diffCheck: PASS
         lines: 43 (+0-)
@@ -687,7 +688,9 @@ active:
         auditRequired: true
     nextTransitions:
       - AWAIT_AUDIT_47_FROM_C3F (AUDIT-47-R146-C3F dispatched to codex:workspace-c3f)
-      - AWAIT_AUDIT_NORMATIVE_CORRECTION (AUDIT-AGENTS-REPLACEMENT-C3F dispatched to codex:workspace-c3f)
+      - MERGE_NORMATIVE_CORRECTION_TO_MAIN (correction/agents-replacement-rule → main, HUMAN_ACTION_REQUIRED)
+      - COMMIT_ACTIONMAP_FIX_TO_MAIN (validate.go OWNER_REQUIRED_REASON_CODE_MISSING, HUMAN_ACTION_REQUIRED)
+      - REAUDIT_ACTIONMAP_FIX (AUDIT-47-R146-C3F re-audit after actionmap commit reaches main)
 
 foreignOrUnknown:
   - category: preserve_unknown_tracked
