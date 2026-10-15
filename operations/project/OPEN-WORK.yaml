@@ -75,10 +75,10 @@ active:
 
   - issue: 48
     title: "Heartbeat watchdog runtime"
-    state: IMPLEMENTATION_CORRECTION
+    state: R1_CORRECTION_IN_PROGRESS
     note: >
       Watchdog scope is #48, not #47. Corrected by OWNER scope reconciliation
-      2026-10-15. Previously mis-tracked under #47.
+      2026-10-15.
     executor: opencode:workspace-o42
     executorState: RUNNING
     subject: WORKING_TREE
@@ -95,23 +95,69 @@ active:
       - internal/coordinator/watchdog.go
       - internal/coordinator/watchdog_test.go
       - internal/agentsession/heartbeat.go
+
+    historicalReviews:
+      - id: review-round-2-o97
+        verdict: REVIEW_ACCEPTED
+        round: 2
+        status: HISTORICAL
+        note: >
+          Valid for pre-R1 subject only. Superseded once R1 correction
+          produces a new SHA. Old REVIEW_ACCEPTED does not apply to corrected tree.
+
     openFindings:
+      - id: R1
+        classification: FD
+        ownerDecision: "2026-10-15"
+        description: >
+          Hard metrics must count REJECTED VIOLATIONS, not normal state observations.
+          DeliveredClassifiedAdmitted must increment only when DELIVERED→RUNNING
+          attempt is detected and rejected. Ordinary DELIVERED uses session-state metric.
+          Correction: clarify metrics interface + spec section 11 + 6 new tests + mutations.
+        correctionAssignee: opencode:workspace-o42
+        correctionStatus: IN_PROGRESS
+        requiredTests:
+          - TestDeliveredObservationUsesSessionStateMetric
+          - TestQueuedObservationUsesSessionStateMetric
+          - TestDeliveredClassifiedRunningIncrementsHardMetric
+          - TestQueuedClassifiedRunningIncrementsHardMetric
+          - TestPositivePathHardMetricsRemainZero
+          - TestInvalidTransitionRejectedAfterHardMetric
+        requiredMutations:
+          - disable rejection → positive-path tests fail
+          - emit hard metric on ordinary DELIVERED → observation test fails
+
+    closedFindings:
       - id: B1
-        description: "TestDeliveredIsNotRunning missing — DELIVERED→RUNNING mutation survives"
+        status: FIXED_VERIFIED
+        description: "TestDeliveredIsNotRunning — DELIVERED classification protected"
       - id: B2
-        description: "fence/dispatch ordering not asserted — ordering mutation survives"
+        status: FIXED_VERIFIED
+        description: "fence-before-dispatch invariant asserted via shared opLog"
       - id: B3
-        description: "hard metrics have zero production call sites — TestMutationHardMetricsStayZero tautological"
+        status: FIXED_VERIFIED
+        description: "hard metrics — calibration+behaviour split (superseded by R1 correction)"
       - id: LC1
-        description: "RunWithWatchdog lifecycle hang — nil stateMachine return does not cancel ctx"
-        source: "codex:workspace-c3f observation"
-        blocking: TBD_by_o42
+        status: FIXED_VERIFIED
+        description: "RunWithWatchdog lifecycle hang resolved"
+      - id: N4
+        status: FIXED_VERIFIED
+        description: "appendEvent helper, dropped audit events resolved"
+
+    auditState:
+      auditor: opencode:workspace-oea
+      state: PAUSED
+      reason: >
+        R1 correction pending. New exact subject SHA required after o42
+        IMPLEMENTATION_VERIFIED. Audit will restart on new SHA.
+
     stageAllowed: false
     commitAllowed: false
     nextTransitions:
-      - AWAIT_IMPLEMENTATION_VERIFIED_ROUND2
-      - DISPATCH_REVIEW_AFTER_VERIFIED
-      - DISPATCH_AUDIT_AFTER_REVIEW_ACCEPTED
+      - AWAIT_O42_IMPLEMENTATION_VERIFIED_R1
+      - FREEZE_NEW_EXACT_SUBJECT_SHA
+      - DISPATCH_TARGETED_REVIEW_NEW_SHA
+      - DISPATCH_AUDIT_NEW_SHA
       - STAGE_WATCHDOG_EXACT_12_PATHS
       - COMMIT_ISSUE48_WATCHDOG
       - PUSH_AFTER_OWNER_AUTHORIZATION
