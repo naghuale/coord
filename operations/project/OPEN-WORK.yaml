@@ -360,13 +360,25 @@ active:
       - remote CI NOT_RUN
     stageAllowed: false
     commitAllowed: false
+    pendingCorrection:
+      id: correction-2
+      scope:
+        - recoverActions epoch++ mutation M14 (store/orchestration.go:165)
+        - errcheck: runtime_test.go:529
+        - staticcheck QF1001: externalaction/model.go:222 + store/orchestration.go:85
+      executor: codex:workspace-c3f
+      status: IN_PROGRESS
+      makeCheckNote: golangci-lint at /Users/andreybabenko/go/bin/golangci-lint — must be in PATH
     nextTransitions:
-      - AWAIT_C3F_IMPLEMENTATION_VERIFIED_B1
-      - FREEZE_NEW_SUBJECT_SHA_WITH_FILE_HASH_MANIFEST
-      - DISPATCH_O97_ROUND2_TARGETED_REVIEW
-      - AWAIT_REVIEW_ACCEPTED_ROUND2
-      - DISPATCH_O71_NEW_AUDIT_ASSIGNMENT
-      - AWAIT_AUDIT_ACCEPTED
+      - AWAIT_C3F_IMPLEMENTATION_VERIFIED_V3
+      - FREEZE_V3_SUBJECT_SHA
+      - HISTORICAL_CLOSE_V2_REVIEW_O97
+      - HISTORICAL_CLOSE_V2_AUDIT_O71
+      - DISPATCH_REVIEW_V3
+      - DISPATCH_AUDIT_V3_PARALLEL
+      - AWAIT_REVIEW_ACCEPTED_V3
+      - AWAIT_AUDIT_ACCEPTED_V3
+      - STAGE_COMMIT_ISSUE49
       - COORDINATE_WITH_47_ON_ARCH_SYNC_CONFLICT
 
 foreignOrUnknown:
