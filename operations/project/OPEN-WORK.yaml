@@ -247,13 +247,53 @@ active:
         /Users/andreybabenko/Downloads/workspace/workspace-01/.scratch/tmp/sessions/codex-issue49/1/runs/2rV5oc1n/review-packet
     reviewState:
       reviewer: opencode:workspace-o97
-      state: RUNNING
-      admitted: true
-      independenceConfirmed: true
+      state: COMPLETE
+      verdict: CHANGES_REQUIRED
+      round: 1
+      subjectVerified: d9478797189d6167f701f29ec543cac7257d39da0919af17a54405996f807e45
+      mutationsIndependentlyReproduced: "12/12 KILLED"
+      findingsSummary:
+        blocking: 1
+        nonBlocking: 5
+      blockingFindings:
+        - id: B1
+          invariant: claim-epoch-rejects-stale-results
+          gap: >
+            ClaimAction's a.Claim.Epoch++ (store/orchestration.go:91) has no test or mutation.
+            Reviewer mutant (Epoch++ → Epoch += 0) compiles; entire suite stays green.
+            Fail-open: stale-epoch result accepted, action incorrectly completed.
+          fix: >
+            Add TestUnstartedClaimReclaimSeparatesEpoch: after deadline-expiry re-claim,
+            assert new epoch strictly > old, assert old-epoch result rejected.
+            Optional: add M_ClaimEpochIncrement mutation.
+          ownerRequired: false
+          classification: FD
+      nonBlockingFindings:
+        - id: N1
+          description: "workflowAuthority Task-fence half survives mutation — benign, state unreachable"
+        - id: N2
+          description: "TestProjectionBundleUsesOneRevisionAndRebuilds fails with symlinked TMPDIR on macOS"
+        - id: N3
+          description: "Three cmd/coord socket tests fail with deep TMPDIR path on macOS"
+        - id: N4
+          description: "makeCheck verified in executor worktree, not from frozen packet (no .git)"
+        - id: N5
+          description: "I04/I09/I11/I12 share positive+negative+restart test (supplemental policy, not normative)"
+        - id: N6
+          description: >
+            check-architecture-sync-test conflict with #47 — disjoint hunks, benign.
+            Needs deliberate integration check after both land.
+      correctionAssignee: codex:workspace-c3f
+      correctionStatus: DISPATCHED
+      round2Scope: "B1 fix + makeCheck note in executor report"
+      reviewerScratch: "${COORD_PROJECT_ROOT}/.scratch/tmp/rev49-o97"
     auditState:
       auditor: opencode:workspace-o71
       state: RUNNING
       admitted: PENDING
+      note: >
+        B1 forwarded as advisory. o71 auditing current frozen subject independently.
+        New audit assignment will follow after c3f corrects B1 and re-freezes subject.
     declaredBoundaries:
       - ADR Proposed/un-numbered/non-normative (not Accepted)
       - production binding NOT_IMPLEMENTED (fake proof + next-gen intent)
@@ -264,8 +304,11 @@ active:
     stageAllowed: false
     commitAllowed: false
     nextTransitions:
-      - AWAIT_REVIEW_ACCEPTED_O97
-      - DISPATCH_AUDIT_AFTER_REVIEW
+      - AWAIT_C3F_IMPLEMENTATION_VERIFIED_B1
+      - FREEZE_NEW_SUBJECT_SHA_WITH_FILE_HASH_MANIFEST
+      - DISPATCH_O97_ROUND2_TARGETED_REVIEW
+      - AWAIT_REVIEW_ACCEPTED_ROUND2
+      - DISPATCH_O71_NEW_AUDIT_ASSIGNMENT
       - AWAIT_AUDIT_ACCEPTED
       - COORDINATE_WITH_47_ON_ARCH_SYNC_CONFLICT
 
