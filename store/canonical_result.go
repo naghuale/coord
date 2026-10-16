@@ -105,6 +105,10 @@ func cloneReviewResult(result task.ReviewResult) task.ReviewResult {
 	result.Findings = cloneFindings(result.Findings)
 	result.InputArtifactRefs = cloneStrings(result.InputArtifactRefs)
 	result.OutputArtifactRefs = cloneStrings(result.OutputArtifactRefs)
+	if result.Subject != nil {
+		cloned := *result.Subject
+		result.Subject = &cloned
+	}
 	return result
 }
 
@@ -112,6 +116,15 @@ func cloneAuditResult(result task.AuditResult) task.AuditResult {
 	result.Findings = cloneFindings(result.Findings)
 	result.InputArtifactRefs = cloneStrings(result.InputArtifactRefs)
 	result.OutputArtifactRefs = cloneStrings(result.OutputArtifactRefs)
+	if result.Subject != nil {
+		cloned := *result.Subject
+		result.Subject = &cloned
+	}
+	if result.Properties != nil {
+		props := make([]task.AuditedProperty, len(result.Properties))
+		copy(props, result.Properties)
+		result.Properties = props
+	}
 	return result
 }
 
@@ -168,7 +181,16 @@ func (s *CanonicalStore) recordRoleResult(messageID string, id taskid.ID, runID 
 			if currentTask.CurrentStage == nil || *currentTask.CurrentStage != task.Review || currentRun.RoleSelection.Profile.Role != roles.Reviewer {
 				return InboxReceipt{}, fmt.Errorf("ReviewResult requires a REVIEW Task and Reviewer Run")
 			}
+			if taskAgentsByRole(*state, id, roles.Executor)[actorID] {
+				return InboxReceipt{}, fmt.Errorf("reviewer %q also executed this Task: independence violation", actorID)
+			}
+			if review.Subject != nil && currentRun.TargetSHA != "" && review.Subject.CommitSHA != currentRun.TargetSHA {
+				return InboxReceipt{}, fmt.Errorf("ReviewResult subject SHA %q does not match run TargetSHA %q", review.Subject.CommitSHA, currentRun.TargetSHA)
+			}
 			eventType = task.ReviewResultRecorded
+			review.ResultID = task.EventID(id, currentTask.LastEventSeq+1)
+			review.ReviewerID = actorID
+			review.Round = uint32(countEventsByType(*state, id, task.ReviewResultRecorded) + 1)
 			review.CreatedAt = now
 			if err := assignFindingIDs(review.Findings, currentTask.ID, currentTask.LastEventSeq+1); err != nil {
 				return InboxReceipt{}, err
@@ -181,7 +203,19 @@ func (s *CanonicalStore) recordRoleResult(messageID string, id taskid.ID, runID 
 			if currentTask.CurrentStage == nil || *currentTask.CurrentStage != task.Audit || currentRun.RoleSelection.Profile.Role != roles.Auditor {
 				return InboxReceipt{}, fmt.Errorf("AuditResult requires an AUDIT Task and Auditor Run")
 			}
+			if taskAgentsByRole(*state, id, roles.Executor)[actorID] {
+				return InboxReceipt{}, fmt.Errorf("auditor %q also executed this Task: independence violation", actorID)
+			}
+			if taskAgentsByRole(*state, id, roles.Reviewer)[actorID] {
+				return InboxReceipt{}, fmt.Errorf("auditor %q also reviewed this Task: independence violation", actorID)
+			}
+			if audit.Subject != nil && currentRun.TargetSHA != "" && audit.Subject.CommitSHA != currentRun.TargetSHA {
+				return InboxReceipt{}, fmt.Errorf("AuditResult subject SHA %q does not match run TargetSHA %q", audit.Subject.CommitSHA, currentRun.TargetSHA)
+			}
 			eventType = task.AuditResultRecorded
+			audit.ResultID = task.EventID(id, currentTask.LastEventSeq+1)
+			audit.AuditorID = actorID
+			audit.Round = uint32(countEventsByType(*state, id, task.AuditResultRecorded) + 1)
 			audit.CreatedAt = now
 			if err := assignFindingIDs(audit.Findings, currentTask.ID, currentTask.LastEventSeq+1); err != nil {
 				return InboxReceipt{}, err
@@ -381,6 +415,107 @@ func validateResultReferences(state CanonicalState, id taskid.ID, currentSeq uin
 		events[event.ID] = event
 	}
 	return validateReferences(state, events, id, currentSeq, refs)
+}
+
+// taskAgentsByRole returns all AgentIDs that have played the given role for a Task,
+// looking at both current RoleSelection and historical RoleHistory of all Runs.
+func taskAgentsByRole(state CanonicalState, id taskid.ID, role roles.Role) map[string]bool {
+	agents := make(map[string]bool)
+	for _, run := range state.Runs {
+		if run.TaskID != id {
+			continue
+		}
+		for _, sel := range run.RoleHistory {
+			if sel.Profile.Role == role && sel.AgentID != "" {
+				agents[sel.AgentID] = true
+			}
+		}
+		if run.RoleSelection != nil && run.RoleSelection.Profile.Role == role && run.RoleSelection.AgentID != "" {
+			agents[run.RoleSelection.AgentID] = true
+		}
+	}
+	return agents
+}
+
+// countEventsByType returns the number of DomainEvents of a given type for a Task.
+func countEventsByType(state CanonicalState, id taskid.ID, eventType task.EventType) int {
+	count := 0
+	for _, event := range state.Events {
+		if event.TaskID == id && event.Type == eventType {
+			count++
+		}
+	}
+	return count
+}
+
+// RecordReviewResultSuperseded emits a supersession event that marks a prior
+// ReviewResult ineligible for readiness evaluation. The coordinatorRunID must
+// be a coordinator Run for this Task; the supersededResultID must name a prior
+// ReviewResultRecorded event ID for this Task.
+func (s *CanonicalStore) RecordReviewResultSuperseded(messageID string, id taskid.ID, coordinatorRunID string, expectedRevision uint64, supersededResultID string, reason string, now time.Time) (InboxReceipt, bool, error) {
+	return s.recordResultSuperseded(messageID, id, coordinatorRunID, expectedRevision, supersededResultID, reason, task.ReviewResultSuperseded, task.ReviewResultRecorded, now)
+}
+
+// RecordAuditResultSuperseded emits a supersession event for a prior AuditResult.
+func (s *CanonicalStore) RecordAuditResultSuperseded(messageID string, id taskid.ID, coordinatorRunID string, expectedRevision uint64, supersededResultID string, reason string, now time.Time) (InboxReceipt, bool, error) {
+	return s.recordResultSuperseded(messageID, id, coordinatorRunID, expectedRevision, supersededResultID, reason, task.AuditResultSuperseded, task.AuditResultRecorded, now)
+}
+
+func (s *CanonicalStore) recordResultSuperseded(messageID string, id taskid.ID, coordinatorRunID string, expectedRevision uint64, supersededResultID string, reason string, supersededType task.EventType, originalType task.EventType, now time.Time) (InboxReceipt, bool, error) {
+	if supersededResultID == "" || reason == "" {
+		return InboxReceipt{}, false, fmt.Errorf("superseded_result_id and reason are required")
+	}
+	run, ok := s.Get(coordinatorRunID)
+	if !ok || run.TaskID != id {
+		return InboxReceipt{}, false, fmt.Errorf("coordinator Run not found for this Task")
+	}
+	actorID := run.RoleSelection.AgentID
+	if actorID == "" {
+		return InboxReceipt{}, false, fmt.Errorf("coordinator Run requires a RoleSelection with AgentID")
+	}
+	return s.ApplyInboxCommand(actorID, messageID, id, expectedRevision, func(state *CanonicalState) (InboxReceipt, error) {
+		currentTask, exists := state.Tasks[id]
+		if !exists {
+			return InboxReceipt{}, fmt.Errorf("canonical Task %q not found", id)
+		}
+		foundOriginal := false
+		alreadySuperseded := false
+		for _, event := range state.Events {
+			if event.TaskID != id {
+				continue
+			}
+			if event.Type == originalType && event.ID == supersededResultID {
+				foundOriginal = true
+			}
+			if event.Type == supersededType && event.SupersededResultID == supersededResultID {
+				alreadySuperseded = true
+			}
+		}
+		if !foundOriginal {
+			return InboxReceipt{}, fmt.Errorf("result %q not found as %s for this Task", supersededResultID, originalType)
+		}
+		if alreadySuperseded {
+			return InboxReceipt{}, fmt.Errorf("result %q is already superseded", supersededResultID)
+		}
+		currentTask.Revision++
+		currentTask.LastEventSeq++
+		currentTask.UpdatedAt = now
+		state.Tasks[id] = currentTask
+		event := task.DomainEvent{
+			ID: task.EventID(id, currentTask.LastEventSeq), TaskID: id,
+			RunID: coordinatorRunID, EventSeq: currentTask.LastEventSeq,
+			TaskRevision: currentTask.Revision, TaskFence: currentTask.Fence,
+			Type: supersededType, ActorID: actorID, Summary: reason,
+			SupersededResultID: supersededResultID, CreatedAt: now,
+		}
+		state.Events = append(state.Events, event)
+		return InboxReceipt{
+			ActorID: actorID, MessageID: messageID, TaskID: id,
+			RunID: coordinatorRunID, EventIDs: []string{event.ID},
+			ExpectedRevision: expectedRevision, CommittedRevision: currentTask.Revision,
+			RecordedAt: now,
+		}, nil
+	})
 }
 
 func validateReferences(state CanonicalState, events map[string]task.DomainEvent, id taskid.ID, currentSeq uint64, refs []task.Reference) error {

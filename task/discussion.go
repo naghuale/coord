@@ -58,6 +58,10 @@ type DiscussionNode struct {
 	ConflictID       string             `json:"conflict_id,omitempty"`
 	ResultRef        string             `json:"result_ref,omitempty"`
 	ReasonCode       string             `json:"reason_code,omitempty"`
+	// FindingID is the stable Finding.ID this node is anchored to.
+	// Allowed only for FINDING nodes; points to a specific finding within
+	// the ReviewResult or AuditResult named by ReviewResultRef/AuditResultRef.
+	FindingID string `json:"finding_id,omitempty"`
 }
 
 // DiscussionEdge is the typed relation between two nodes in one Task graph.
@@ -124,7 +128,7 @@ func (n DiscussionNode) Validate() error {
 			return fmt.Errorf("discussion node reference kind and ID are required")
 		}
 	}
-	fields := []string{n.ReviewResultRef, n.AuditResultRef, n.OwnerDecisionRef, n.ConflictID, n.ResultRef, n.ReasonCode}
+	fields := []string{n.ReviewResultRef, n.AuditResultRef, n.OwnerDecisionRef, n.ConflictID, n.ResultRef, n.ReasonCode, n.FindingID}
 	switch n.Type {
 	case DiscussionQuestion, DiscussionProposal, DiscussionAction:
 		if anyDiscussionField(fields) {
@@ -138,10 +142,10 @@ func (n DiscussionNode) Validate() error {
 			if n.ReviewResultRef == "" || n.AuditResultRef == "" {
 				return fmt.Errorf("conflict FACT requires ReviewResultRef and AuditResultRef")
 			}
-			if n.OwnerDecisionRef != "" || n.ResultRef != "" || n.ReasonCode != "" {
+			if n.OwnerDecisionRef != "" || n.ResultRef != "" || n.ReasonCode != "" || n.FindingID != "" {
 				return fmt.Errorf("FACT has unsupported fields")
 			}
-		} else if anyDiscussionField([]string{n.ReviewResultRef, n.AuditResultRef, n.OwnerDecisionRef, n.ResultRef, n.ReasonCode}) {
+		} else if anyDiscussionField([]string{n.ReviewResultRef, n.AuditResultRef, n.OwnerDecisionRef, n.ResultRef, n.ReasonCode, n.FindingID}) {
 			return fmt.Errorf("FACT has unsupported fields")
 		}
 	case DiscussionFinding:
@@ -151,6 +155,11 @@ func (n DiscussionNode) Validate() error {
 		if (n.ReviewResultRef == "") == (n.AuditResultRef == "") {
 			return fmt.Errorf("FINDING requires exactly one ReviewResultRef or AuditResultRef")
 		}
+		if n.FindingID != "" {
+			if n.ReviewResultRef == "" && n.AuditResultRef == "" {
+				return fmt.Errorf("FINDING with FindingID requires ReviewResultRef or AuditResultRef")
+			}
+		}
 		if anyDiscussionField([]string{n.OwnerDecisionRef, n.ConflictID, n.ResultRef, n.ReasonCode}) {
 			return fmt.Errorf("FINDING has unsupported fields")
 		}
@@ -158,21 +167,21 @@ func (n DiscussionNode) Validate() error {
 		if n.OwnerDecisionRef == "" && n.ConflictID == "" {
 			return fmt.Errorf("DECISION requires OwnerDecisionRef or ConflictID")
 		}
-		if anyDiscussionField([]string{n.ReviewResultRef, n.AuditResultRef, n.ResultRef, n.ReasonCode}) {
+		if anyDiscussionField([]string{n.ReviewResultRef, n.AuditResultRef, n.ResultRef, n.ReasonCode, n.FindingID}) {
 			return fmt.Errorf("DECISION has unsupported fields")
 		}
 	case DiscussionResult:
 		if n.ResultRef == "" {
 			return fmt.Errorf("RESULT requires ResultRef")
 		}
-		if anyDiscussionField([]string{n.ReviewResultRef, n.AuditResultRef, n.OwnerDecisionRef, n.ConflictID, n.ReasonCode}) {
+		if anyDiscussionField([]string{n.ReviewResultRef, n.AuditResultRef, n.OwnerDecisionRef, n.ConflictID, n.ReasonCode, n.FindingID}) {
 			return fmt.Errorf("RESULT has unsupported fields")
 		}
 	case DiscussionBlocker:
 		if strings.TrimSpace(n.ReasonCode) == "" {
 			return fmt.Errorf("BLOCKER requires ReasonCode")
 		}
-		if anyDiscussionField([]string{n.ReviewResultRef, n.AuditResultRef, n.OwnerDecisionRef, n.ConflictID, n.ResultRef}) {
+		if anyDiscussionField([]string{n.ReviewResultRef, n.AuditResultRef, n.OwnerDecisionRef, n.ConflictID, n.ResultRef, n.FindingID}) {
 			return fmt.Errorf("BLOCKER has unsupported fields")
 		}
 	default:
