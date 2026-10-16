@@ -17,6 +17,8 @@ const (
 	ExecutorResultRecorded   EventType = "EXECUTOR_RESULT_RECORDED"
 	DiscussionNodeRecorded   EventType = "DISCUSSION_NODE_RECORDED"
 	DiscussionEdgeRecorded   EventType = "DISCUSSION_EDGE_RECORDED"
+	ReviewResultSuperseded   EventType = "REVIEW_RESULT_SUPERSEDED"
+	AuditResultSuperseded    EventType = "AUDIT_RESULT_SUPERSEDED"
 )
 
 // DomainEvent is an auditable fact in a Task's canonical history.
@@ -35,7 +37,11 @@ type DomainEvent struct {
 	ExecutorResult *ExecutorResult `json:"executor_result,omitempty"`
 	DiscussionNode *DiscussionNode `json:"discussion_node,omitempty"`
 	DiscussionEdge *DiscussionEdge `json:"discussion_edge,omitempty"`
-	CreatedAt      time.Time       `json:"created_at"`
+	// SupersededResultID is set only for ReviewResultSuperseded and
+	// AuditResultSuperseded events. It names the ResultID of the result
+	// that is no longer eligible for readiness evaluation.
+	SupersededResultID string    `json:"superseded_result_id,omitempty"`
+	CreatedAt          time.Time `json:"created_at"`
 }
 
 func EventID(id taskid.ID, seq uint64) string {
@@ -93,6 +99,20 @@ func (e DomainEvent) Validate() error {
 		}
 		if err := e.ExecutorResult.Validate(); err != nil {
 			return fmt.Errorf("invalid ExecutorResult payload: %w", err)
+		}
+	case ReviewResultSuperseded:
+		if e.SupersededResultID == "" {
+			return fmt.Errorf("REVIEW_RESULT_SUPERSEDED requires superseded_result_id")
+		}
+		if e.ReviewResult != nil || e.AuditResult != nil || e.ExecutorResult != nil || e.DiscussionNode != nil || e.DiscussionEdge != nil {
+			return fmt.Errorf("REVIEW_RESULT_SUPERSEDED must not carry a typed result payload")
+		}
+	case AuditResultSuperseded:
+		if e.SupersededResultID == "" {
+			return fmt.Errorf("AUDIT_RESULT_SUPERSEDED requires superseded_result_id")
+		}
+		if e.ReviewResult != nil || e.AuditResult != nil || e.ExecutorResult != nil || e.DiscussionNode != nil || e.DiscussionEdge != nil {
+			return fmt.Errorf("AUDIT_RESULT_SUPERSEDED must not carry a typed result payload")
 		}
 	default:
 		if e.ReviewResult != nil || e.AuditResult != nil || e.ExecutorResult != nil || e.DiscussionNode != nil || e.DiscussionEdge != nil {

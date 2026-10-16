@@ -140,3 +140,35 @@ func TestDiscussionProjectionRebuildsFromEvents(t *testing.T) {
 		t.Fatalf("cross-Task projection=%+v", other)
 	}
 }
+
+// FindingID tests (WP-05 / M09)
+
+func TestDiscussionNode_FindingIDAllowedOnFINDING(t *testing.T) {
+	n := validDiscussionNode(DiscussionFinding)
+	n.FindingID = "finding-001"
+	if err := n.Validate(); err != nil {
+		t.Errorf("FindingID on FINDING node must be accepted, got: %v", err)
+	}
+}
+
+func TestDiscussionNode_FindingIDOptionalOnFINDING(t *testing.T) {
+	n := validDiscussionNode(DiscussionFinding)
+	n.FindingID = ""
+	if err := n.Validate(); err != nil {
+		t.Errorf("FindingID is optional on FINDING node, got: %v", err)
+	}
+}
+
+// M09: FindingID on non-FINDING type must be rejected.
+func TestMutation_M09_FindingIDOnNonFindingTypeRejected(t *testing.T) {
+	for _, nodeType := range []DiscussionNodeType{
+		DiscussionQuestion, DiscussionProposal, DiscussionAction,
+		DiscussionFact, DiscussionDecision, DiscussionResult, DiscussionBlocker,
+	} {
+		n := validDiscussionNode(nodeType)
+		n.FindingID = "finding-001"
+		if err := n.Validate(); err == nil {
+			t.Errorf("M09: FindingID on %q node must be rejected", nodeType)
+		}
+	}
+}

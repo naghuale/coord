@@ -30,8 +30,22 @@ func (c *Coordinator) selectRole(r *fsm.Run) error {
 			history = append(history, *prior.RoleSelection)
 		}
 		for _, other := range history {
-			if other.AgentID == selection.AgentID && ((selection.Profile.Role == roles.Auditor && other.Profile.Role == roles.Executor) || (selection.Profile.Role == roles.Executor && other.Profile.Role == roles.Auditor)) {
+			if other.AgentID != selection.AgentID {
+				continue
+			}
+			switch {
+			case selection.Profile.Role == roles.Auditor && other.Profile.Role == roles.Executor:
 				return fmt.Errorf("auditor conflicts with task executor")
+			case selection.Profile.Role == roles.Executor && other.Profile.Role == roles.Auditor:
+				return fmt.Errorf("auditor conflicts with task executor")
+			case selection.Profile.Role == roles.Reviewer && other.Profile.Role == roles.Executor:
+				return fmt.Errorf("reviewer conflicts with task executor")
+			case selection.Profile.Role == roles.Executor && other.Profile.Role == roles.Reviewer:
+				return fmt.Errorf("reviewer conflicts with task executor")
+			case selection.Profile.Role == roles.Auditor && other.Profile.Role == roles.Reviewer:
+				return fmt.Errorf("auditor conflicts with task reviewer")
+			case selection.Profile.Role == roles.Reviewer && other.Profile.Role == roles.Auditor:
+				return fmt.Errorf("auditor conflicts with task reviewer")
 			}
 		}
 	}

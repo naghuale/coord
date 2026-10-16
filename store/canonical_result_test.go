@@ -496,6 +496,103 @@ func TestRecordReviewResultRejectsNilArtifactReferenceLists(t *testing.T) {
 	}
 }
 
+func TestRecordReviewResultRejectsReviewerWhoAlsoExecuted(t *testing.T) {
+	p := &canonicalMemory{state: resultState(roles.Reviewer)}
+	s, err := NewCanonical(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+
+	// After opening with a valid state, change the executor run's AgentID to match
+	// the reviewer's in-memory state. This simulates a reviewer who also executed
+	// the task, triggering the reviewer≠executor independence check in RecordReviewResult
+	// without failing startup validation (which validates the committed state).
+	run := s.state.Runs["run-executor"]
+	sel := *run.RoleSelection
+	sel.AgentID = "agent-reviewer"
+	run.RoleSelection = &sel
+	run.RoleHistory = []roles.Selection{sel}
+	s.state.Runs[run.RunID] = run
+
+	before, err := copyCanonicalState(s.state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resultWithEvidence(task.ReviewResult{Verdict: task.ReviewApproved, Summary: "reviewed"}, s.state)
+	_, _, err = s.RecordReviewResult("independence-review", resultTaskID, "run-review", 3, result, time.Unix(500, 0).UTC())
+	if err == nil || !strings.Contains(err.Error(), "independence violation") {
+		t.Fatalf("reviewer≠executor check: error=%v, want independence violation", err)
+	}
+	if p.saveCalls != 0 || !reflect.DeepEqual(before, s.state) {
+		t.Fatal("independence violation changed canonical state")
+	}
+}
+
+func TestRecordAuditResultRejectsAuditorWhoAlsoExecuted(t *testing.T) {
+	p := &canonicalMemory{state: resultState(roles.Auditor)}
+	s, err := NewCanonical(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+
+	// Rebind the executor run to the same AgentID as the auditor to trigger the
+	// auditor≠executor independence check in RecordAuditResult.
+	execRun := s.state.Runs["run-executor"]
+	execSel := *execRun.RoleSelection
+	execSel.AgentID = "agent-auditor"
+	execRun.RoleSelection = &execSel
+	execRun.RoleHistory = []roles.Selection{execSel}
+	s.state.Runs[execRun.RunID] = execRun
+
+	before, err := copyCanonicalState(s.state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resultWithEvidence(task.AuditResult{Verdict: task.AuditPass, Summary: "audited"}, s.state)
+	_, _, err = s.RecordAuditResult("independence-audit-exec", resultTaskID, "run-audit", 5, result, time.Unix(500, 0).UTC())
+	if err == nil || !strings.Contains(err.Error(), "independence violation") {
+		t.Fatalf("auditor≠executor check: error=%v, want independence violation", err)
+	}
+	if p.saveCalls != 0 || !reflect.DeepEqual(before, s.state) {
+		t.Fatal("independence violation changed canonical state")
+	}
+}
+
+func TestRecordAuditResultRejectsAuditorWhoAlsoReviewed(t *testing.T) {
+	p := &canonicalMemory{state: resultState(roles.Auditor)}
+	s, err := NewCanonical(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+
+	// Rebind the auditor run to the same AgentID as the reviewer to trigger the
+	// auditor≠reviewer independence check in RecordAuditResult.
+	// resultState(Auditor) includes run-review (agent-reviewer), so changing
+	// run-audit's AgentID to "agent-reviewer" creates the conflict.
+	auditRun := s.state.Runs["run-audit"]
+	auditSel := *auditRun.RoleSelection
+	auditSel.AgentID = "agent-reviewer"
+	auditRun.RoleSelection = &auditSel
+	auditRun.RoleHistory = []roles.Selection{auditSel}
+	s.state.Runs[auditRun.RunID] = auditRun
+
+	before, err := copyCanonicalState(s.state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resultWithEvidence(task.AuditResult{Verdict: task.AuditPass, Summary: "audited"}, s.state)
+	_, _, err = s.RecordAuditResult("independence-audit-review", resultTaskID, "run-audit", 5, result, time.Unix(500, 0).UTC())
+	if err == nil || !strings.Contains(err.Error(), "independence violation") {
+		t.Fatalf("auditor≠reviewer check: error=%v, want independence violation", err)
+	}
+	if p.saveCalls != 0 || !reflect.DeepEqual(before, s.state) {
+		t.Fatal("independence violation changed canonical state")
+	}
+}
+
 const resultTaskID taskid.ID = "task_01ARZ3NDEKTSV4RRFFQ69G5FAV"
 
 func committedResultState(t *testing.T, role roles.Role) CanonicalState {
