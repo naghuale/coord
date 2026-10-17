@@ -1,5 +1,22 @@
 # История изменений
 
+## 2026-10-17 — P0-3: LOCAL_GIT family contract + OWNER decision (Refs #7)
+
+- Added `LOCAL_GIT` as third canonical `ExternalActionFamily` per decision
+  P0-3-LOCAL-GIT-AND-RUN-RECOVERY-R1 (`internal/externalaction/localgit.go`):
+  `LocalGitOperation` enum (6 ops), `LocalGitActionPayload`, `LocalGitMarker`,
+  `LocalGitObservation`, `NewLocalGit()`, `validateLocalGit()`. Uses same common
+  ExternalAction envelope, Outbox, claim epoch, and recovery loop as AGENT_SESSION
+  and GITHUB; no parallel action store. No credentials, no network, no push.
+  `TestLocalGitProtectedBranchRejected`, `TestLocalGitSystemTmpRejected`,
+  `TestLocalGitIdempotencyKeyStableAcrossTimestamps`,
+  `TestLocalGitCompletedRequiresObservation`,
+  `TestM01LocalGitMarkerOperationInstanceIDMismatch` … `TestM08LocalGitResultEnvelopeRejectsStopMethod`
+  (9 invariants, 13 focused scenarios, 8/8 mutations killed).
+- Persisted decision `docs/decisions/P0-3-LOCAL-GIT-AND-RUN-RECOVERY-R1.yaml`
+  accepting LOCAL_GIT family and Coordinator authority for `ApplyRunRecoveryCommand`
+  (WP-P03-02B design phase, not yet implemented). `TestLocalGitUnknownFamilyRejected`.
+
 ## 2026-10-17 — Shadow Validation: crash recovery and admission report (Refs #70)
 
 - Added restart-safe shadow recovery (`internal/shadowpilot/crash_recovery.go`):
