@@ -1,0 +1,443 @@
+apiVersion: coord.dev/v1alpha1
+kind: CoordinatorWorkflowCatalog
+metadata:
+  status: Proposed
+  normativeAuthority: false
+  canonicalActionMap: docs/operations/ACTION-MAP.yaml
+identifiers:
+  observations:
+  - kind: READY_ISSUE_OBSERVED
+    scope: internal
+    canonicalEvent: false
+  - kind: ASSIGNMENT_DELIVERY_OBSERVED
+    scope: internal
+    canonicalEvent: false
+  - kind: AGENT_RESPONSE_OBSERVED
+    scope: internal
+    canonicalEvent: false
+  - kind: HEARTBEAT_STALE_OBSERVED
+    scope: internal
+    canonicalEvent: false
+  - kind: RECONCILE_FAILURE_OBSERVED
+    scope: internal
+    canonicalEvent: false
+  - kind: SESSION_EXECUTION_BLOCK_OBSERVED
+    scope: internal
+    canonicalEvent: false
+  - kind: PHYSICAL_FRONTEND_BLOCK_OBSERVED
+    scope: internal
+    canonicalEvent: false
+  - kind: UNREVIEWED_CHANGE_DENIAL_OBSERVED
+    scope: internal
+    canonicalEvent: false
+  - kind: ACCEPTED_WRITE_BLOCK_OBSERVED
+    scope: internal
+    canonicalEvent: false
+  - kind: NORMATIVE_BOUNDARY_OBSERVED
+    scope: internal
+    canonicalEvent: false
+  - kind: EXTERNAL_BLOCKER_OBSERVED
+    scope: internal
+    canonicalEvent: false
+  - kind: REVIEW_FINDING_OBSERVED
+    scope: internal
+    canonicalEvent: false
+  - kind: CI_FAILURE_OBSERVED
+    scope: internal
+    canonicalEvent: false
+  - kind: UNKNOWN_WORK_OBSERVED
+    scope: internal
+    canonicalEvent: false
+  outcomes:
+  - kind: READY_WORK_PLAN_CREATED
+    scope: workflow
+    canonicalTransition: false
+  - kind: NON_ADMITTED_REPLACEMENT_PLAN_CREATED
+    scope: workflow
+    canonicalTransition: false
+  - kind: STALE_RESPONSE_REJECTED
+    scope: workflow
+    canonicalTransition: false
+  - kind: SESSION_RECONCILE_PLAN_CREATED
+    scope: workflow
+    canonicalTransition: false
+  - kind: FAILED_RECONCILE_REPLACEMENT_PLAN_CREATED
+    scope: workflow
+    canonicalTransition: false
+  - kind: BLOCKED_SESSION_REPLACEMENT_PLAN_CREATED
+    scope: workflow
+    canonicalTransition: false
+  - kind: HUMAN_FRONTEND_CARD_PLANNED
+    scope: workflow
+    canonicalTransition: false
+  - kind: UNREVIEWED_SUBJECT_FREEZE_PLANNED
+    scope: workflow
+    canonicalTransition: false
+  - kind: EXTERNAL_WRITE_HUMAN_CARD_PLANNED
+    scope: workflow
+    canonicalTransition: false
+  - kind: OWNER_TRACE_PLANNED
+    scope: workflow
+    canonicalTransition: false
+  - kind: EXTERNAL_BLOCKER_RECORD_PLANNED
+    scope: workflow
+    canonicalTransition: false
+  - kind: REVIEW_CORRECTION_PLAN_CREATED
+    scope: workflow
+    canonicalTransition: false
+  - kind: CI_CORRECTION_PLAN_CREATED
+    scope: workflow
+    canonicalTransition: false
+  - kind: READONLY_RECOVERY_PLAN_CREATED
+    scope: workflow
+    canonicalTransition: false
+  - kind: PRESERVATION_STOP_PLAN_CREATED
+    scope: workflow
+    canonicalTransition: false
+workflows:
+- id: start-ready-work
+  canonicalEvent: CURRENT_ISSUE_CLOSED
+  canonicalTransition: CONTINUE_AUTONOMOUSLY
+  observation: READY_ISSUE_OBSERVED
+  priority: 20
+  when:
+    all:
+    - fact: nextReadyIssue.exists
+      operator: EQ
+      value: true
+    - fact: nextReadyIssue.scopeKnown
+      operator: EQ
+      value: true
+    - fact: boundaries.none
+      operator: EQ
+      value: true
+  actions:
+  - identify_next_ready_issue
+  - verify_issue_scope
+  - create_assignment
+  - select_eligible_executor
+  - dispatch_assignment
+  - verify_admission
+  - verify_running
+  outcome:
+    code: READY_WORK_PLAN_CREATED
+  forbidden:
+  - ask_owner
+  - passive_wait
+- id: replace-non-admitted-session
+  canonicalEvent: AGENT_ASSIGNMENT_DISPATCHED
+  canonicalTransition: ADVANCE_DISPATCHED_WORK
+  observation: ASSIGNMENT_DELIVERY_OBSERVED
+  priority: 50
+  when:
+    all:
+    - fact: assignment.admission
+      operator: EQ
+      value: NOT_CONFIRMED
+    - fact: assignment.admissionTimedOut
+      operator: EQ
+      value: true
+    - &id001
+      fact: replacement.eligible
+      operator: EQ
+      value: true
+    - &id002
+      fact: replacement.independent
+      operator: EQ
+      value: true
+    - &id003
+      fact: fence.accepted
+      operator: EQ
+      value: true
+    - &id004
+      fact: stopProof.satisfied
+      operator: EQ
+      value: true
+  actions: &id005
+  - inspect_current_assignment
+  - verify_replacement_independence
+  - revoke_old_assignment_authority
+  - verify_stop_proof
+  - create_durable_replacement_intent
+  - dispatch_replacement
+  - verify_admission
+  - verify_running
+  outcome:
+    code: NON_ADMITTED_REPLACEMENT_PLAN_CREATED
+  forbidden:
+  - ask_owner
+  - passive_wait
+- id: reject-stale-assignment-response
+  canonicalEvent: AGENT_ASSIGNMENT_DISPATCHED
+  canonicalTransition: ADVANCE_DISPATCHED_WORK
+  observation: AGENT_RESPONSE_OBSERVED
+  priority: 65
+  when:
+    all:
+    - fact: observedResponse.assignmentId
+      operator: NE
+      valueFrom: currentAssignment.id
+    - fact: observedResponse.generation
+      operator: LT
+      valueFrom: currentAssignment.generation
+  actions:
+  - record_stale_response_observation
+  - reject_response_for_current_assignment
+  - preserve_current_assignment
+  - preserve_current_session
+  - increment_stale_response_metric
+  outcome:
+    code: STALE_RESPONSE_REJECTED
+    currentAssignmentState: UNCHANGED
+    currentSessionState: UNCHANGED
+  forbidden:
+  - apply_response_to_current_assignment
+  - revoke_current_assignment
+  - fence_current_generation
+  - replace_current_session
+  - mark_current_assignment_failed
+- id: reconcile-stale-heartbeat
+  canonicalEvent: AGENT_ASSIGNMENT_DISPATCHED
+  canonicalTransition: ADVANCE_DISPATCHED_WORK
+  observation: HEARTBEAT_STALE_OBSERVED
+  priority: 60
+  when:
+    all:
+    - fact: session.heartbeatStale
+      operator: EQ
+      value: true
+  actions:
+  - suspend_mutation_authority
+  - observe_external_session
+  - record_reconcile_obligation
+  - continue_independent_work
+  outcome:
+    code: SESSION_RECONCILE_PLAN_CREATED
+  forbidden:
+  - blind_redispatch
+  - passive_wait
+- id: replace-after-failed-reconcile
+  canonicalEvent: AGENT_ASSIGNMENT_DISPATCHED
+  canonicalTransition: ADVANCE_DISPATCHED_WORK
+  observation: RECONCILE_FAILURE_OBSERVED
+  priority: 55
+  when:
+    all:
+    - fact: session.reconcileFailed
+      operator: EQ
+      value: true
+    - *id001
+    - *id002
+    - *id003
+    - *id004
+  actions: *id005
+  outcome:
+    code: FAILED_RECONCILE_REPLACEMENT_PLAN_CREATED
+  forbidden:
+  - ask_owner
+  - passive_wait
+- id: replace-blocked-session
+  canonicalEvent: AGENT_ASSIGNMENT_DISPATCHED
+  canonicalTransition: ADVANCE_DISPATCHED_WORK
+  observation: SESSION_EXECUTION_BLOCK_OBSERVED
+  priority: 45
+  when:
+    all:
+    - fact: session.executionBlocked
+      operator: EQ
+      value: true
+    - *id001
+    - *id002
+    - *id003
+    - *id004
+  actions: *id005
+  outcome:
+    code: BLOCKED_SESSION_REPLACEMENT_PLAN_CREATED
+  forbidden:
+  - ask_owner
+  - passive_wait
+- id: prepare-physical-frontend-action
+  canonicalEvent: HUMAN_ACTION_NEEDED
+  canonicalTransition: HUMAN_ACTION_REQUIRED
+  observation: PHYSICAL_FRONTEND_BLOCK_OBSERVED
+  priority: 80
+  when:
+    all:
+    - fact: human.boundaryVerified
+      operator: EQ
+      value: true
+  actions:
+  - prepare_human_action_card
+  - continue_independent_work
+  outcome:
+    code: HUMAN_FRONTEND_CARD_PLANNED
+  forbidden:
+  - ask_owner
+  - passive_wait
+- id: freeze-unreviewed-change
+  canonicalEvent: CODE_OR_DOCUMENT_CHANGED
+  canonicalTransition: FREEZE_FOR_REVIEW
+  observation: UNREVIEWED_CHANGE_DENIAL_OBSERVED
+  priority: 40
+  when:
+    all:
+    - fact: change.acceptedExactSubject
+      operator: EQ
+      value: false
+  actions:
+  - freeze_subject
+  - request_independent_review
+  - request_audit_if_required
+  outcome:
+    code: UNREVIEWED_SUBJECT_FREEZE_PLANNED
+  forbidden:
+  - ask_owner
+  - passive_wait
+- id: prepare-accepted-write-human-action
+  canonicalEvent: HUMAN_ACTION_NEEDED
+  canonicalTransition: HUMAN_ACTION_REQUIRED
+  observation: ACCEPTED_WRITE_BLOCK_OBSERVED
+  priority: 79
+  when:
+    all:
+    - fact: human.boundaryVerified
+      operator: EQ
+      value: true
+  actions:
+  - prepare_human_action_card
+  - continue_independent_work
+  outcome:
+    code: EXTERNAL_WRITE_HUMAN_CARD_PLANNED
+  forbidden:
+  - ask_owner
+  - passive_wait
+- id: prepare-proven-owner-boundary
+  canonicalEvent: OWNER_QUESTION_CANDIDATE
+  canonicalTransition: OWNER_REQUIRED
+  observation: NORMATIVE_BOUNDARY_OBSERVED
+  priority: 90
+  when:
+    all:
+    - fact: owner.boundaryVerified
+      operator: EQ
+      value: true
+  actions:
+  - record_owner_decision_trace
+  outcome:
+    code: OWNER_TRACE_PLANNED
+  forbidden:
+  - ask_owner
+  - passive_wait
+- id: record-proven-external-blocker
+  canonicalEvent: BLOCKER_DETECTED
+  canonicalTransition: BLOCKED_EXTERNAL
+  observation: EXTERNAL_BLOCKER_OBSERVED
+  priority: 70
+  when:
+    all:
+    - fact: external.blockerVerified
+      operator: EQ
+      value: true
+  actions:
+  - record_durable_blocker
+  - continue_independent_work
+  outcome:
+    code: EXTERNAL_BLOCKER_RECORD_PLANNED
+  forbidden:
+  - ask_owner
+  - passive_wait
+- id: prepare-review-correction
+  canonicalEvent: REVIEW_CHANGES_REQUIRED
+  canonicalTransition: PREPARE_CORRECTION
+  observation: REVIEW_FINDING_OBSERVED
+  priority: 30
+  when:
+    all:
+    - fact: finding.withinAcceptedScope
+      operator: EQ
+      value: true
+  actions:
+  - classify_findings
+  - create_correction_assignment
+  - freeze_subject
+  - repeat_required_gates
+  outcome:
+    code: REVIEW_CORRECTION_PLAN_CREATED
+  forbidden:
+  - ask_owner
+  - passive_wait
+- id: correct-technical-ci-failure
+  canonicalEvent: CI_FAILED
+  canonicalTransition: CONTINUE_AUTONOMOUSLY
+  observation: CI_FAILURE_OBSERVED
+  priority: 30
+  when:
+    all:
+    - fact: failure.technical
+      operator: EQ
+      value: true
+    - fact: failure.withinAcceptedScope
+      operator: EQ
+      value: true
+  actions:
+  - capture_failed_ci_job
+  - classify_failure
+  - create_correction_assignment
+  - repeat_required_gates
+  outcome:
+    code: CI_CORRECTION_PLAN_CREATED
+  forbidden:
+  - ask_owner
+  - passive_wait
+- id: recover-unknown-work-readonly
+  canonicalEvent: WORKTREE_STATE_UNKNOWN
+  canonicalTransition: RECOVER_COORDINATION_STATE
+  observation: UNKNOWN_WORK_OBSERVED
+  priority: 10
+  when:
+    all:
+    - fact: unknownChanges.staged
+      operator: EQ
+      value: false
+    - fact: readOnlyClassificationSafe
+      operator: EQ
+      value: true
+    - fact: workspaceBinding.valid
+      operator: EQ
+      value: true
+    - fact: preservationRisk
+      operator: EQ
+      value: LOW
+  actions:
+  - preserve_unknown_paths
+  - classify_read_only
+  outcome:
+    code: READONLY_RECOVERY_PLAN_CREATED
+  forbidden:
+  - ask_owner
+  - passive_wait
+- id: preserve-unsafe-unknown-work
+  canonicalEvent: WORKTREE_STATE_UNKNOWN
+  canonicalTransition: PRESERVE_AND_STOP
+  observation: UNKNOWN_WORK_OBSERVED
+  priority: 100
+  when:
+    any:
+    - fact: unknownChanges.staged
+      operator: EQ
+      value: true
+    - fact: preservationRisk
+      operator: EQ
+      value: HIGH
+    - fact: workspaceBinding.valid
+      operator: EQ
+      value: false
+  actions:
+  - record_snapshot
+  - preserve_unknown_paths
+  - block_mutations
+  outcome:
+    code: PRESERVATION_STOP_PLAN_CREATED
+  forbidden:
+  - ask_owner
+  - passive_wait

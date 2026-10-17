@@ -1,0 +1,195 @@
+apiVersion: coord.dev/v1alpha1
+kind: CoordinatorCompletionPolicy
+metadata:
+  status: Proposed
+  normativeAuthority: false
+  canonicalActionMap: docs/operations/ACTION-MAP.yaml
+reasonCodes:
+- DETERMINISTIC_TRANSITION_NOT_EXECUTED
+- READY_ASSIGNMENT_NOT_DISPATCHED
+- DELIVERED_NOT_ADMITTED
+- QUEUED_NOT_RUNNING
+- SESSION_RECONCILE_REQUIRED
+- AUTOMATION_PATH_AVAILABLE
+- ELIGIBLE_REPLACEMENT_AVAILABLE
+- HUMAN_ACTION_COMMAND_MISSING
+- HUMAN_ACTION_POST_CHECK_MISSING
+- UNSUPPORTED_CONFIRMATION_REQUEST
+- PASSIVE_FUTURE_PROMISE
+- INDEPENDENT_WORK_NOT_PERFORMED
+- STALE_RESPONSE_MUTATED_CURRENT_ASSIGNMENT
+guards:
+- id: deterministic-transition-executed
+  when:
+    all:
+    - fact: deterministic.available
+      operator: EQ
+      value: true
+  require:
+    all:
+    - fact: deterministic.executed
+      operator: EQ
+      value: true
+  violation:
+    reasonCode: DETERMINISTIC_TRANSITION_NOT_EXECUTED
+- id: ready-assignment-dispatched
+  when:
+    all:
+    - fact: readyAssignment.exists
+      operator: EQ
+      value: true
+  require:
+    all:
+    - fact: readyAssignment.dispatched
+      operator: EQ
+      value: true
+  violation:
+    reasonCode: READY_ASSIGNMENT_NOT_DISPATCHED
+- id: delivered-is-not-admitted
+  when:
+    all:
+    - fact: assignment.delivery
+      operator: EQ
+      value: DELIVERED
+    - fact: assignment.reportedAdmitted
+      operator: EQ
+      value: true
+  require:
+    all:
+    - fact: assignment.admission
+      operator: EQ
+      value: ADMITTED
+  violation:
+    reasonCode: DELIVERED_NOT_ADMITTED
+- id: queued-is-not-running
+  when:
+    all:
+    - fact: assignment.delivery
+      operator: EQ
+      value: QUEUED
+  require:
+    all:
+    - fact: session.reportedRunning
+      operator: EQ
+      value: false
+  violation:
+    reasonCode: QUEUED_NOT_RUNNING
+- id: stale-heartbeat-reconciled
+  when:
+    all:
+    - fact: session.heartbeatStale
+      operator: EQ
+      value: true
+  require:
+    all:
+    - fact: session.reconcileAttempted
+      operator: EQ
+      value: true
+  violation:
+    reasonCode: SESSION_RECONCILE_REQUIRED
+- id: human-has-no-automation
+  when:
+    all:
+    - fact: human.required
+      operator: EQ
+      value: true
+  require:
+    all:
+    - fact: automation.available
+      operator: EQ
+      value: false
+  violation:
+    reasonCode: AUTOMATION_PATH_AVAILABLE
+- id: human-has-no-replacement
+  when:
+    all:
+    - fact: human.required
+      operator: EQ
+      value: true
+  require:
+    all:
+    - fact: replacement.eligible
+      operator: EQ
+      value: false
+  violation:
+    reasonCode: ELIGIBLE_REPLACEMENT_AVAILABLE
+- id: human-has-command
+  when:
+    all:
+    - fact: human.required
+      operator: EQ
+      value: true
+  require:
+    all:
+    - fact: human.commandPrepared
+      operator: EQ
+      value: true
+  violation:
+    reasonCode: HUMAN_ACTION_COMMAND_MISSING
+- id: human-has-post-check
+  when:
+    all:
+    - fact: human.required
+      operator: EQ
+      value: true
+  require:
+    all:
+    - fact: human.postCheckPrepared
+      operator: EQ
+      value: true
+  violation:
+    reasonCode: HUMAN_ACTION_POST_CHECK_MISSING
+- id: no-confirmation-question
+  when:
+    all:
+    - fact: completion.requested
+      operator: EQ
+      value: true
+  require:
+    all:
+    - fact: confirmation.requested
+      operator: EQ
+      value: false
+  violation:
+    reasonCode: UNSUPPORTED_CONFIRMATION_REQUEST
+- id: no-future-promise
+  when:
+    all:
+    - fact: completion.requested
+      operator: EQ
+      value: true
+  require:
+    all:
+    - fact: futurePromise
+      operator: EMPTY
+  violation:
+    reasonCode: PASSIVE_FUTURE_PROMISE
+- id: independent-work-performed
+  when:
+    all:
+    - fact: independentWork.available
+      operator: EQ
+      value: true
+  require:
+    all:
+    - fact: independentWork.performed
+      operator: EQ
+      value: true
+  violation:
+    reasonCode: INDEPENDENT_WORK_NOT_PERFORMED
+- id: current-assignment-preserved-after-stale-response
+  when:
+    all:
+    - fact: workflow.lastOutcome
+      operator: EQ
+      value: STALE_RESPONSE_REJECTED
+  require:
+    all:
+    - fact: currentAssignment.stateChanged
+      operator: EQ
+      value: false
+    - fact: currentSession.replaced
+      operator: EQ
+      value: false
+  violation:
+    reasonCode: STALE_RESPONSE_MUTATED_CURRENT_ASSIGNMENT

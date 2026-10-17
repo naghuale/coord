@@ -1,0 +1,5 @@
+all:
+  - fact: observedResponse.generation
+    operator: LT
+    value: 1
+    valueFrom: currentAssignment.generation

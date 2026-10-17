@@ -1,0 +1,375 @@
+type: object
+additionalProperties: false
+properties:
+  apiVersion:
+    const: coord.dev/v1alpha1
+  kind:
+    const: CoordinatorCompletionPolicy
+  metadata:
+    type: object
+    additionalProperties: false
+    properties:
+      status:
+        const: Proposed
+      normativeAuthority:
+        const: false
+      canonicalActionMap:
+        const: docs/operations/ACTION-MAP.yaml
+    required:
+    - status
+    - normativeAuthority
+    - canonicalActionMap
+  reasonCodes:
+    type: array
+    minItems: 1
+    uniqueItems: true
+    items:
+      enum: &id001
+      - DETERMINISTIC_TRANSITION_NOT_EXECUTED
+      - READY_ASSIGNMENT_NOT_DISPATCHED
+      - DELIVERED_NOT_ADMITTED
+      - QUEUED_NOT_RUNNING
+      - SESSION_RECONCILE_REQUIRED
+      - AUTOMATION_PATH_AVAILABLE
+      - ELIGIBLE_REPLACEMENT_AVAILABLE
+      - HUMAN_ACTION_COMMAND_MISSING
+      - HUMAN_ACTION_POST_CHECK_MISSING
+      - UNSUPPORTED_CONFIRMATION_REQUEST
+      - PASSIVE_FUTURE_PROMISE
+      - INDEPENDENT_WORK_NOT_PERFORMED
+      - STALE_RESPONSE_MUTATED_CURRENT_ASSIGNMENT
+  guards:
+    type: array
+    minItems: 13
+    items:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          pattern: ^[a-z][a-z0-9-]{0,95}$
+        when:
+          $ref: '#/$defs/conditions'
+        require:
+          $ref: '#/$defs/conditions'
+        violation:
+          type: object
+          additionalProperties: false
+          properties:
+            reasonCode:
+              enum: *id001
+          required:
+          - reasonCode
+      required:
+      - id
+      - when
+      - require
+      - violation
+required:
+- apiVersion
+- kind
+- metadata
+- reasonCodes
+- guards
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://coord.dev/schemas/coordinator-completion-policy.schema.yaml
+$defs:
+  condition:
+    type: object
+    additionalProperties: false
+    properties:
+      fact:
+        enum: &id002
+        - evidence.refs
+        - assignment.admission
+        - assignment.delivery
+        - assignment.admissionTimedOut
+        - assignment.reportedAdmitted
+        - replacement.eligible
+        - replacement.independent
+        - observedResponse.assignmentId
+        - currentAssignment.id
+        - observedResponse.generation
+        - currentAssignment.generation
+        - observedResponse.subjectSha
+        - currentAssignment.subjectSha
+        - session.heartbeatStale
+        - session.reconcileAttempted
+        - session.reconcileFailed
+        - currentGeneration.fenced
+        - session.executionBlocked
+        - session.reportedRunning
+        - stopProof.satisfied
+        - fence.accepted
+        - nextReadyIssue.exists
+        - nextReadyIssue.scopeKnown
+        - boundaries.none
+        - change.acceptedExactSubject
+        - change.touchesAgentInstructions
+        - finding.withinAcceptedScope
+        - failure.technical
+        - failure.withinAcceptedScope
+        - unknownChanges.staged
+        - readOnlyClassificationSafe
+        - workspaceBinding.valid
+        - preservationRisk
+        - human.boundaryVerified
+        - owner.boundaryVerified
+        - external.blockerVerified
+        - workflow.lastOutcome
+        - currentAssignment.stateChanged
+        - currentSession.replaced
+        - completion.requested
+        - deterministic.available
+        - deterministic.executed
+        - readyAssignment.exists
+        - readyAssignment.dispatched
+        - confirmation.requested
+        - futurePromise
+        - independentWork.available
+        - independentWork.performed
+        - human.required
+        - automation.available
+        - human.commandPrepared
+        - human.postCheckPrepared
+      operator:
+        enum:
+        - EQ
+        - NE
+        - EMPTY
+        - NOT_EMPTY
+        - CONTAINS
+        - LT
+        - LTE
+        - GT
+        - GTE
+        - SAME_SUBJECT
+        - SAME_ASSIGNMENT
+        - SAME_GENERATION
+      value:
+        oneOf:
+        - type: boolean
+        - type: string
+        - type: integer
+          minimum: 0
+          maximum: 18446744073709551615
+        - type: array
+          items:
+            type: string
+      valueFrom:
+        enum: *id002
+    required:
+    - fact
+    - operator
+    oneOf:
+    - required:
+      - value
+      not:
+        required:
+        - valueFrom
+      properties:
+        operator:
+          not:
+            enum:
+            - EMPTY
+            - NOT_EMPTY
+    - required:
+      - valueFrom
+      not:
+        required:
+        - value
+      properties:
+        operator:
+          not:
+            enum:
+            - EMPTY
+            - NOT_EMPTY
+    - properties:
+        operator:
+          enum:
+          - EMPTY
+          - NOT_EMPTY
+      not:
+        anyOf:
+        - required:
+          - value
+        - required:
+          - valueFrom
+    allOf:
+    - if:
+        properties:
+          fact:
+            enum: &id003
+            - assignment.admissionTimedOut
+            - assignment.reportedAdmitted
+            - replacement.eligible
+            - replacement.independent
+            - session.heartbeatStale
+            - session.reconcileAttempted
+            - session.reconcileFailed
+            - currentGeneration.fenced
+            - session.executionBlocked
+            - session.reportedRunning
+            - stopProof.satisfied
+            - fence.accepted
+            - nextReadyIssue.exists
+            - nextReadyIssue.scopeKnown
+            - boundaries.none
+            - change.acceptedExactSubject
+            - change.touchesAgentInstructions
+            - finding.withinAcceptedScope
+            - failure.technical
+            - failure.withinAcceptedScope
+            - unknownChanges.staged
+            - readOnlyClassificationSafe
+            - workspaceBinding.valid
+            - human.boundaryVerified
+            - owner.boundaryVerified
+            - external.blockerVerified
+            - currentAssignment.stateChanged
+            - currentSession.replaced
+            - completion.requested
+            - deterministic.available
+            - deterministic.executed
+            - readyAssignment.exists
+            - readyAssignment.dispatched
+            - confirmation.requested
+            - independentWork.available
+            - independentWork.performed
+            - human.required
+            - automation.available
+            - human.commandPrepared
+            - human.postCheckPrepared
+        required:
+        - fact
+      then:
+        properties:
+          operator:
+            enum:
+            - EQ
+            - NE
+          value:
+            type: boolean
+          valueFrom:
+            enum: *id003
+    - if:
+        properties:
+          fact:
+            enum: &id004
+            - observedResponse.generation
+            - currentAssignment.generation
+        required:
+        - fact
+      then:
+        properties:
+          operator:
+            enum:
+            - EQ
+            - NE
+            - LT
+            - LTE
+            - GT
+            - GTE
+            - SAME_GENERATION
+          value:
+            type: integer
+            minimum: 1
+            maximum: 18446744073709551615
+          valueFrom:
+            enum: *id004
+    - if:
+        properties:
+          fact:
+            enum: &id005
+            - assignment.admission
+            - assignment.delivery
+            - observedResponse.assignmentId
+            - currentAssignment.id
+            - observedResponse.subjectSha
+            - currentAssignment.subjectSha
+            - preservationRisk
+            - workflow.lastOutcome
+            - futurePromise
+        required:
+        - fact
+      then:
+        properties:
+          operator:
+            enum:
+            - EQ
+            - NE
+            - EMPTY
+            - NOT_EMPTY
+            - SAME_ASSIGNMENT
+            - SAME_SUBJECT
+          value:
+            type: string
+          valueFrom:
+            enum: *id005
+    - if:
+        properties:
+          fact:
+            enum: &id006
+            - evidence.refs
+        required:
+        - fact
+      then:
+        properties:
+          operator:
+            enum:
+            - EQ
+            - NE
+            - EMPTY
+            - NOT_EMPTY
+            - CONTAINS
+        if:
+          properties:
+            operator:
+              const: CONTAINS
+          required:
+          - operator
+        then:
+          properties:
+            value:
+              type: string
+            valueFrom:
+              enum:
+              - assignment.admission
+              - assignment.delivery
+              - observedResponse.assignmentId
+              - currentAssignment.id
+              - observedResponse.subjectSha
+              - currentAssignment.subjectSha
+              - preservationRisk
+              - workflow.lastOutcome
+              - futurePromise
+        else:
+          properties:
+            value:
+              type: array
+              items:
+                type: string
+            valueFrom:
+              enum: *id006
+  conditions:
+    type: object
+    additionalProperties: false
+    properties:
+      all:
+        type: array
+        minItems: 1
+        items:
+          $ref: '#/$defs/condition'
+      any:
+        type: array
+        minItems: 1
+        items:
+          $ref: '#/$defs/condition'
+    required: []
+    anyOf:
+    - required:
+      - all
+    - required:
+      - any
+$comment: Structural/type schema only. Go semantic validation resolves canonical vocabulary,
+  namespaces, fact references, priorities and protected guard contracts against ACTION-MAP.

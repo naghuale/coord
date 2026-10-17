@@ -1,0 +1,4 @@
+all:
+  - fact: replacement.eligible
+    operator: EXECUTE
+    value: true
