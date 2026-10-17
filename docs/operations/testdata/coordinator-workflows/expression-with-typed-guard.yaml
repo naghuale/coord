@@ -1,0 +1,5 @@
+all:
+  - fact: replacement.eligible
+    operator: EQ
+    value: true
+expression: arbitrary_code()

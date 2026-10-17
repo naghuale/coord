@@ -1,0 +1,127 @@
+apiVersion: coord.dev/v1alpha1
+kind: CoordinatorWorkflowCompatibilityMap
+metadata:
+  status: Proposed
+  normativeAuthority: false
+  issue: 61
+  baseSha: 7137938bdfa060c4083db9a30003f524625f45ce
+  canonicalVocabularySource: docs/operations/ACTION-MAP.yaml
+entries:
+- sourceDraftId: T001
+  workflowId: start-ready-work
+  canonicalEvent: CURRENT_ISSUE_CLOSED
+  canonicalTransition: CONTINUE_AUTONOMOUSLY
+  internalObservation: READY_ISSUE_OBSERVED
+  workflowOutcome: READY_WORK_PLAN_CREATED
+  canonicalAliasAdded: false
+- sourceDraftId: T002
+  workflowId: replace-non-admitted-session
+  canonicalEvent: AGENT_ASSIGNMENT_DISPATCHED
+  canonicalTransition: ADVANCE_DISPATCHED_WORK
+  internalObservation: ASSIGNMENT_DELIVERY_OBSERVED
+  workflowOutcome: NON_ADMITTED_REPLACEMENT_PLAN_CREATED
+  canonicalAliasAdded: false
+- sourceDraftId: T003
+  workflowId: reject-stale-assignment-response
+  canonicalEvent: AGENT_ASSIGNMENT_DISPATCHED
+  canonicalTransition: ADVANCE_DISPATCHED_WORK
+  internalObservation: AGENT_RESPONSE_OBSERVED
+  workflowOutcome: STALE_RESPONSE_REJECTED
+  canonicalAliasAdded: false
+- sourceDraftId: T004
+  workflowId: reconcile-stale-heartbeat
+  canonicalEvent: AGENT_ASSIGNMENT_DISPATCHED
+  canonicalTransition: ADVANCE_DISPATCHED_WORK
+  internalObservation: HEARTBEAT_STALE_OBSERVED
+  workflowOutcome: SESSION_RECONCILE_PLAN_CREATED
+  canonicalAliasAdded: false
+- sourceDraftId: T005
+  workflowId: replace-after-failed-reconcile
+  canonicalEvent: AGENT_ASSIGNMENT_DISPATCHED
+  canonicalTransition: ADVANCE_DISPATCHED_WORK
+  internalObservation: RECONCILE_FAILURE_OBSERVED
+  workflowOutcome: FAILED_RECONCILE_REPLACEMENT_PLAN_CREATED
+  canonicalAliasAdded: false
+- sourceDraftId: T006
+  workflowId: replace-blocked-session
+  canonicalEvent: AGENT_ASSIGNMENT_DISPATCHED
+  canonicalTransition: ADVANCE_DISPATCHED_WORK
+  internalObservation: SESSION_EXECUTION_BLOCK_OBSERVED
+  workflowOutcome: BLOCKED_SESSION_REPLACEMENT_PLAN_CREATED
+  canonicalAliasAdded: false
+- sourceDraftId: T007
+  workflowId: prepare-physical-frontend-action
+  canonicalEvent: HUMAN_ACTION_NEEDED
+  canonicalTransition: HUMAN_ACTION_REQUIRED
+  internalObservation: PHYSICAL_FRONTEND_BLOCK_OBSERVED
+  workflowOutcome: HUMAN_FRONTEND_CARD_PLANNED
+  canonicalAliasAdded: false
+- sourceDraftId: T008
+  workflowId: freeze-unreviewed-change
+  canonicalEvent: CODE_OR_DOCUMENT_CHANGED
+  canonicalTransition: FREEZE_FOR_REVIEW
+  internalObservation: UNREVIEWED_CHANGE_DENIAL_OBSERVED
+  workflowOutcome: UNREVIEWED_SUBJECT_FREEZE_PLANNED
+  canonicalAliasAdded: false
+- sourceDraftId: T009
+  workflowId: prepare-accepted-write-human-action
+  canonicalEvent: HUMAN_ACTION_NEEDED
+  canonicalTransition: HUMAN_ACTION_REQUIRED
+  internalObservation: ACCEPTED_WRITE_BLOCK_OBSERVED
+  workflowOutcome: EXTERNAL_WRITE_HUMAN_CARD_PLANNED
+  canonicalAliasAdded: false
+- sourceDraftId: T010
+  workflowId: prepare-proven-owner-boundary
+  canonicalEvent: OWNER_QUESTION_CANDIDATE
+  canonicalTransition: OWNER_REQUIRED
+  internalObservation: NORMATIVE_BOUNDARY_OBSERVED
+  workflowOutcome: OWNER_TRACE_PLANNED
+  canonicalAliasAdded: false
+- sourceDraftId: T011
+  workflowId: record-proven-external-blocker
+  canonicalEvent: BLOCKER_DETECTED
+  canonicalTransition: BLOCKED_EXTERNAL
+  internalObservation: EXTERNAL_BLOCKER_OBSERVED
+  workflowOutcome: EXTERNAL_BLOCKER_RECORD_PLANNED
+  canonicalAliasAdded: false
+- sourceDraftId: T012
+  workflowId: prepare-review-correction
+  canonicalEvent: REVIEW_CHANGES_REQUIRED
+  canonicalTransition: PREPARE_CORRECTION
+  internalObservation: REVIEW_FINDING_OBSERVED
+  workflowOutcome: REVIEW_CORRECTION_PLAN_CREATED
+  canonicalAliasAdded: false
+- sourceDraftId: T013
+  workflowId: correct-technical-ci-failure
+  canonicalEvent: CI_FAILED
+  canonicalTransition: CONTINUE_AUTONOMOUSLY
+  internalObservation: CI_FAILURE_OBSERVED
+  workflowOutcome: CI_CORRECTION_PLAN_CREATED
+  canonicalAliasAdded: false
+- sourceDraftId: T014
+  workflowId: recover-unknown-work-readonly
+  canonicalEvent: WORKTREE_STATE_UNKNOWN
+  canonicalTransition: RECOVER_COORDINATION_STATE
+  internalObservation: UNKNOWN_WORK_OBSERVED
+  workflowOutcome: READONLY_RECOVERY_PLAN_CREATED
+  canonicalAliasAdded: false
+- sourceDraftId: T015
+  workflowId: preserve-unsafe-unknown-work
+  canonicalEvent: WORKTREE_STATE_UNKNOWN
+  canonicalTransition: PRESERVE_AND_STOP
+  internalObservation: UNKNOWN_WORK_OBSERVED
+  workflowOutcome: PRESERVATION_STOP_PLAN_CREATED
+  canonicalAliasAdded: false
+limits:
+- Selected workflows are plans, not canonical commands or mutation authority.
+- Only stale-response handling has a pure local executor in this slice.
+- Internal response input must be an authenticated validated Inbox projection; production
+  binding is not implemented.
+- HEARTBEAT_STALE_OBSERVED is internal; HEARTBEAT_STALE was not inserted into ACTION-MAP
+  events.
+- SESSION_REPLACED remains a canonical post-replacement event, not an alias for reconcile
+  failure.
+- External-write Human Action uses existing reason codes only after evidence proves
+  physical need; no automatic SYSTEM_DIALOG_REQUIRED mapping.
+- Existing watchdog early-return behavior is unchanged; integration of the new completion
+  validators requires separate scope.
