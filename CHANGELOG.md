@@ -1,5 +1,9 @@
 # История изменений
 
+## 2026-10-17 — R104 rationale-loss evidence classification (Refs #43)
+
+- Проведён read-only анализ 12 случаев потери rationale по Issue #43. Три случая закрыты существующей реализацией (ReviewResult/AuditResult сохраняют Findings в canonical events; migration не затрагивает Task events; DP-003 охватывает document-layer расхождения). Семь случаев классифицированы как DP-003 (две поверхности расходятся: supersession reason хранится в `DomainEvent.Summary`, но не попадает в CLI-проекцию `superseded_ids`; `gate evaluate` выводит Status без reason codes). Два случая классифицированы как DP-004 (граница нормы R104 и типов не сверяется: `AuditedProperty.Note` опционален без `Evidence []Reference`; `Finding.Status = RESOLVED` не требует `ResolutionEvidenceRefs`). Новый класс DP не требуется; существующих DP-003/DP-004 достаточно. Результат зафиксирован в `docs/DEFECT_PATTERNS.md` (документация).
+
 ## 2026-10-17 — Completion candidate и credential-free GitHub observation wiring (Refs #67)
 
 - Кандидат завершения проходит строгую проверку canonical Task/Run, exact subject, Action Map, Completion Policy и watchdog до записи canonical event; публикация выполняется после commit (`TestRunWithReadinessProcessesCandidateBeforeReceivingNextMessage`, `TestUnsupportedOwnerBoundaryIsNotPublished`). Добавлен только in-memory GitHub observation backend для fixture, без live API, credentials, writes или merge (`TestObserveExistingPR64WithoutCreate`).

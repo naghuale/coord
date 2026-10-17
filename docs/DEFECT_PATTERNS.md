@@ -169,6 +169,18 @@ Single Owner, RT-03 Recovery и readiness; TASK-MODEL «Stage transitions».
 - ALIGNED_UX требует проверку checkpoint при снятии блокера; код её не делает.
 - CHANGELOG обещал освобождение горутины ввода по `/quit` безусловно; это верно
   только при блокировке на отправке, не на чтении stdin.
+- R75b: из DESIGN исчезли ссылка на R85 и основание R93; восстановлено в R98.
+  Два носителя: нормативный DESIGN и граф решений R — разошлись без
+  автоматической проверки.
+- `coord-review gate evaluate` выводит `ReadinessEvaluation.Status` (READY,
+  NOT_EVALUATED, CHANGES_REQUIRED) без reason codes: две поверхности — событийный
+  лог (содержит `ReviewResult.Findings` и причину supersession в
+  `DomainEvent.Summary`) и CLI-проекция (выводит только `Status` + `ResultIDs`) —
+  расходятся. Потребитель видит `NOT_EVALUATED` без объяснения причины.
+- `coord-review review show` / `audit show`: supersession event хранит причину
+  замены в `DomainEvent.Summary` (поле обязательно, проверяется при записи), но
+  `supersededSet()` в `cmd/coord-review/main.go` извлекает только
+  `SupersededResultID`; в проекции `superseded_ids: []string` причина теряется.
 
 **Почему опасно.** Оператор выполняет предписанное действие и получает ошибку;
 реализатор читает устаревшую копию как норму.
@@ -218,6 +230,19 @@ Single Owner, RT-03 Recovery и readiness; TASK-MODEL «Stage transitions».
   без заданной атомарности на промежуточном шаге снимала гейт; актор команд
   графа не был назван. Найдено cross-audit OpenCode; исправляется в ADR-0002
   (DG-06a, DG-07, DG-08) — проверяйте текущий текст.
+- DP-004 doc-срез: из ROADMAP исчезли R82 и статус P0-1 OPEN; восстановлены до
+  коммита `9445609`. Граница между ROADMAP и нормой R82 не была записана ни в
+  одном из документов, поэтому один из них потерял ссылку без автоматического
+  обнаружения.
+- `task.AuditedProperty.Note` является `omitempty`-полем свободного текста; поля
+  `Evidence []Reference` нет. R104 требует фиксации rationale при проверке
+  audit properties, но граница между нормой R104 и типом `AuditedProperty`
+  (task/result.go) не сверяется: свойство может иметь `Verdict: "PASS"` с
+  пустым `Note` и без ссылок на доказательства.
+- `task.Finding.Status` допускает `RESOLVED` и `DISMISSED`, но у `Finding`
+  нет поля `ResolutionEvidenceRefs`. `validateResult` требует `Evidence` при
+  создании Finding, но не при смене статуса: норма о фиксации rationale при
+  resolution не отражена в типе.
 
 **Почему опасно.** Реализация заполняет пробел своим выбором, который никто не
 принимал; два Accepted-документа допускают взаимоисключающие прочтения —
