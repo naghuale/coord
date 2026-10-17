@@ -82,12 +82,13 @@ type Action struct {
 // Result is returned only by the configured trusted adapter. The request/action
 // identity and claim epoch are supplied by the runtime, never by an LLM.
 type Result struct {
-	GitHub        *GitHubObservation `json:"github,omitempty"`
-	Outcome       string             `json:"outcome"`
-	Evidence      string             `json:"evidence"`
-	EvidenceClass string             `json:"evidence_class,omitempty"`
-	StopMethod    string             `json:"stop_method,omitempty"`
-	Stopped       bool               `json:"stopped,omitempty"`
+	GitHub        *GitHubObservation   `json:"github,omitempty"`
+	LocalGit      *LocalGitObservation `json:"local_git,omitempty"`
+	Outcome       string               `json:"outcome"`
+	Evidence      string               `json:"evidence"`
+	EvidenceClass string               `json:"evidence_class,omitempty"`
+	StopMethod    string               `json:"stop_method,omitempty"`
+	Stopped       bool                 `json:"stopped,omitempty"`
 }
 type Observation struct {
 	ID            string    `json:"id"`
@@ -150,6 +151,18 @@ func Key(a Action) string {
 			Instance, Request string
 		}{ContractVersion, a.Family, a.Kind, a.OperationInstanceID, GitHubPayloadDigest(payload)})
 	}
+	if a.Family == LocalGit {
+		var payload LocalGitActionPayload
+		if err := decodeRequest(a.Request, &payload); err != nil {
+			return ""
+		}
+		return Digest(struct {
+			Version           uint32
+			Family            Family
+			Kind              Kind
+			Instance, Request string
+		}{ContractVersion, a.Family, a.Kind, a.OperationInstanceID, LocalGitPayloadDigest(payload)})
+	}
 	return Digest(struct {
 		Version  int
 		Kind     Kind
@@ -170,7 +183,7 @@ func (a Action) Validate() error {
 	if a.SchemaVersion != ContractVersion {
 		return fmt.Errorf("unsupported action schema version")
 	}
-	if a.Family != AgentSession && a.Family != GitHub {
+	if a.Family != AgentSession && a.Family != GitHub && a.Family != LocalGit {
 		return fmt.Errorf("unknown action family")
 	}
 	if a.ID == "" || a.OperationInstanceID == "" || a.Key != Key(a) || !json.Valid(a.Request) || a.RequestDigest != Digest(a.Request) || a.MaxAttempts == 0 || a.MaxAttempts > 16 || a.Attempts > a.MaxAttempts || a.CreatedAt.IsZero() || a.UpdatedAt.Before(a.CreatedAt) {
@@ -178,6 +191,9 @@ func (a Action) Validate() error {
 	}
 	if a.Family == GitHub {
 		return a.validateGitHub()
+	}
+	if a.Family == LocalGit {
+		return a.validateLocalGit()
 	}
 	if a.Binding.ProjectID == "" || a.Binding.TaskID == "" || a.Binding.RunID == "" || a.Binding.AssignmentID == "" || a.Binding.SessionID == "" || len(a.Binding.SubjectSHA) != 40 || a.Binding.Generation == 0 {
 		return fmt.Errorf("incomplete action binding %q", a.ID)
@@ -212,8 +228,8 @@ func (a Action) Validate() error {
 	default:
 		return fmt.Errorf("unknown action status")
 	}
-	if a.Result != nil && a.Result.GitHub != nil {
-		return fmt.Errorf("GitHub result in session action")
+	if a.Result != nil && (a.Result.GitHub != nil || a.Result.LocalGit != nil) {
+		return fmt.Errorf("external family result in session action")
 	}
 	if a.Status == Completed && a.Result == nil {
 		return fmt.Errorf("completed action without result")
@@ -260,6 +276,12 @@ func Validate(s State, revision uint64) error {
 			}
 			continue
 		}
+		if a.Family == LocalGit {
+			if a.ParentID != "" {
+				return fmt.Errorf("LOCAL_GIT parent unsupported")
+			}
+			continue
+		}
 		if a.ParentID != "" {
 			p, ok := s.Actions[a.ParentID]
 			if !ok || p.Binding != a.Binding || p.Status != Completed {
@@ -289,7 +311,7 @@ func Validate(s State, revision uint64) error {
 		}
 	}
 	for _, a := range s.Actions {
-		if a.Family == AgentSession && a.Kind != Deliver && a.ParentID == "" {
+		if (a.Family == AgentSession) && a.Kind != Deliver && a.ParentID == "" {
 			return fmt.Errorf("action missing predecessor")
 		}
 		if a.Status == Observed {
@@ -326,8 +348,8 @@ func Validate(s State, revision uint64) error {
 	for id, r := range s.Receipts {
 		o, ok := s.Observations[id]
 		a := s.Actions[r.ActionID]
-		if a.Family == GitHub && (a.Result == nil || o.ClaimEpoch != a.Claim.Epoch || o.RequestDigest != a.RequestDigest || o.Digest != Digest(*a.Result)) {
-			return fmt.Errorf("completed GitHub action lacks bound positive observation")
+		if (a.Family == GitHub || a.Family == LocalGit) && (a.Result == nil || o.ClaimEpoch != a.Claim.Epoch || o.RequestDigest != a.RequestDigest || o.Digest != Digest(*a.Result)) {
+			return fmt.Errorf("completed %s action lacks bound positive observation", a.Family)
 		}
 		if !ok || o.Stale || r.ObservationID != id || r.ActionID != o.ActionID || r.Digest != o.Digest || r.Revision == 0 || r.Revision > revision || a.Status != Completed {
 			return fmt.Errorf("invalid action receipt")
