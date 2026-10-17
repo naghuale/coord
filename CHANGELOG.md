@@ -1,5 +1,9 @@
 # История изменений
 
+## 2026-10-17 — Shadow Validation pilot: WP-SV-03 Single-agent execution (Refs #70)
+
+- WP-SV-03: `internal/shadowpilot/executor.go` — `ShadowAssignment` (durable assignment intent, immutable after creation), `Admit()` (subject SHA match + reviewer≠executor guard), `ShadowHeartbeat` (monotonic sequence, stale detection), `ShadowExecution` (state machine: ADMITTED→RUNNING→COMPLETED|FENCED). Ключевые stop conditions: `StopExactSubjectMismatch` при несоответствии subject SHA на admission, `StopReviewerEqualsExecutor` при конфликте ролей, `StopStaleGenerationAccepted` при несоответствии generation в результате (`StaleGenerationError`). Fenced execution cannot be completed (`TestFencedExecutionCannotBeCompleted`). Stale heartbeat triggers automatic fence (`TestCheckHeartbeatTimeoutFencesStaleExecution`). 17 новых тестов (`TestAdmitRejectsSubjectMismatch`, `TestCompleteRejectsStaleGeneration`, и т.д.) (документация — shadow pilot, не production).
+
 ## 2026-10-17 — Shadow Validation pilot: WP-SV-01 Integration Map + WP-SV-02 Shadow run model (Refs #70)
 
 - WP-SV-01 (документация): read-only integration map — production entry point, adapter boundary, AgentSession bindings, Review/Audit command path, shadow store boundary, write denylist (17 методов), crash injection point, разрешённые пути.
