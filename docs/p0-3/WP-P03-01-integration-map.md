@@ -131,7 +131,23 @@ puts the Run in a terminal state without requiring a live `AgentSession`.
 
 ---
 
-## 5. Write Permission Boundary (P0-3-PRODUCTION-WRITE-BOUNDARY-R1)
+## 5. LOCAL_GIT Family Compatibility Check
+
+**Decision:** EXTERNAL-ACTION-CONTRACT-R1 explicitly fixes `allowedFamilies: [AGENT_SESSION, GITHUB]`.  
+**Implementation (model.go:173):** `if a.Family != AgentSession && a.Family != GitHub { return "unknown action family" }` — exhaustive, fail-closed.
+
+**Conclusion:** Adding `LOCAL_GIT` as a new ExternalAction family requires a new OWNER decision (class R). A TD-R2 correction is insufficient — this extends an exhaustive allowlist that is part of an accepted R norm.
+
+**Impact on WP-P03-02A:** The local git write path MUST NOT model local git operations as ExternalActions under the current schema. Two options require an OWNER decision:
+1. Add `LOCAL_GIT` to `allowedFamilies` via a new R decision
+2. Implement local git writes as a separate non-ExternalAction durable path (no family needed)
+
+Until an OWNER decision resolves this, WP-P03-02A design is BLOCKED on family taxonomy.
+
+---
+
+## 6. Write Permission Boundary (P0-3-PRODUCTION-WRITE-BOUNDARY-R1)
+<!-- formerly section 5 — renumbered after LOCAL_GIT compatibility section -->
 
 | Phase | Operations | Credentials | Status |
 |-------|-----------|-------------|--------|
@@ -145,7 +161,7 @@ puts the Run in a terminal state without requiring a live `AgentSession`.
 
 ---
 
-## 6. Crash-Restart Safety on Write Path
+## 7. Crash-Restart Safety on Write Path
 
 ```
 canonical intent (durable) → PENDING
@@ -164,7 +180,7 @@ idempotency key matched against `expectedHeadSha` before committing.
 
 ---
 
-## 7. Capability Permission Map
+## 8. Capability Permission Map
 
 | Capability | Current maturity | Required for live activation |
 |-----------|-----------------|------------------------------|
@@ -174,7 +190,7 @@ idempotency key matched against `expectedHeadSha` before committing.
 
 ---
 
-## 8. Identified Gaps for WP-P03-02 through WP-P03-06
+## 9. Identified Gaps for WP-P03-02 through WP-P03-06
 
 | WP | Gap |
 |----|-----|
@@ -187,7 +203,7 @@ idempotency key matched against `expectedHeadSha` before committing.
 
 ---
 
-## 9. What Does NOT Change in Phase 1
+## 10. What Does NOT Change in Phase 1
 
 - No changes to `ApplyInboxCommand` or `ApplyAgentCommand`
 - No changes to existing `GitHubOperation` enum
