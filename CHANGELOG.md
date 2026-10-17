@@ -1,5 +1,11 @@
 # История изменений
 
+## 2026-10-17 — Canonical ExternalAction schema 3 contract (Refs #63)
+
+- Schema-3 actions require an explicit AGENT_SESSION or GITHUB family; session keys, request/result digests, claim state and event history retain their schema-2 semantics (`TestExistingSchema2SessionActionMigratesToAgentSession`, `TestMigrationPreservesIdempotencyKey`, `TestMigrationPreservesDigests`).
+- Canonical startup migrates schema 2 under the existing persistence lock, with private verified backup, durable manifest, atomic publication and restart reconciliation; projection Load remains read-only (`TestMigrationReplayIsIdempotent`, `TestPartialMigrationDoesNotBecomeCurrent`, `TestExternalActionMigrationPublicationRecovery`).
+- Typed GitHub payload validation binds markers and positive completion evidence; merge validation requires an accepted exact-head gate and rejects absent canonical gate capability. No live GitHub API, credentials, gate authoring or production GitHub dispatch is introduced (`TestCompletedRejectsMarkerMismatch`, `TestMergeGateMustMatchExpectedHead`, `TestUnsafeDowngradeRejectedWithSchema3Records`).
+
 ## 2026-10-15 — Durable orchestration implementation candidate (Refs #49)
 
 - Existing coordd loop gains canonical external-action dispatch/recovery hooks; schema v2 retains action requests, claim epochs, ambiguous outcomes, observations and acknowledgement intents alongside Task events and Inbox receipts (`TestCompletionAndReceiptIntentCommitTogether`).

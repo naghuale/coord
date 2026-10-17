@@ -57,13 +57,30 @@ func (f CanonicalFile) Load() (store.CanonicalState, error) {
 		}
 		return store.CanonicalState{}, fmt.Errorf("trailing canonical snapshot data: %w", err)
 	}
-	if err := store.ValidateCanonicalState(state); err != nil {
+	if state.SchemaVersion == 2 {
+		if err := store.ValidateSchema2(state); err != nil {
+			return store.CanonicalState{}, err
+		}
+	} else if err := store.ValidateCanonicalState(state); err != nil {
 		return store.CanonicalState{}, err
 	}
 	return state, nil
 }
 
 func (f CanonicalFile) Save(state store.CanonicalState) error {
+	if data, err := os.ReadFile(f.Path); err == nil {
+		var previous struct {
+			Version uint32 `json:"schema_version"`
+		}
+		if err := json.Unmarshal(data, &previous); err != nil {
+			return err
+		}
+		if err := CheckSchemaTarget(previous.Version, state.SchemaVersion); err != nil {
+			return err
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
 	if err := store.ValidateCanonicalState(state); err != nil {
 		return err
 	}

@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-const CanonicalSchemaVersion uint32 = 2
+const CanonicalSchemaVersion uint32 = 3
 
 // ErrFenceExhausted prevents Task.Fence from wrapping to an earlier writer epoch.
 var ErrFenceExhausted = errors.New("task fence exhausted")
@@ -67,6 +67,7 @@ func InboxKey(actorID, messageID string) string {
 
 // CanonicalState is the versioned durable boundary for Coord-owned state.
 type CanonicalState struct {
+	SchemaMigrations   []SchemaMigration               `json:"schema_migrations,omitempty"`
 	Revision           uint64                          `json:"revision"`
 	Orchestration      externalaction.State            `json:"orchestration"`
 	SchemaVersion      uint32                          `json:"schema_version"`
@@ -162,6 +163,12 @@ func NewCanonicalWithClock(p CanonicalPersistence, now func() time.Time) (*Canon
 	if release == nil {
 		return nil, fmt.Errorf("canonical persistence returned no ownership release")
 	}
+	if preparer, ok := p.(interface{ PrepareCanonicalOwned() error }); ok {
+		if err := preparer.PrepareCanonicalOwned(); err != nil {
+			_ = release()
+			return nil, err
+		}
+	}
 	state, err := p.Load()
 	if err == nil {
 		state = NormalizeCanonicalState(state)
@@ -184,10 +191,23 @@ func ValidateCanonicalState(state CanonicalState) error {
 	if state.SchemaVersion != CanonicalSchemaVersion {
 		return fmt.Errorf("unsupported canonical schema version %d", state.SchemaVersion)
 	}
+	if err := validateSchemaMigrations(state); err != nil {
+		return err
+	}
 	if err := externalaction.Validate(state.Orchestration, state.Revision); err != nil {
 		return err
 	}
 	for _, a := range state.Orchestration.Actions {
+		if a.Family == externalaction.GitHub {
+			p, err := a.GitHubPayload()
+			if err != nil {
+				return err
+			}
+			if err := externalaction.ValidateMergeGate(p, nil); err != nil {
+				return err
+			}
+			continue
+		}
 		r, ok := state.Runs[a.Binding.RunID]
 		_, taskOK := state.Tasks[taskid.ID(a.Binding.TaskID)]
 		_, sessionOK := state.AgentSessions[a.Binding.SessionID]
@@ -730,6 +750,9 @@ func (s *CanonicalStore) applyInboxCommandLocked(actorID, messageID string, task
 // ValidateCanonicalTransition enforces append-only history and monotonic Task
 // versions across commits. Snapshot validation alone cannot prove these rules.
 func ValidateCanonicalTransition(previous, next CanonicalState) error {
+	if !reflect.DeepEqual(previous.SchemaMigrations, next.SchemaMigrations) {
+		return fmt.Errorf("schema migration history is immutable during runtime")
+	}
 	previous = NormalizeCanonicalState(previous)
 	next = NormalizeCanonicalState(next)
 	if err := externalaction.ValidateTransition(previous.Orchestration, next.Orchestration, next.Revision); err != nil {

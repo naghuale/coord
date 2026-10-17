@@ -13,6 +13,14 @@ import (
 	"time"
 )
 
+type Family string
+
+const (
+	AgentSession    Family = "AGENT_SESSION"
+	GitHub          Family = "GITHUB"
+	ContractVersion uint32 = 3
+)
+
 type Kind string
 type Status string
 
@@ -50,6 +58,8 @@ type Claim struct {
 	Deadline     time.Time `json:"deadline"`
 }
 type Action struct {
+	Family              Family          `json:"family,omitempty"`
+	SchemaVersion       uint32          `json:"schema_version,omitempty"`
 	ID                  string          `json:"id"`
 	OperationInstanceID string          `json:"operation_instance_id"`
 	Key                 string          `json:"idempotency_key"`
@@ -72,10 +82,11 @@ type Action struct {
 // Result is returned only by the configured trusted adapter. The request/action
 // identity and claim epoch are supplied by the runtime, never by an LLM.
 type Result struct {
-	Outcome    string `json:"outcome"`
-	Evidence   string `json:"evidence"`
-	StopMethod string `json:"stop_method,omitempty"`
-	Stopped    bool   `json:"stopped,omitempty"`
+	GitHub     *GitHubObservation `json:"github,omitempty"`
+	Outcome    string             `json:"outcome"`
+	Evidence   string             `json:"evidence"`
+	StopMethod string             `json:"stop_method,omitempty"`
+	Stopped    bool               `json:"stopped,omitempty"`
 }
 type Observation struct {
 	ID            string    `json:"id"`
@@ -115,11 +126,29 @@ func Empty() State {
 	return State{map[string]Action{}, map[string]Observation{}, map[string]Receipt{}, []Event{}}
 }
 func Digest(v any) string {
+	// Session event digests deliberately retain the schema-2 preimage.
+	if a, ok := v.(Action); ok && a.Family == AgentSession {
+		a.Family = ""
+		a.SchemaVersion = 0
+		v = a
+	}
 	b, _ := json.Marshal(v)
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
 }
 func Key(a Action) string {
+	if a.Family == GitHub {
+		var payload GitHubActionPayload
+		if err := decodeRequest(a.Request, &payload); err != nil {
+			return ""
+		}
+		return Digest(struct {
+			Version           uint32
+			Family            Family
+			Kind              Kind
+			Instance, Request string
+		}{ContractVersion, a.Family, a.Kind, a.OperationInstanceID, GitHubPayloadDigest(payload)})
+	}
 	return Digest(struct {
 		Version  int
 		Kind     Kind
@@ -129,7 +158,7 @@ func Key(a Action) string {
 	}{1, a.Kind, a.OperationInstanceID, a.Binding, a.RequestDigest})
 }
 func New(id string, kind Kind, binding Binding, parent string, request json.RawMessage, at time.Time) Action {
-	a := Action{ID: id, OperationInstanceID: id, Kind: kind, Binding: binding, ParentID: parent, Request: request, RequestDigest: Digest(request), Status: Pending, MaxAttempts: 3, CreatedAt: at, UpdatedAt: at, NextAttemptAt: at}
+	a := Action{Family: AgentSession, SchemaVersion: ContractVersion, ID: id, OperationInstanceID: id, Kind: kind, Binding: binding, ParentID: parent, Request: request, RequestDigest: Digest(request), Status: Pending, MaxAttempts: 3, CreatedAt: at, UpdatedAt: at, NextAttemptAt: at}
 	a.Key = Key(a)
 	return a
 }
@@ -137,8 +166,17 @@ func (a Action) Terminal() bool {
 	return a.Status == Completed || a.Status == Failed || a.Status == Blocked || a.Status == Fenced
 }
 func (a Action) Validate() error {
+	if a.SchemaVersion != ContractVersion {
+		return fmt.Errorf("unsupported action schema version")
+	}
+	if a.Family != AgentSession && a.Family != GitHub {
+		return fmt.Errorf("unknown action family")
+	}
 	if a.ID == "" || a.OperationInstanceID == "" || a.Key != Key(a) || !json.Valid(a.Request) || a.RequestDigest != Digest(a.Request) || a.MaxAttempts == 0 || a.MaxAttempts > 16 || a.Attempts > a.MaxAttempts || a.CreatedAt.IsZero() || a.UpdatedAt.Before(a.CreatedAt) {
 		return fmt.Errorf("invalid external action %q identity/request/policy", a.ID)
+	}
+	if a.Family == GitHub {
+		return a.validateGitHub()
 	}
 	if a.Binding.ProjectID == "" || a.Binding.TaskID == "" || a.Binding.RunID == "" || a.Binding.AssignmentID == "" || a.Binding.SessionID == "" || len(a.Binding.SubjectSHA) != 40 || a.Binding.Generation == 0 {
 		return fmt.Errorf("incomplete action binding %q", a.ID)
@@ -172,6 +210,9 @@ func (a Action) Validate() error {
 	case Pending, Claimed, Dispatching, Dispatched, Ambiguous, Observed, Completed, Failed, Blocked, Fenced:
 	default:
 		return fmt.Errorf("unknown action status")
+	}
+	if a.Result != nil && a.Result.GitHub != nil {
+		return fmt.Errorf("GitHub result in session action")
 	}
 	if a.Status == Completed && a.Result == nil {
 		return fmt.Errorf("completed action without result")
@@ -212,6 +253,12 @@ func Validate(s State, revision uint64) error {
 		if latest[id].Digest != Digest(a) {
 			return fmt.Errorf("action %q differs from event history", id)
 		}
+		if a.Family == GitHub {
+			if a.ParentID != "" {
+				return fmt.Errorf("GitHub parent unsupported")
+			}
+			continue
+		}
 		if a.ParentID != "" {
 			p, ok := s.Actions[a.ParentID]
 			if !ok || p.Binding != a.Binding || p.Status != Completed {
@@ -241,7 +288,7 @@ func Validate(s State, revision uint64) error {
 		}
 	}
 	for _, a := range s.Actions {
-		if a.Kind != Deliver && a.ParentID == "" {
+		if a.Family == AgentSession && a.Kind != Deliver && a.ParentID == "" {
 			return fmt.Errorf("action missing predecessor")
 		}
 		if a.Status == Observed {
@@ -278,6 +325,9 @@ func Validate(s State, revision uint64) error {
 	for id, r := range s.Receipts {
 		o, ok := s.Observations[id]
 		a := s.Actions[r.ActionID]
+		if a.Family == GitHub && (a.Result == nil || o.ClaimEpoch != a.Claim.Epoch || o.RequestDigest != a.RequestDigest || o.Digest != Digest(*a.Result)) {
+			return fmt.Errorf("completed GitHub action lacks bound positive observation")
+		}
 		if !ok || o.Stale || r.ObservationID != id || r.ActionID != o.ActionID || r.Digest != o.Digest || r.Revision == 0 || r.Revision > revision || a.Status != Completed {
 			return fmt.Errorf("invalid action receipt")
 		}
@@ -297,6 +347,9 @@ func ValidateTransition(prev, next State, revision uint64) error {
 	}
 	for id, a := range next.Actions {
 		p, ok := prev.Actions[id]
+		if !ok && a.Status != Pending {
+			return fmt.Errorf("new action must begin PENDING")
+		}
 		if ok && reflect.DeepEqual(p, a) {
 			continue
 		}
