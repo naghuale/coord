@@ -181,6 +181,14 @@ Source: decision doc `runRecovery.requiredStopProofSatisfied`, `FENCE_ONLY` tran
 
 **Purpose:** before taking ownership of a Run from a potentially-live agent, Coordinator must have evidence that the old agent has stopped writing.
 
+**Critical distinction — session-level evidence vs. process-level evidence:**
+
+An absent or revoked AgentSession is a *necessary* condition for recovery but is NOT sufficient to prove that the agent process has stopped. A live process may retain mutation authority after its session is revoked: the process may still be mid-write, have buffered commands, or hold a store lock. `AgentSession.Active() == false` proves only that the *canonical identity* of the session has been revoked, not that the *process* has terminated.
+
+For `FENCE_ONLY`, session-level evidence is treated as operationally sufficient because the fence CAS itself provides the write-blocking guarantee: after the fence increment is committed, any in-flight `ApplyAgentCommand` from the old process will fail with `ErrAgentCommandStaleFence` (fence check in `ApplyAgentCommand` line 118) regardless of whether the process is still live. The fence CAS is the durable write barrier, not the session revocation. Session-level evidence is the trigger for initiating recovery; the fence is the actual write protection.
+
+`unknownWriterMayStillHaveMutationAuthority` is the guard covering cases where this uncertainty cannot be resolved at the Coordinator level — for example, a split-brain scenario where the old process holds an external lock, or a forced takeover is requested without sufficient stop proof evidence. These cases escalate to OWNER (see section 10A).
+
 **Stop-proof types:**
 1. `RUN_ORPHANED` — AgentSession absent from canonical state (hard revocation)
 2. `RUN_SESSION_UNAVAILABLE` — AgentSession revoked (RevokedAt set)
@@ -189,10 +197,10 @@ Source: decision doc `runRecovery.requiredStopProofSatisfied`, `FENCE_ONLY` tran
 5. `RUN_RESULT_ALREADY_OBSERVED` — external observation present for the run's work
 6. `RUN_REPLACEMENT_REQUIRED` — explicit assignment to replacement agent
 
-Stop-proof is:
-- **Sufficient** for `FENCE_ONLY` if `RUN_ORPHANED || RUN_SESSION_UNAVAILABLE || RUN_SESSION_TERMINATED`
+Stop-proof sufficiency:
+- **Sufficient** for `FENCE_ONLY` if `RUN_ORPHANED || RUN_SESSION_UNAVAILABLE || RUN_SESSION_TERMINATED` — fence CAS provides write-blocking guarantee regardless of process liveness
 - **Required but not sufficient alone** for `MARK_INTERRUPTED || PREPARE_REPLACEMENT`: must also have `externalObservationPresent`
-- **Insufficient** (OWNER required) when `unknownWriterMayStillHaveMutationAuthority`
+- **Insufficient** (OWNER required) when `unknownWriterMayStillHaveMutationAuthority` — process-level uncertainty cannot be resolved by Coordinator
 
 The `StopProofEvidenceID` in the command points to a committed ExternalAction with a positive observation that provides the stop-proof evidence.
 
@@ -240,10 +248,30 @@ All crash paths are idempotent via `MessageID` replay. No second recovery write 
 - `RUN_RECOVERY_OBSERVATION_MISSING` — StopProof ExternalAction not in positive OBSERVED state
 - `RUN_RECOVERY_GENERATION_MISMATCH` — `cmd.ExpectedGeneration != run.AgentSessionGeneration`
 - `RUN_RECOVERY_REVISION_CONFLICT` — `cmd.ExpectedRevision != task.Revision`
-- `RUN_RECOVERY_STOP_PROOF_INSUFFICIENT` — reason code requires stop proof evidence that is not present
+- `RUN_RECOVERY_STOP_PROOF_INSUFFICIENT` — reason code requires stop proof evidence that is not present; this is a *structural pre-condition failure* (evidence not provided), distinct from `forcedTakeoverWithoutRequiredStopProof` (see 10A)
 - `RUN_RECOVERY_FENCE_NOT_COMMITTED` — fence CAS not yet committed to durable state
-- `RUN_RECOVERY_AUTHORITY_NOT_PROVEN` — `unknownWriterMayStillHaveMutationAuthority`
+- `RUN_RECOVERY_AUTHORITY_NOT_PROVEN` — `unknownWriterMayStillHaveMutationAuthority` — process-level uncertainty unresolvable by Coordinator
 - `RUN_RECOVERY_DUPLICATE_COMMAND_CONFLICT` — conflicting concurrent recovery commands for same RunID
+
+---
+
+## 10A. OWNER Escalation Conditions
+
+Source: decision doc `runRecovery.ownerRequiredWhenAny` (all five conditions, verbatim)
+
+The following conditions require OWNER involvement. `ApplyRunRecoveryCommand` MUST NOT proceed past the pre-condition check when any of these applies; instead it returns a structured error indicating OWNER escalation is required.
+
+| Condition | Meaning | Design response |
+|---|---|---|
+| `unknownWriterMayStillHaveMutationAuthority` | Process-level uncertainty: old process may still hold write authority despite session revocation | `RUN_RECOVERY_AUTHORITY_NOT_PROVEN` (fail-closed rejection); OWNER required to resolve |
+| `forcedTakeoverWithoutRequiredStopProof` | Caller explicitly requests takeover despite insufficient stop proof evidence — this is distinct from `RUN_RECOVERY_STOP_PROOF_INSUFFICIENT`, which rejects commands missing required structural evidence. A forced takeover means the caller has a reason code but knowingly lacks the required observation. | OWNER required. The design's `RUN_RECOVERY_STOP_PROOF_INSUFFICIENT` handles the *structural absence* of evidence (no ExternalAction provided). A caller that presents an explicit forced-takeover intent with a reason it knows lacks sufficient proof cannot be handled fail-closed by the Coordinator — this requires OWNER authority. Implementation must distinguish these two cases. |
+| `weakeningOfFencingContract` | Any change that would reduce the fence's write-blocking guarantee | OWNER required; `ApplyRunRecoveryCommand` must not permit this |
+| `acceptedRecoveryNormConflict` | Recovery action conflicts with an accepted norm (e.g., an ADR, TASK-MODEL, or prior OWNER decision) | OWNER required; Coordinator cannot resolve norm conflicts autonomously |
+| `riskAcceptanceRequired` | Recovery carries irreversible or high-impact risk that cannot be bounded by the Coordinator | OWNER required; Coordinator must surface the specific risk before proceeding |
+
+**Important:** `RUN_RECOVERY_STOP_PROOF_INSUFFICIENT` and `forcedTakeoverWithoutRequiredStopProof` are NOT the same case:
+- `RUN_RECOVERY_STOP_PROOF_INSUFFICIENT` = command does not include the required stop-proof ExternalAction ID, or the referenced action is not in a positive OBSERVED state. The command is structurally invalid. Coordinator rejects fail-closed.
+- `forcedTakeoverWithoutRequiredStopProof` = caller provides a reason code that, per the decision, requires stop-proof evidence, but explicitly acknowledges the evidence is absent and requests a forced takeover. This intent cannot be satisfied by fail-closed rejection alone — it requires OWNER authority to accept the risk.
 
 ---
 
@@ -293,5 +321,6 @@ These questions were identified during inventory and cannot be resolved by read-
 | New event types | 5 (RUN_RECOVERY_REQUESTED, RUN_GENERATION_FENCED, RUN_STOP_PROOF_RECORDED, RUN_RECOVERY_COMPLETED, RUN_RECOVERY_BLOCKED) |
 | Prohibited events | OWNER_FENCE_EVENT, OWNER_RECOVERY_APPLIED |
 | Fail-closed violations | 7 (see section 10) |
+| OWNER escalation conditions | 5 (see section 10A) |
 | Open design questions | 4 (Q1–Q4, section 12) |
 | Implementation gate | Design Review ACCEPTED + TD-R2 Design Audit ACCEPTED |
