@@ -1,0 +1,60 @@
+{
+  "subjectBranch": "feature/issue70-shadow-validation-wp-sv-05-06",
+
+  "wpSv05": {
+    "invariants": [
+      {"id": "I1", "description": "no launch before durable intent",                  "test": "TestRestartBeforeIntentDoesNotLaunch",             "mutation": "M01: persisted RUNNING accepted as live"},
+      {"id": "I2", "description": "observation before retry after restart",           "test": "TestRestartAfterIntentObservesBeforeDispatch",     "mutation": null},
+      {"id": "I3", "description": "persisted RUNNING does not prove liveness",        "test": "TestPersistedRunningRequiresFreshObservation",     "mutation": "M01: TestM01PersistedRunningAcceptedAsLiveIsRejected"},
+      {"id": "I4", "description": "persisted ADMITTED is not RUNNING",               "test": "TestPersistedAdmittedIsNotRunning",               "mutation": null},
+      {"id": "I5", "description": "duplicate execution is rejected",                  "test": "TestRestartDoesNotDuplicateExecution",            "mutation": "M02: TestM02RestartDuplicateExecutionIsBlocked"},
+      {"id": "I6", "description": "stale generation result is rejected",              "test": "TestStaleGenerationResultRejectedAfterRestart",  "mutation": "M03: TestM03StaleGenerationResultAcceptedIsRejected"},
+      {"id": "I7a","description": "review result survives restart",                   "test": "TestReviewResultSurvivesRestart",                 "mutation": "M04: TestM04ReviewResultLostIsDetected"},
+      {"id": "I7b","description": "finding/rationale survive restart",                "test": "TestFindingAndRationaleSurviveRestart",           "mutation": "M05: TestM05FindingRationaleStructurallyPreserved"},
+      {"id": "I8", "description": "old review cannot apply to corrected subject",     "test": "TestOldReviewDoesNotApplyToCorrectedSubject",    "mutation": "M06: TestM06OldReviewAppliedToNewSubjectIsRejected"},
+      {"id": "I9", "description": "audit result survives restart",                    "test": "TestAuditResultSurvivesRestart",                 "mutation": null},
+      {"id": "I10","description": "readiness recomputes identically after restart",   "test": "TestReadinessRecomputesIdenticallyAfterRestart",  "mutation": "M07: TestM07MixedSubjectAuditAfterRestartIsRejected"},
+      {"id": "I11","description": "partial state cannot become current",              "test": "TestPartialStateDoesNotBecomeCurrent",           "mutation": "M08: TestM08PartialStateBecomesCurrentIsRejected"}
+    ],
+    "invariantsTotal": 8,
+    "invariantsCovered": 8,
+    "scenarioTests": 12,
+    "mutations": {
+      "compiled": 8,
+      "killed": 8,
+      "survived": 0
+    },
+    "newFailureClassesUncovered": 0,
+    "result": "SUFFICIENT"
+  },
+
+  "wpSv06": {
+    "invariants": [
+      {"id": "R1", "description": "unsafe divergence has highest priority",           "test": "TestNewReportUnsafeDivergenceGivesCorrectionRequired",  "mutation": null},
+      {"id": "R2", "description": "blocking NOT_EVALUATED prevents admission",        "test": "TestNewReportNotEvaluatedDimensionGivesRepeat",         "mutation": null},
+      {"id": "R3", "description": "production writes must equal zero",                "test": "TestNewReportProductionWritesGivesCorrectionRequired",  "mutation": null},
+      {"id": "R4", "description": "GitHub writes must equal zero",                    "test": "TestDeriveRecommendationGitHubWritesGiveCorrectionRequired", "mutation": null},
+      {"id": "R5", "description": "credential use must equal zero",                   "test": "(validated via RuntimeEvidence.Validate in TestNewReportProductionWritesGivesCorrectionRequired)", "mutation": null},
+      {"id": "R6", "description": "duplicate/stale/partial recovery results = 0",    "test": "TestNewReportDuplicateLaunchGivesCorrectionRequired",    "mutation": null},
+      {"id": "R7", "description": "all required WPs must be integrated",              "test": "TestNewReportPendingWPGivesRepeat",                      "mutation": null},
+      {"id": "R8", "description": "Review and Audit must be accepted",                "test": "TestNewReportNoReviewGivesOwnerDecision",               "mutation": null},
+      {"id": "R9", "description": "recommendation is deterministic",                  "test": "TestReadinessRecomputesIdenticallyAfterRestart + TestDeriveRecommendationPrecedenceUnsafeBeatsNotEvaluated", "mutation": null}
+    ],
+    "invariantsTotal": 9,
+    "invariantsCovered": 9,
+    "focusedTests": 13,
+    "newFailureClassesUncovered": 0,
+    "result": "SUFFICIENT"
+  },
+
+  "regression": {
+    "totalPassingTests": 103,
+    "status": "PASS",
+    "raceStatus": "not run separately",
+    "fullLogsIncludedInAgentContext": false
+  },
+
+  "uncoveredFailureClasses": [],
+  "duplicateTestCandidates": [],
+  "overallResult": "SUFFICIENT"
+}

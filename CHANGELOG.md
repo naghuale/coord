@@ -1,8 +1,16 @@
 # История изменений
 
-## 2026-10-17 — Shadow Validation pilot: WP-SV-05 Crash/restart (Refs #70)
+## 2026-10-17 — Shadow Validation: crash recovery and admission report (Refs #70)
 
-- WP-SV-05: `internal/shadowpilot/crash_recovery.go` — `ShadowCheckpoint` (полное persisted состояние после crash), `AgentLiveness` (explicit liveness observation, никогда не выводится из RUNNING), `PlanRecovery()` (8 фаз: NO_LAUNCH/OBSERVE_FIRST/FENCED_NO_RESTART/ALREADY_COMPLETE/DUPLICATE_BLOCKED/RESUME_GRAPH/READINESS_ONLY), `ValidateCheckpointIntegrity()` (COMPLETED без result → error; mismatched/superseded review subject → error). Ключевые инварианты: persisted RUNNING ≠ live (`TestPersistedRunningRequiresFreshObservation`), stale generation rejected (`TestStaleGenerationResultRejectedAfterRestart`), old review не применяется к corrected subject (`TestOldReviewDoesNotApplyToCorrectedSubject`), partial state не становится current (`TestPartialStateDoesNotBecomeCurrent`). 12 scenario tests + 8 mutations M01–M08 killed. `TestRestartBeforeIntentDoesNotLaunch`, `TestReadinessRecomputesIdenticallyAfterRestart` (документация — shadow pilot).
+- Added restart-safe shadow recovery (`internal/shadowpilot/crash_recovery.go`):
+  persisted `RUNNING` no longer proves liveness, ambiguous executions are
+  observed before retry, stale generations and duplicate launches are rejected,
+  and Review/Audit rationale survives restart. `TestRestartBeforeIntentDoesNotLaunch`, `TestPersistedRunningRequiresFreshObservation`, `TestM01PersistedRunningAcceptedAsLiveIsRejected`, `TestM02RestartDuplicateExecutionIsBlocked`, `TestM03StaleGenerationResultAcceptedIsRejected`, `TestM06OldReviewAppliedToNewSubjectIsRejected`, `TestM08PartialStateBecomesCurrentIsRejected` (документация — shadow pilot).
+- Added deterministic Shadow Validation reporting and P0-3 admission
+  (`internal/shadowpilot/report.go`): unsafe divergence, incomplete evidence,
+  production writes, duplicate launches, stale results, or partial states
+  block admission. `ADMIT_P0_3` is produced only when all WPs are integrated,
+  runtime is clean, and Review and Audit are both accepted. `TestNewReportAllGatesPassGivesAdmitP03`, `TestNewReportUnsafeDivergenceGivesCorrectionRequired`, `TestNewReportNotEvaluatedDimensionGivesRepeat`, `TestDeriveRecommendationPrecedenceUnsafeBeatsNotEvaluated` (документация — shadow pilot).
 
 ## 2026-10-17 — Shadow Validation pilot: WP-SV-04 Review/Audit Graph (Refs #70)
 
