@@ -1,5 +1,10 @@
 # История изменений
 
+## 2026-10-17 — Изоляция architecture-sync fixtures (Refs #59)
+
+- `scripts/check-architecture-sync-test` исключает `.git` как каталог и как linked-worktree pointer file; fixture создаёт собственный repository. Проверки `NormalCheckoutFixtureExcludesGitDirectory`, `LinkedWorktreeFixtureExcludesGitFile` и `FixtureCreatesIndependentRepository` выполняются самим harness (документация).
+- Project-local scratch задаётся явно, а `.scratch` исключается из копирования для предотвращения рекурсии. До и после fixture проверяются config, refs, HEAD, index и содержимое host worktree; системный tempfile default запрещён тестом `SystemTmpIsNotUsed` (документация).
+
 ## 2026-10-17 — Canonical ExternalAction schema 3 contract (Refs #63)
 
 - Schema-3 actions require an explicit AGENT_SESSION or GITHUB family; session keys, request/result digests, claim state and event history retain their schema-2 semantics (`TestExistingSchema2SessionActionMigratesToAgentSession`, `TestMigrationPreservesIdempotencyKey`, `TestMigrationPreservesDigests`).
