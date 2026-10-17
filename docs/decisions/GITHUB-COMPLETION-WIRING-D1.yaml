@@ -1,0 +1,130 @@
+decision: GITHUB-COMPLETION-WIRING-D1
+class: TD-R2
+status: accepted
+decisionDate: "2026-10-17"
+coordinatorDecision: COORDINATOR_DECISION_2026-10-17
+normativeBase: EXTERNAL-ACTION-CONTRACT-R1
+normativeBaseCommit: 822614e3499fd8f8a4ee56cbf8220ecdd5a3759c
+baseImplementationSha: 2997f33b435527a2b66b440487511334ca1912db
+
+summary: >
+  Design decision for completion-github-observation-wiring: wiring canonical GitHub
+  completion observation into the coord system using a fake in-memory backend only.
+  Resolves 4 design questions from coordinator decision 2026-10-17 that were previously
+  unresolved in the preparation packet.
+
+designAcceptance:
+  designReview: DESIGN_REVIEW_ACCEPTED
+  reviewer: independent-reviewer-ad9a3691af36d763d
+  designAudit: DESIGN_AUDIT_ACCEPTED
+  auditor: independent-auditor-a282701a45aa43b85
+  designInvariants: DESIGN-INV-1..8 all PASS
+  auditProperties: AD-D1..7 all PASS
+  frozenDesignPacketDigest: ce1f12ac58afd883f370dffc3a282cdda026f904a83563b5162d55d4170eec6e
+
+resolvedDesignQuestions:
+  canonicalOrigin:
+    type: ExternalActionOrigin
+    owner: task/external_action_origin.go
+    kindEnum: [TRACKING_PROJECTION, REVIEW_PROJECTION, AUDIT_PROJECTION, CI_PIPELINE, INTEGRATION_GATE]
+    freeFormOriginAllowed: false
+    subjectType: reuse task.SubjectBinding
+    dependencyCycle: none (externalaction imports task; task does not import externalaction)
+
+  pipelineSelector:
+    type: PipelineSelector
+    requiredFields: [Repository, Provider, CommitSHA, Workflow]
+    commitShaBound: true
+    refIsFilterOnly: true
+    unknownProviderRejects: true
+    matrixDigest: sorted-key versioned
+
+  pipelineStates:
+    states: [QUEUED, IN_PROGRESS, SUCCESS, FAILURE, CANCELLED, SKIPPED, TIMED_OUT, ACTION_REQUIRED, NOT_FOUND, UNKNOWN]
+    unknownMapping: NOT_EVALUATED
+    unknownSuccess: false
+    gateSeparate: true
+
+  legacyObservation:
+    allowedActionState: [OBSERVED]
+    forbiddenActionState: [COMPLETED]
+    result:
+      status: NOT_EVALUATED
+      reasonCode: LEGACY_EXTERNAL_PROVENANCE_INCOMPLETE
+    gateEligible: false
+    autoCompletedAllowed: false
+    quiescence: stays OBSERVED without busy loop
+
+implementation:
+  authorized: true
+  decisionClass: TD-R2
+  assignmentId: completion-github-observation-wiring
+
+  allowedBackend:
+    inMemoryFake: true
+    networkCalls: false
+    credentials: false
+    liveGitHubAPI: false
+    merge: false
+    webhooks: false
+
+  workPackages:
+    WP-A: Production completion entry wiring via RunWithReadiness
+    WP-B: Common family dispatcher and fake GitHub observation backend
+
+  exactExistingPaths:
+    - coordinator.go
+    - internal/orchestration/runtime.go
+    - internal/externalaction/model.go
+    - internal/externalaction/github.go
+    - internal/externalaction/github_test.go
+    - task/event.go
+    - task/event_test.go
+    - store/orchestration.go
+    - store/canonical.go
+    - cmd/coordd/main.go
+    - cmd/coordd/main_test.go
+    - internal/coorddconfig/config.go
+    - internal/coorddconfig/config_test.go
+    - CHANGELOG.md
+    - docs/ARCHITECTURE.md
+    - docs/TARGET-ARCHITECTURE.md
+    - docs/OPERATIONS.md
+
+  exactNewPaths:
+    - coordinator_candidate.go
+    - coordinator_candidate_test.go
+    - internal/orchestration/adapter_registry.go
+    - internal/orchestration/adapter_registry_test.go
+    - internal/orchestration/github_fake.go
+    - internal/orchestration/github_fake_test.go
+    - internal/orchestration/github_workflow_test.go
+    - internal/externalaction/pipeline.go
+    - internal/externalaction/pipeline_test.go
+    - task/external_action_origin.go
+    - task/external_action_origin_test.go
+    - store/canonical_observation.go
+    - store/canonical_observation_test.go
+
+  excludedPaths:
+    - scripts/check-architecture-sync
+    - scripts/check-architecture-sync-test
+    - checkpoint/external_action_migration_test.go
+    - internal/orchestration/migration_test.go
+    - control.go
+    - docs/operations/ACTION-MAP.yaml
+
+  requiredTests:
+    completion: 10
+    observation: 10
+    additionalFailureClasses: 5
+  requiredMutations: 10
+
+  prohibited:
+    - new supervisor-token decision-authoring authority
+    - publication before durable commit
+    - second canonical store
+    - second coordd writer
+    - live GitHub API
+    - production credentials
+    - fake evidence promoted to live gate eligibility
