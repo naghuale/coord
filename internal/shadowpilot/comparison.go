@@ -3,6 +3,7 @@ package shadowpilot
 import (
 	"errors"
 	"fmt"
+	"slices"
 )
 
 // ComparisonOutcome is the overall outcome of a shadow comparison pass.
@@ -54,14 +55,7 @@ type DimensionResult struct {
 }
 
 func (d DimensionResult) Validate() error {
-	found := false
-	for _, dim := range allDimensions {
-		if d.Dimension == dim {
-			found = true
-			break
-		}
-	}
-	if !found {
+	if !slices.Contains(allDimensions, d.Dimension) {
 		return fmt.Errorf("dimension result: unknown dimension %q", d.Dimension)
 	}
 	switch d.Outcome {
