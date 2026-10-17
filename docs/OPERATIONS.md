@@ -1,5 +1,9 @@
 # Эксплуатация и команды
 
+## GitHub observation fixtures
+
+`github_observation_fixtures` задаёт только детерминированные in-memory записи. Adapter принимает `OBSERVE_ISSUE`, `OBSERVE_PULL_REQUEST` и `OBSERVE_PIPELINE`; любые GitHub writes отклоняются. Результаты имеют evidence class `FIXTURE_NOT_LIVE` и не подходят для production readiness. Не добавляйте credentials в fixture config. Неизвестный pipeline state остаётся `NOT_EVALUATED`, а legacy Issue/PR без совпадающего marker остаётся наблюдённым, но незавершённым.
+
 Текущая поставка содержит библиотеку coordinator, production executable `coordd`
 для текущего Run runtime на versioned canonical snapshot, локальное демо и отдельный watchdog CLI. Есть также
 ограниченный самостоятельный Telepathy host/worker

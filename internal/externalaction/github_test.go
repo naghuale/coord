@@ -23,7 +23,7 @@ func completeFixture(t *testing.T) Action {
 		t.Fatal(err)
 	}
 	a.Status = Completed
-	a.Result = &Result{Outcome: "OBSERVED", Evidence: "fixture-record-1", GitHub: &GitHubObservation{Marker: p.Marker, MarkerMatched: true, PayloadDigestMatched: true, Target: p.Target, ExternalID: "1", State: "OPEN", ResponseDigest: strings.Repeat("b", 64), ResultStatus: "PASS"}}
+	a.Result = &Result{Outcome: "OBSERVED", Evidence: "fixture-record-1", EvidenceClass: string(EvidenceFixtureNotLive), GitHub: &GitHubObservation{Marker: p.Marker, MarkerMatched: true, PayloadDigestMatched: true, Target: p.Target, ExternalID: "1", State: "OPEN", ResponseDigest: strings.Repeat("b", 64), ResultStatus: "PASS"}}
 	if err := a.Validate(); err != nil {
 		t.Fatal(err)
 	}

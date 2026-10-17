@@ -49,7 +49,8 @@ type WorkflowRuntime interface {
 }
 
 type Coordinator struct {
-	workflowRecovered bool
+	workflowRecovered  bool
+	CandidateProcessor *CoordinatorCandidateProcessor
 
 	Workflow     WorkflowRuntime
 	mu           sync.Mutex
@@ -614,6 +615,9 @@ func (c *Coordinator) RunWithReadiness(ctx context.Context, onReady func()) erro
 	if onReady != nil {
 		onReady()
 	}
+	if err := c.processCoordinatorCandidate(ctx); err != nil {
+		return err
+	}
 	tick := time.NewTicker(c.cfg.TickInterval)
 	defer tick.Stop()
 	for {
@@ -630,7 +634,13 @@ func (c *Coordinator) RunWithReadiness(ctx context.Context, onReady func()) erro
 				}
 				c.Metrics.Inc("rejected_messages_total")
 			}
+			if err := c.processCoordinatorCandidate(ctx); err != nil {
+				return err
+			}
 		case <-tick.C:
+			if err := c.processCoordinatorCandidate(ctx); err != nil {
+				return err
+			}
 			if err := c.Tick(ctx); err != nil {
 				return err
 			}

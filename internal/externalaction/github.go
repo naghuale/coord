@@ -2,6 +2,7 @@ package externalaction
 
 import (
 	"bytes"
+	"coord/task"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +13,10 @@ import (
 )
 
 type GitHubOperation string
+
+type EvidenceClass string
+
+const EvidenceFixtureNotLive EvidenceClass = "FIXTURE_NOT_LIVE"
 
 const (
 	CreateIssue        GitHubOperation = "CREATE_ISSUE"
@@ -25,6 +30,7 @@ const (
 	MergePullRequest   GitHubOperation = "MERGE_PULL_REQUEST"
 	ObserveIssue       GitHubOperation = "OBSERVE_ISSUE"
 	ObservePullRequest GitHubOperation = "OBSERVE_PULL_REQUEST"
+	ObservePipeline    GitHubOperation = "OBSERVE_PIPELINE"
 )
 
 type GitHubTarget struct {
@@ -49,26 +55,73 @@ type GitHubMarker struct {
 	PayloadDigest       string `json:"payload_digest"`
 }
 type GitHubActionPayload struct {
-	Operation          GitHubOperation `json:"operation"`
-	ProjectID          string          `json:"project_id"`
-	OriginAssignmentID string          `json:"origin_assignment_id"`
-	ScopeDigest        string          `json:"scope_digest"`
-	Target             GitHubTarget    `json:"target"`
-	Request            GitHubRequest   `json:"request"`
-	MergeGateRef       string          `json:"merge_gate_ref,omitempty"`
+	Operation          GitHubOperation            `json:"operation"`
+	Origin             *task.ExternalActionOrigin `json:"origin,omitempty"`
+	ProjectID          string                     `json:"project_id"`
+	OriginAssignmentID string                     `json:"origin_assignment_id"`
+	ScopeDigest        string                     `json:"scope_digest"`
+	Target             GitHubTarget               `json:"target"`
+	Request            GitHubRequest              `json:"request"`
+	MergeGateRef       string                     `json:"merge_gate_ref,omitempty"`
+	Pipeline           *PipelineSelector          `json:"pipeline,omitempty"`
 	// Marker is derived after hashing the versioned immutable request, so the
 	// digest has no self-reference. It is never an authority-bearing input.
 	Marker GitHubMarker `json:"marker"`
 }
 type GitHubObservation struct {
-	Marker               GitHubMarker `json:"marker"`
-	MarkerMatched        bool         `json:"marker_matched"`
-	PayloadDigestMatched bool         `json:"payload_digest_matched"`
-	Target               GitHubTarget `json:"target"`
-	ExternalID           string       `json:"external_id"`
-	State                string       `json:"state"`
-	ResponseDigest       string       `json:"response_digest"`
-	ResultStatus         string       `json:"result_status"`
+	Marker               GitHubMarker         `json:"marker"`
+	MarkerMatched        bool                 `json:"marker_matched"`
+	PayloadDigestMatched bool                 `json:"payload_digest_matched"`
+	Target               GitHubTarget         `json:"target"`
+	ExternalID           string               `json:"external_id"`
+	State                string               `json:"state"`
+	ResponseDigest       string               `json:"response_digest"`
+	ResultStatus         string               `json:"result_status"`
+	Pipeline             *PipelineObservation `json:"pipeline,omitempty"`
+}
+
+// GitHubFixture is a closed, credential-free in-memory record used only by
+// deterministic tests and explicitly configured fixture mode.
+type GitHubFixture struct {
+	Operation     GitHubOperation      `json:"operation"`
+	Target        GitHubTarget         `json:"target"`
+	ExternalID    string               `json:"external_id"`
+	State         string               `json:"state"`
+	Marker        *GitHubMarker        `json:"marker,omitempty"`
+	PayloadDigest string               `json:"payload_digest,omitempty"`
+	Pipeline      *PipelineObservation `json:"pipeline,omitempty"`
+}
+
+func (f GitHubFixture) Validate() error {
+	if f.ExternalID == "" || !repositoryPattern.MatchString(f.Target.Repository) {
+		return fmt.Errorf("invalid fixture identity")
+	}
+	switch f.Operation {
+	case ObserveIssue:
+		if f.Target.IssueNumber == 0 || f.Target.PullRequestNumber != 0 || (f.State != "OPEN" && f.State != "CLOSED") {
+			return fmt.Errorf("invalid fixture Issue identity")
+		}
+	case ObservePullRequest:
+		if f.Target.PullRequestNumber == 0 || f.Target.IssueNumber != 0 || !headPattern.MatchString(f.Target.ExpectedHead) || (f.State != "OPEN" && f.State != "CLOSED" && f.State != "MERGED") {
+			return fmt.Errorf("invalid fixture PR identity")
+		}
+	case ObservePipeline:
+		if f.Pipeline == nil || f.Pipeline.Selector.Validate() != nil {
+			return fmt.Errorf("invalid fixture pipeline selector")
+		}
+		if f.Pipeline.Selector.Repository != f.Target.Repository {
+			return fmt.Errorf("fixture pipeline selector repository mismatch")
+		}
+	default:
+		return fmt.Errorf("fixture writes and unknown operations are disabled")
+	}
+	if (f.Marker == nil) != (f.PayloadDigest == "") {
+		return fmt.Errorf("fixture marker and payload digest must be present together")
+	}
+	if f.Marker != nil && (f.Marker.OperationInstanceID == "" || f.Marker.IdempotencyKey == "" || !digestPattern.MatchString(f.Marker.PayloadDigest) || f.PayloadDigest != f.Marker.PayloadDigest) {
+		return fmt.Errorf("invalid fixture marker")
+	}
+	return nil
 }
 
 // MergeGate is resolved by the canonical owner, never supplied by a model in
@@ -113,6 +166,14 @@ func (p GitHubActionPayload) Validate() error {
 	if p.ProjectID == "" || p.OriginAssignmentID == "" || !digestPattern.MatchString(p.ScopeDigest) || !repositoryPattern.MatchString(p.Target.Repository) {
 		return fmt.Errorf("invalid GitHub origin/target")
 	}
+	if p.Origin != nil {
+		if err := p.Origin.Validate(); err != nil {
+			return fmt.Errorf("invalid typed GitHub origin: %w", err)
+		}
+		if p.Origin.ProjectID != p.ProjectID || (p.Origin.AssignmentID != "" && p.Origin.AssignmentID != p.OriginAssignmentID) {
+			return fmt.Errorf("typed GitHub origin differs from payload identity")
+		}
+	}
 	switch p.Target.ExpectedState {
 	case "OPEN", "CLOSED", "MERGED", "ANY":
 	default:
@@ -140,6 +201,13 @@ func (p GitHubActionPayload) Validate() error {
 		if p.Target.IssueNumber == 0 || p.Target.PullRequestNumber != 0 {
 			return fmt.Errorf("issue identity missing")
 		}
+	case ObservePipeline:
+		if p.Pipeline == nil || p.Target.IssueNumber != 0 || p.Target.PullRequestNumber != 0 || p.Target.Repository != p.Pipeline.Repository {
+			return fmt.Errorf("invalid pipeline selector")
+		}
+		if err := p.Pipeline.Validate(); err != nil {
+			return err
+		}
 	case CreatePullRequest:
 		if p.Request.Title == "" || p.Target.BaseBranch == "" || p.Target.HeadBranch == "" || p.Target.PullRequestNumber != 0 {
 			return fmt.Errorf("invalid PR creation")
@@ -150,6 +218,9 @@ func (p GitHubActionPayload) Validate() error {
 		}
 	default:
 		return fmt.Errorf("unknown GitHub operation")
+	}
+	if p.Operation != ObservePipeline && p.Pipeline != nil {
+		return fmt.Errorf("pipeline selector on non-pipeline operation")
 	}
 	switch p.Operation {
 	case CreatePullRequest, UpdatePullRequest, CommentPullRequest, MergePullRequest, ObservePullRequest:
@@ -184,6 +255,17 @@ func (a Action) GitHubPayload() (GitHubActionPayload, error) {
 	}
 	return p, p.Validate()
 }
+
+func (a Action) CanonicalOrigin() (task.ExternalActionOrigin, bool, error) {
+	p, err := a.GitHubPayload()
+	if err != nil {
+		return task.ExternalActionOrigin{}, false, err
+	}
+	if p.Origin == nil {
+		return task.ExternalActionOrigin{}, false, nil
+	}
+	return *p.Origin, true, nil
+}
 func (a Action) validateGitHub() error {
 	p, err := a.GitHubPayload()
 	if err != nil {
@@ -213,10 +295,32 @@ func (a Action) validateGitHub() error {
 		if a.Result == nil || a.Result.GitHub == nil {
 			return fmt.Errorf("positive observation missing")
 		}
-		if a.Result.Evidence == "" || a.Result.Outcome != "OBSERVED" || a.Result.StopMethod != "" || a.Result.Stopped {
+		if a.Result.Evidence == "" || a.Result.Outcome != "OBSERVED" || a.Result.EvidenceClass != string(EvidenceFixtureNotLive) || a.Result.StopMethod != "" || a.Result.Stopped {
 			return fmt.Errorf("invalid GitHub result envelope")
 		}
 		o := a.Result.GitHub
+		if a.Status == Observed && o.ResultStatus == "NOT_EVALUATED" {
+			if (p.Operation != ObserveIssue && p.Operation != ObservePullRequest) || a.Result.Evidence != "LEGACY_EXTERNAL_PROVENANCE_INCOMPLETE" || o.MarkerMatched || o.PayloadDigestMatched || o.Marker != (GitHubMarker{}) || o.ExternalID == "" || !digestPattern.MatchString(o.ResponseDigest) || o.Target != p.Target {
+				return fmt.Errorf("invalid legacy provenance observation")
+			}
+			return nil
+		}
+		if o.Pipeline != nil {
+			if p.Operation != ObservePipeline || p.Pipeline == nil || o.Pipeline.Selector.Digest() != p.Pipeline.Digest() {
+				return fmt.Errorf("pipeline observation selector mismatch")
+			}
+			state, evaluation := MapPipelineState(string(o.Pipeline.State))
+			if state != o.Pipeline.State || evaluation != o.Pipeline.Evaluation {
+				return fmt.Errorf("pipeline state/evaluation mismatch")
+			}
+			if !o.MarkerMatched || !o.PayloadDigestMatched || o.Marker != p.Marker || o.Target != p.Target || o.ResultStatus != "PASS" || o.ExternalID == "" || !digestPattern.MatchString(o.ResponseDigest) {
+				return fmt.Errorf("pipeline observation not positively bound")
+			}
+			return nil
+		}
+		if p.Operation == ObservePipeline {
+			return fmt.Errorf("pipeline action requires a typed pipeline observation")
+		}
 		if !o.MarkerMatched {
 			return fmt.Errorf("marker not matched")
 		}

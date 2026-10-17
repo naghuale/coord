@@ -405,6 +405,32 @@ func validateTaskEventHistories(state CanonicalState) error {
 			}
 			eventRuns[event.RunID] = true
 		}
+		if event.Type == task.CoordinatorCompletionRecorded {
+			run, ok := state.Runs[event.RunID]
+			if !ok || run.TargetSHA != event.CoordinatorCompletion.Subject.CommitSHA {
+				return fmt.Errorf("coordinator completion subject differs from canonical Run")
+			}
+			subject, found := findCanonicalSubject(&state, event.TaskID, run.TargetSHA)
+			if !found || !reflect.DeepEqual(subject, event.CoordinatorCompletion.Subject) {
+				return fmt.Errorf("coordinator completion lacks exact canonical subject provenance")
+			}
+		}
+		if event.Type == task.ExternalActionStateRecorded {
+			action, exists := state.Orchestration.Actions[event.ExternalActionID]
+			if !exists || action.Family != externalaction.GitHub {
+				return fmt.Errorf("domain event %q references missing or non-GitHub action", event.ID)
+			}
+			origin, bound, err := action.CanonicalOrigin()
+			if err != nil || !bound || origin.TaskID != event.TaskID.String() || origin.RunID != event.RunID {
+				return fmt.Errorf("domain event %q has unbound GitHub action origin", event.ID)
+			}
+			if event.ExternalObservationID != "" {
+				observation, ok := state.Orchestration.Observations[event.ExternalObservationID]
+				if !ok || observation.ActionID != action.ID || observation.Stale {
+					return fmt.Errorf("domain event %q references missing or stale observation", event.ID)
+				}
+			}
+		}
 		byTask[event.TaskID] = append(byTask[event.TaskID], event)
 	}
 	for id, run := range state.Runs {

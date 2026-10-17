@@ -4,6 +4,7 @@ package coorddconfig
 
 import (
 	"bytes"
+	"coord/internal/externalaction"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -35,15 +36,16 @@ func FailureDetails(err error) (section, reason string, ok bool) {
 }
 
 type Config struct {
-	SchemaVersion    int               `json:"schema_version"`
-	StateDir         string            `json:"state_dir"`
-	ControlAddr      string            `json:"control_addr"`
-	MetricsAddr      string            `json:"metrics_addr"`
-	ControlTokenFile string            `json:"control_token_file"`
-	Transport        Transport         `json:"transport"`
-	ControlToken     string            `json:"-"`
-	PrivateKey       []byte            `json:"-"`
-	PeerKeys         map[string][]byte `json:"-"`
+	SchemaVersion             int                            `json:"schema_version"`
+	StateDir                  string                         `json:"state_dir"`
+	ControlAddr               string                         `json:"control_addr"`
+	MetricsAddr               string                         `json:"metrics_addr"`
+	ControlTokenFile          string                         `json:"control_token_file"`
+	Transport                 Transport                      `json:"transport"`
+	ControlToken              string                         `json:"-"`
+	PrivateKey                []byte                         `json:"-"`
+	PeerKeys                  map[string][]byte              `json:"-"`
+	GitHubObservationFixtures []externalaction.GitHubFixture `json:"github_observation_fixtures,omitempty"`
 }
 
 type Transport struct {
@@ -161,6 +163,11 @@ func (c *Config) Validate() error {
 			return invalidTransport("transport.peers must contain base64 Ed25519 public keys")
 		}
 		peers[session] = key
+	}
+	for i, fixture := range c.GitHubObservationFixtures {
+		if err := fixture.Validate(); err != nil {
+			return invalid("github_observation_fixtures[%d]: %v", i, err)
+		}
 	}
 	c.PrivateKey, c.PeerKeys = private, peers
 	return nil

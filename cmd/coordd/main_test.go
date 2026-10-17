@@ -11,6 +11,7 @@ import (
 	"coord/envelope"
 	"coord/fsm"
 	"coord/internal/coorddconfig"
+	"coord/internal/externalaction"
 	"coord/internal/filelock"
 	"coord/roles"
 	"coord/store"
@@ -441,6 +442,38 @@ func TestCoorddReadinessFailsClosedForActiveTaskRunWithoutAgentSessionBinding(t 
 	after, err := os.ReadFile(path)
 	if err != nil || !bytes.Equal(after, seed) {
 		t.Fatalf("invalid active Run snapshot was rewritten: err=%v", err)
+	}
+}
+
+func TestConfiguredObservationAdapterIsExplicitFixtureOnly(t *testing.T) {
+	s, err := store.NewCanonical(checkpoint.CanonicalFile{Path: filepath.Join(t.TempDir(), "canonical.json")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	adapter, err := configuredObservationAdapter(s, coorddconfig.Config{})
+	if err != nil || adapter != nil {
+		t.Fatalf("adapter without explicit fixture=%v err=%v", adapter, err)
+	}
+	sha := "0123456789012345678901234567890123456789"
+	target := externalaction.GitHubTarget{Repository: "naghuale/coord", PullRequestNumber: 64, BaseBranch: "main", HeadBranch: "feature/issue63", ExpectedHead: sha, ExpectedState: "OPEN"}
+	payload := externalaction.GitHubActionPayload{Operation: externalaction.ObservePullRequest, ProjectID: "coord", OriginAssignmentID: "assignment", ScopeDigest: strings.Repeat("a", 64), Target: target}
+	action, err := externalaction.NewGitHub("observe-pr64", payload, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, _ = action.GitHubPayload()
+	cfg := coorddconfig.Config{GitHubObservationFixtures: []externalaction.GitHubFixture{{Operation: externalaction.ObservePullRequest, Target: target, ExternalID: "pr-64", State: "OPEN", Marker: &payload.Marker, PayloadDigest: payload.Marker.PayloadDigest}}}
+	adapter, err = configuredObservationAdapter(s, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := adapter.Execute(context.Background(), action)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.EvidenceClass != string(externalaction.EvidenceFixtureNotLive) || result.GitHub.ExternalID != "pr-64" {
+		t.Fatalf("fixture adapter result=%+v", result)
 	}
 }
 

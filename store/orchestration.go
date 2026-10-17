@@ -19,6 +19,9 @@ var ErrActionAuthority = errors.New("external action authority invalid")
 // These in-process methods are called only by the daemon's configured adapter;
 // they are not exposed as unauthenticated HTTP or transport endpoints.
 func workflowAuthority(state *CanonicalState, a externalaction.Action) error {
+	if a.Family == externalaction.GitHub {
+		return githubWorkflowAuthority(state, a)
+	}
 	if a.Family != externalaction.AgentSession {
 		return ErrActionAuthority
 	}
@@ -41,10 +44,34 @@ func workflowAuthority(state *CanonicalState, a externalaction.Action) error {
 	}
 	return nil
 }
-func (s *CanonicalStore) recordAction(state *CanonicalState, a externalaction.Action, at time.Time) {
+func (s *CanonicalStore) recordAction(state *CanonicalState, a externalaction.Action, at time.Time) error {
 	a.UpdatedAt = at
 	state.Orchestration.Actions[a.ID] = a
 	state.Orchestration.Events = append(state.Orchestration.Events, externalaction.Event{ActionID: a.ID, Revision: s.state.Revision + 1, Digest: externalaction.Digest(a), At: at})
+	if a.Family == externalaction.GitHub {
+		origin, ok, err := a.CanonicalOrigin()
+		if err != nil || !ok {
+			return fmt.Errorf("GitHub action requires typed canonical origin: %w", ErrActionAuthority)
+		}
+		id := taskid.ID(origin.TaskID)
+		t, exists := state.Tasks[id]
+		if !exists || t.Revision == ^uint64(0) || t.LastEventSeq == ^uint64(0) {
+			return fmt.Errorf("GitHub action Task revision unavailable: %w", ErrActionAuthority)
+		}
+		t.Revision++
+		t.LastEventSeq++
+		t.UpdatedAt = at
+		state.Tasks[id] = t
+		observationID := ""
+		for oid, observation := range state.Orchestration.Observations {
+			if observation.ActionID == a.ID && !observation.Stale && observation.ClaimEpoch == a.Claim.Epoch {
+				observationID = oid
+				break
+			}
+		}
+		state.Events = append(state.Events, task.DomainEvent{ID: task.EventID(id, t.LastEventSeq), TaskID: id, RunID: origin.RunID, EventSeq: t.LastEventSeq, TaskRevision: t.Revision, TaskFence: t.Fence, Type: task.ExternalActionStateRecorded, ActorID: "coordd", Summary: a.ID, ExternalActionID: a.ID, ExternalActionStatus: string(a.Status), ExternalObservationID: observationID, CreatedAt: at})
+		return nil
+	}
 	id := taskid.ID(a.Binding.TaskID)
 	t := state.Tasks[id]
 	// Multiple facts in one transaction share one Task revision.
@@ -53,10 +80,11 @@ func (s *CanonicalStore) recordAction(state *CanonicalState, a externalaction.Ac
 	t.UpdatedAt = at
 	state.Tasks[id] = t
 	state.Events = append(state.Events, task.DomainEvent{ID: task.EventID(id, t.LastEventSeq), TaskID: id, RunID: a.Binding.RunID, EventSeq: t.LastEventSeq, TaskRevision: t.Revision, TaskFence: t.Fence, Type: "EXTERNAL_ACTION_" + task.EventType(a.Status), ActorID: "coordd", Summary: a.ID, CreatedAt: at})
+	return nil
 }
 func (s *CanonicalStore) EnqueueAction(a externalaction.Action) error {
 	return s.UpdateCanonical(func(state *CanonicalState) error {
-		if a.Status != externalaction.Pending || a.ParentID != "" || a.Kind != externalaction.Deliver {
+		if a.Family != externalaction.AgentSession || a.Status != externalaction.Pending || a.ParentID != "" || a.Kind != externalaction.Deliver {
 			return fmt.Errorf("only initial delivery can be enqueued")
 		}
 		if prior, ok := state.Orchestration.Actions[a.ID]; ok {
@@ -71,8 +99,7 @@ func (s *CanonicalStore) EnqueueAction(a externalaction.Action) error {
 		if err := a.Validate(); err != nil {
 			return err
 		}
-		s.recordAction(state, a, a.CreatedAt)
-		return nil
+		return s.recordAction(state, a, a.CreatedAt)
 	})
 }
 func (s *CanonicalStore) ClaimAction(id, dispatcher string, at time.Time, lease time.Duration) (externalaction.Action, error) {
@@ -98,7 +125,9 @@ func (s *CanonicalStore) ClaimAction(id, dispatcher string, at time.Time, lease 
 		if a.Status != externalaction.Ambiguous && a.Status != externalaction.Observed {
 			a.Status = externalaction.Claimed
 		}
-		s.recordAction(state, a, at)
+		if err := s.recordAction(state, a, at); err != nil {
+			return err
+		}
 		claimed = a
 		return nil
 	})
@@ -116,7 +145,9 @@ func (s *CanonicalStore) StartAction(id, dispatcher string, epoch uint64, at tim
 		}
 		a.Status = externalaction.Dispatching
 		a.Attempts++
-		s.recordAction(state, a, at)
+		if err := s.recordAction(state, a, at); err != nil {
+			return err
+		}
 		started = a
 		return nil
 	})
@@ -169,13 +200,17 @@ func (s *CanonicalStore) recoverActions(at time.Time, startup bool) error {
 			a.Claim.DispatcherID = ""
 			a.Claim.Deadline = at
 			a.NextAttemptAt = at
-			s.recordAction(state, a, at)
+			if err := s.recordAction(state, a, at); err != nil {
+				return err
+			}
 		}
 		for _, a := range refresh {
 			if err := workflowAuthority(state, a); err != nil {
 				return err
 			}
-			s.recordAction(state, a, at)
+			if err := s.recordAction(state, a, at); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
@@ -196,8 +231,7 @@ func (s *CanonicalStore) ActionUncertain(id string, epoch uint64, at time.Time, 
 		} else {
 			a.NextAttemptAt = at.Add(time.Second << a.Attempts)
 		}
-		s.recordAction(state, a, at)
-		return nil
+		return s.recordAction(state, a, at)
 	})
 }
 func (s *CanonicalStore) CountObservationAttempt(id string, epoch uint64, at time.Time) error {
@@ -207,8 +241,7 @@ func (s *CanonicalStore) CountObservationAttempt(id string, epoch uint64, at tim
 			return ErrActionClaim
 		}
 		a.Attempts++
-		s.recordAction(state, a, at)
-		return nil
+		return s.recordAction(state, a, at)
 	})
 }
 func (s *CanonicalStore) RecordObservation(o externalaction.Observation) error {
@@ -240,8 +273,7 @@ func (s *CanonicalStore) RecordObservation(o externalaction.Observation) error {
 		state.Orchestration.Observations[o.ID] = o
 		a.Status = externalaction.Observed
 		a.Result = &o.Result
-		s.recordAction(state, a, o.At)
-		return nil
+		return s.recordAction(state, a, o.At)
 	})
 	if err == nil && stale {
 		return ErrActionClaim
@@ -255,6 +287,9 @@ func (s *CanonicalStore) AcceptObservation(id string, at time.Time) error {
 			return fmt.Errorf("observation not eligible")
 		}
 		a := state.Orchestration.Actions[o.ActionID]
+		if a.Family == externalaction.GitHub && a.Result != nil && a.Result.GitHub != nil && a.Result.GitHub.ResultStatus == "NOT_EVALUATED" {
+			return nil // remain OBSERVED without a completion receipt until provenance is resolved
+		}
 		if prior, ok := state.Orchestration.Receipts[id]; ok {
 			if prior.Digest == o.Digest {
 				return nil
@@ -268,47 +303,62 @@ func (s *CanonicalStore) AcceptObservation(id string, at time.Time) error {
 			return err
 		}
 		var next externalaction.Kind
-		switch a.Kind {
-		case externalaction.Deliver:
-			if o.Result.Outcome != "DELIVERED" {
-				return fmt.Errorf("delivery result invalid")
-			}
-			next = externalaction.Observe
-		case externalaction.Observe:
-			switch o.Result.Outcome {
-			case "UNAVAILABLE":
-				next = externalaction.Fence
-			case "RUNNING":
-			default:
-				return fmt.Errorf("liveness not confirmed")
-			}
-		case externalaction.Fence:
-			if o.Result.Outcome != "FENCED" {
-				return fmt.Errorf("fence not confirmed")
-			}
-			session := state.AgentSessions[a.Binding.SessionID]
-			seq, err := nextAgentSessionSequence(state.AgentSessionEvents, session.Address)
+		if a.Family == externalaction.GitHub {
+			payload, err := a.GitHubPayload()
 			if err != nil {
 				return err
 			}
-			session.RevokedAt = at
-			session.UpdatedAt = at
-			session.RevocationReason = "orchestration fence " + a.ID
-			state.AgentSessions[session.Address] = session
-			state.AgentSessionEvents = append(state.AgentSessionEvents, agentsession.Event{ID: agentsession.EventID(session.Address, seq), Address: session.Address, AgentID: session.AgentID, Sequence: seq, Type: agentsession.Revoked, Generation: session.Generation, Reason: session.RevocationReason, CreatedAt: at})
-			next = externalaction.Stop
-		case externalaction.Stop:
-			if !o.Result.Stopped || o.Result.StopMethod != "SUPERVISOR_CONFIRMED_EXIT" || o.Result.Outcome != "STOPPED" {
-				return fmt.Errorf("required stop proof not satisfied")
+			if payload.Operation != externalaction.ObserveIssue && payload.Operation != externalaction.ObservePullRequest && payload.Operation != externalaction.ObservePipeline {
+				return fmt.Errorf("GitHub write operation disabled")
 			}
-			next = externalaction.Replace
-		case externalaction.Replace:
-			if o.Result.Outcome != "REPLACEMENT_CREATED" {
-				return fmt.Errorf("replacement not confirmed")
+			if o.Result.GitHub == nil {
+				return fmt.Errorf("typed GitHub observation missing")
+			}
+		} else {
+			switch a.Kind {
+			case externalaction.Deliver:
+				if o.Result.Outcome != "DELIVERED" {
+					return fmt.Errorf("delivery result invalid")
+				}
+				next = externalaction.Observe
+			case externalaction.Observe:
+				switch o.Result.Outcome {
+				case "UNAVAILABLE":
+					next = externalaction.Fence
+				case "RUNNING":
+				default:
+					return fmt.Errorf("liveness not confirmed")
+				}
+			case externalaction.Fence:
+				if o.Result.Outcome != "FENCED" {
+					return fmt.Errorf("fence not confirmed")
+				}
+				session := state.AgentSessions[a.Binding.SessionID]
+				seq, err := nextAgentSessionSequence(state.AgentSessionEvents, session.Address)
+				if err != nil {
+					return err
+				}
+				session.RevokedAt = at
+				session.UpdatedAt = at
+				session.RevocationReason = "orchestration fence " + a.ID
+				state.AgentSessions[session.Address] = session
+				state.AgentSessionEvents = append(state.AgentSessionEvents, agentsession.Event{ID: agentsession.EventID(session.Address, seq), Address: session.Address, AgentID: session.AgentID, Sequence: seq, Type: agentsession.Revoked, Generation: session.Generation, Reason: session.RevocationReason, CreatedAt: at})
+				next = externalaction.Stop
+			case externalaction.Stop:
+				if !o.Result.Stopped || o.Result.StopMethod != "SUPERVISOR_CONFIRMED_EXIT" || o.Result.Outcome != "STOPPED" {
+					return fmt.Errorf("required stop proof not satisfied")
+				}
+				next = externalaction.Replace
+			case externalaction.Replace:
+				if o.Result.Outcome != "REPLACEMENT_CREATED" {
+					return fmt.Errorf("replacement not confirmed")
+				}
 			}
 		}
 		a.Status = externalaction.Completed
-		s.recordAction(state, a, at)
+		if err := s.recordAction(state, a, at); err != nil {
+			return err
+		}
 		if next != "" {
 			req := a.Request
 			if next == externalaction.Replace {
@@ -321,11 +371,21 @@ func (s *CanonicalStore) AcceptObservation(id string, at time.Time) error {
 				}{a.Binding.SessionID, a.Binding.Generation + 1})
 			}
 			n := externalaction.New(a.ID+"/"+string(next), next, a.Binding, a.ID, req, at)
-			s.recordAction(state, n, at)
+			if err := s.recordAction(state, n, at); err != nil {
+				return err
+			}
 		}
 		rev := s.state.Revision + 1
 		state.Orchestration.Receipts[id] = externalaction.Receipt{ObservationID: id, ActionID: a.ID, Digest: o.Digest, Revision: rev, AckPending: true}
-		tid := taskid.ID(a.Binding.TaskID)
+		taskValue, runValue := a.Binding.TaskID, a.Binding.RunID
+		if a.Family == externalaction.GitHub {
+			origin, _, err := a.CanonicalOrigin()
+			if err != nil {
+				return err
+			}
+			taskValue, runValue = origin.TaskID, origin.RunID
+		}
+		tid := taskid.ID(taskValue)
 		before := s.state.Tasks[tid]
 		after := state.Tasks[tid]
 		eventIDs := []string{}
@@ -334,7 +394,7 @@ func (s *CanonicalStore) AcceptObservation(id string, at time.Time) error {
 				eventIDs = append(eventIDs, e.ID)
 			}
 		}
-		state.Inbox[InboxKey(o.Source, id)] = InboxReceipt{ActorID: o.Source, MessageID: id, TaskID: tid, RunID: a.Binding.RunID, EventIDs: eventIDs, ExpectedRevision: before.Revision, CommittedRevision: after.Revision, RecordedAt: at}
+		state.Inbox[InboxKey(o.Source, id)] = InboxReceipt{ActorID: o.Source, MessageID: id, TaskID: tid, RunID: runValue, EventIDs: eventIDs, ExpectedRevision: before.Revision, CommittedRevision: after.Revision, RecordedAt: at}
 		return nil
 	})
 }

@@ -7,6 +7,7 @@ import (
 	"coord/checkpoint"
 	"coord/daemon"
 	"coord/internal/coorddconfig"
+	"coord/internal/externalaction"
 	"coord/internal/filelock"
 	"coord/internal/orchestration"
 	"coord/internal/projection"
@@ -186,7 +187,11 @@ func runWithWriterFactories(ctx context.Context, cfg coorddconfig.Config, factor
 	// No live external-action adapter is qualified in this slice. Existing intents
 	// recover durably; an unavailable adapter fails closed without launching agents.
 	if canonicalStore, ok := canonical.(*store.CanonicalStore); ok {
-		workflow := orchestration.New(canonicalStore, nil, "coordd", time.Now)
+		adapter, adapterErr := configuredObservationAdapter(canonicalStore, cfg)
+		if adapterErr != nil {
+			return &startupFailure{section: "runtime", ownership: "released", namespaceLock: "released", exitCode: 1, err: errors.Join(adapterErr, closeTransport(), registry.Close(), canonical.Close())}
+		}
+		workflow := orchestration.New(canonicalStore, adapter, "coordd", time.Now)
 		workflow.Projector = &projection.Writer{Root: filepath.Join(cfg.StateDir, "operations")}
 		coordinator.Workflow = workflow
 	}
@@ -204,6 +209,19 @@ func runWithWriterFactories(ctx context.Context, cfg coorddconfig.Config, factor
 		return &startupFailure{section: "runtime", ownership: "released", namespaceLock: "released", exitCode: 1, err: err}
 	}
 	return nil
+}
+
+// configuredObservationAdapter returns an in-memory, credential-free GitHub
+// adapter only when explicit fixtures are present. It has no live/network mode.
+func configuredObservationAdapter(s *store.CanonicalStore, cfg coorddconfig.Config) (orchestration.Adapter, error) {
+	if len(cfg.GitHubObservationFixtures) == 0 {
+		return nil, nil
+	}
+	fake, err := orchestration.NewFakeGitHubAdapter(cfg.GitHubObservationFixtures)
+	if err != nil {
+		return nil, err
+	}
+	return orchestration.NewAdapterRegistry(s, orchestration.AdapterRegistration{Family: externalaction.GitHub, Adapter: fake})
 }
 
 func runDiagnostic(ctx context.Context, cfg coorddconfig.Config, stderr io.Writer, reason string) error {

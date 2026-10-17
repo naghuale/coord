@@ -1,5 +1,11 @@
 # Целевая архитектура Coord
 
+## Coordinator completion и GitHub observation slice
+
+Принятый wiring добавляет typed completion candidate boundary в существующий coordinator loop. Проверка использует canonical records и exact subject; запись предшествует публикации. Отдельный coordinator, store, retry engine или writer не добавляется.
+
+GitHub family маршрутизирует только read-only Issue, pull request и pipeline observations в in-memory fixture adapter. Live API, credentials, webhook, writes и merge выключены. Неизвестные pipeline states дают `NOT_EVALUATED`; legacy объекты без provenance не завершают action.
+
 Карта для сверки: куда ведут принятые ADR и что из этого уже есть в коде.
 Нормы задают ADR-0001…ADR-0005 и TASK-MODEL; этот документ их не заменяет и
 новых правил не вводит. При расхождении прав ADR, а карту нужно исправить.

@@ -1,5 +1,11 @@
 # Как устроено приложение
 
+## Completion candidates и GitHub observations
+
+Кандидаты завершения проходят проверку по canonical Task, Run, exact subject, Action Map, workflow catalog, completion policy и watchdog до canonical commit. Публикация следует после commit; отклонённый кандидат не создаёт canonical event или external action.
+
+Типизированные external actions маршрутизируются по существующему lifecycle. В этом срезе GitHub family поддерживает только read-only наблюдения Issue, pull request и pipeline через in-memory fixtures. Evidence помечается `FIXTURE_NOT_LIVE` и не может подтверждать production readiness. Legacy объекты без provenance остаются непроверенными.
+
 Этот документ описывает текущее устройство кода и явно разделяет:
 
 - действующий legacy runtime;

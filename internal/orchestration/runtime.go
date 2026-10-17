@@ -77,7 +77,15 @@ func (r *Runtime) Tick(ctx context.Context) error {
 	sort.Strings(ids)
 	for _, id := range ids {
 		a := snap.Orchestration.Actions[id]
+		if a.Family == externalaction.GitHub {
+			if _, bound, originErr := a.CanonicalOrigin(); originErr != nil || !bound {
+				continue // legacy records remain historical until separate provenance resolution
+			}
+		}
 		if a.Status == externalaction.Observed {
+			if a.Family == externalaction.GitHub && a.Result != nil && a.Result.GitHub != nil && a.Result.GitHub.ResultStatus == "NOT_EVALUATED" {
+				continue // provenance wait is quiescent until a new canonical command
+			}
 			obsIDs := []string{}
 			for oid, o := range snap.Orchestration.Observations {
 				if o.ActionID == id && !o.Stale && o.ClaimEpoch == a.Claim.Epoch {
