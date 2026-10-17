@@ -16,7 +16,7 @@ func TestExternalActionMigrationPublicationRecovery(t *testing.T) {
 	// uncertain rename and post-publication receipt loss must reconcile on reopen.
 	for _, point := range []string{"backup", "manifest", "snapshot-before", "snapshot-after", "receipt"} {
 		t.Run(point, func(t *testing.T) {
-			file := CanonicalFile{Path: filepath.Join(t.TempDir(), "canonical.json")}
+			file := migrationTestFile(t)
 			source := store.EmptyCanonicalState()
 			source.SchemaVersion = 2
 			raw, err := json.Marshal(source)
@@ -93,7 +93,7 @@ func TestExternalActionMigrationPublicationRecovery(t *testing.T) {
 }
 
 func TestExternalActionMigrationRejectsForeignArtifacts(t *testing.T) {
-	file := CanonicalFile{Path: filepath.Join(t.TempDir(), "canonical.json")}
+	file := migrationTestFile(t)
 	source := store.EmptyCanonicalState()
 	source.SchemaVersion = 2
 	raw, err := json.Marshal(source)
@@ -121,4 +121,15 @@ func TestExternalActionMigrationRejectsForeignArtifacts(t *testing.T) {
 	if !bytes.Equal(raw, after) {
 		t.Fatal("foreign collision overwrote source")
 	}
+}
+
+// t.TempDir may retain the macOS /var alias; production migration requires a
+// canonical path. Resolve the existing directory before constructing the file.
+func migrationTestFile(t *testing.T) CanonicalFile {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return CanonicalFile{Path: filepath.Join(dir, "canonical.json")}
 }

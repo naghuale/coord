@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -19,6 +20,9 @@ import (
 func schema2Fixture(t *testing.T) (checkpoint.CanonicalFile, store.CanonicalState, []byte) {
 	t.Helper()
 	s, file, a, now := fixture(t)
+	resolved, err := filepath.EvalSymlinks(file.Path)
+	must(t, err)
+	file.Path = resolved
 	must(t, s.EnqueueAction(a))
 	r := New(s, fake(), "dispatcher", func() time.Time { return *now })
 	tick(t, r)
