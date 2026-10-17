@@ -1,5 +1,9 @@
 # История изменений
 
+## 2026-10-17 — Shadow Validation pilot: WP-SV-04 Review/Audit Graph (Refs #70)
+
+- WP-SV-04: `internal/shadowpilot/review_audit.go` — `ShadowReviewResult` (reviewerID≠executorID enforced via `IndependenceViolation`), `ShadowAuditResult` (auditorID≠executorID, auditorID≠reviewerID), `ShadowFinding` (BLOCKING/NON_BLOCKING, OPEN/CLOSED; `Close()` требует evidenceRef — `StopRationaleOrEvidenceLost`), `ShadowDiscussionNode` (rationale preserved, нет поля verdict — структурный запрет M03), `ComputeReadiness()` (детерминированная readiness по exact subjectSHA; superseded results → NOT_EVALUATED; NOT_EVALUATED ≠ PASS; mixed-subject → NOT_EVALUATED). 8 mutation tests M01–M08 (все убиты), 12 тестов сценариев. `TestReviewerCannotEqualExecutor`, `TestM01ReviewerIndependenceDisabledIsRejected`, `TestAcceptedReviewAndAuditSameSubjectCanBecomeReady` (документация — shadow pilot, не production).
+
 ## 2026-10-17 — Shadow Validation pilot: WP-SV-03 Single-agent execution (Refs #70)
 
 - WP-SV-03: `internal/shadowpilot/executor.go` — `ShadowAssignment` (durable assignment intent, immutable after creation), `Admit()` (subject SHA match + reviewer≠executor guard), `ShadowHeartbeat` (monotonic sequence, stale detection), `ShadowExecution` (state machine: ADMITTED→RUNNING→COMPLETED|FENCED). Ключевые stop conditions: `StopExactSubjectMismatch` при несоответствии subject SHA на admission, `StopReviewerEqualsExecutor` при конфликте ролей, `StopStaleGenerationAccepted` при несоответствии generation в результате (`StaleGenerationError`). Fenced execution cannot be completed (`TestFencedExecutionCannotBeCompleted`). Stale heartbeat triggers automatic fence (`TestCheckHeartbeatTimeoutFencesStaleExecution`). 17 новых тестов (`TestAdmitRejectsSubjectMismatch`, `TestCompleteRejectsStaleGeneration`, и т.д.) (документация — shadow pilot, не production).

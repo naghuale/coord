@@ -3,6 +3,7 @@ package shadowpilot
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 )
@@ -98,15 +99,13 @@ func Admit(a ShadowAssignment, actualSubjectSHA string, reviewerAgentIDs []strin
 			},
 		}
 	}
-	for _, rid := range reviewerAgentIDs {
-		if rid == a.AgentID {
-			return AdmissionResult{
-				Outcome: AdmissionRejected,
-				Violation: &StopViolation{
-					Condition: StopReviewerEqualsExecutor,
-					Detail:    fmt.Sprintf("executor agent_id %q is also assigned as reviewer", a.AgentID),
-				},
-			}
+	if slices.Contains(reviewerAgentIDs, a.AgentID) {
+		return AdmissionResult{
+			Outcome: AdmissionRejected,
+			Violation: &StopViolation{
+				Condition: StopReviewerEqualsExecutor,
+				Detail:    fmt.Sprintf("executor agent_id %q is also assigned as reviewer", a.AgentID),
+			},
 		}
 	}
 	return AdmissionResult{Outcome: AdmissionAdmitted}
