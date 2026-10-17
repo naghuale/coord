@@ -4016,6 +4016,45 @@ documents:
       reviewer: required
       auditor: required
       owner: only_for_class_R
+  - id: external-action-contract-r1
+    path: docs/decisions/EXTERNAL-ACTION-CONTRACT-R1.yaml
+    class: process
+    status: accepted
+    purpose:
+      - "OWNER class R decision EXTERNAL-ACTION-CONTRACT-R1 (issue #63): ExternalAction
+        common envelope with mandatory Family discriminator (AGENT_SESSION, GITHUB);
+        schema version 3 reserved; no parallel action store/retry/claim/recovery;
+        GitHub typed payload authorized; live API and credentials not authorized"
+      - "implementation: TD-R2 class, assignmentId: external-action-contract-schema3;
+        migration 2→3: idempotent, restart-safe, partial migration rejected;
+        designPacketDigest: sha256:27ae94ef7221fafcad42697cbbf9e5b9f3b695e10ed45556e8a2dd5159d42d92"
+    decisionRef: EXTERNAL-ACTION-CONTRACT-R1
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - ASSIGNMENT_START
+      - IMPLEMENTATION
+      - REVIEW
+      - AUDIT
+      - COMMIT_READINESS
+      - MIGRATION
+    updateWhen:
+      - PRODUCT_NORM_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    currentNormativeAuthority: true
+    normativeAuthority: process
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: required
+      owner: only_for_class_R
   - id: durable-orchestration-adr-proposed
     path: docs/plans/durable-orchestration/ADR-PROPOSED.md
     class: design

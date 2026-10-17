@@ -1,0 +1,232 @@
+decision: EXTERNAL-ACTION-CONTRACT-R1
+class: R
+issue: 63
+status: accepted
+authority: AGENTS.md
+decisionDate: "2026-10-17"
+
+decisionProvenance: >
+  OWNER accepted the design packet PREPARE_EXTERNAL_ACTION_CONTRACT_EXTENSION
+  (digest sha256:27ae94ef7221fafcad42697cbbf9e5b9f3b695e10ed45556e8a2dd5159d42d92)
+  after REVIEW_ACCEPTED (REVIEW-EXTERNAL-ACTION-CONTRACT-DESIGN-V1) and
+  AUDIT_ACCEPTED (AUDIT-EXTERNAL-ACTION-CONTRACT-DESIGN-V1).
+  GitHub issue https://github.com/naghuale/coord/issues/63 is the durable
+  project record for the implementation assignment.
+
+provenanceRefs:
+  - kind: github-issue
+    value: "https://github.com/naghuale/coord/issues/63"
+  - kind: design-review
+    value: REVIEW-EXTERNAL-ACTION-CONTRACT-DESIGN-V1
+  - kind: design-audit
+    value: AUDIT-EXTERNAL-ACTION-CONTRACT-DESIGN-V1
+  - kind: design-packet-digest
+    value: "sha256:27ae94ef7221fafcad42697cbbf9e5b9f3b695e10ed45556e8a2dd5159d42d92"
+
+context: >
+  The existing ExternalAction model (internal/externalaction/model.go) supports
+  only AGENT_SESSION actions (session keys, idempotency keys, request/result
+  digests, claim epochs, state machine). GitHub is a valuable external
+  collaboration system that needs typed, bounded integration as a first-class
+  external action family. Without a common envelope, two separate action stores,
+  retry engines, claim models, and recovery loops would be required, creating
+  dangerous divergence. A shared envelope with a mandatory Family discriminator
+  enables a single writer, single lifecycle, single retry engine, and single
+  recovery path — while allowing typed payloads per family.
+
+selectedOption: >
+  Extend the existing ExternalAction envelope with a mandatory Family
+  discriminator (ExternalActionFamily) and SchemaVersion field. Schema version 3
+  is reserved for this extension. Unknown Family or Version values are rejected
+  fail-closed. All existing AGENT_SESSION semantics (IDs, keys, digests, claim
+  epochs, state transitions, fencing) are preserved without semantic drift.
+
+norms:
+  - common-externalaction-envelope
+  - family-discriminator-required
+  - schema-3-reserved
+  - no-parallel-action-store
+
+implementation:
+  authorized: true
+  decisionClass: TD-R2
+  assignmentId: external-action-contract-schema3
+
+canonicalSchema:
+  currentVersion: 2
+  reservedTargetVersion: 3
+
+externalAction:
+  model: COMMON_ENVELOPE
+  familyDiscriminatorRequired: true
+  allowedFamilies:
+    - AGENT_SESSION
+    - GITHUB
+  parallelActionStoreAllowed: false
+  parallelRetryEngineAllowed: false
+  parallelClaimModelAllowed: false
+  parallelRecoveryLoopAllowed: false
+  soleWriter: coordd
+
+agentSessionCompatibility:
+  existingIdsPreserved: true
+  operationInstanceIdsPreserved: true
+  idempotencyKeysPreserved: true
+  claimEpochsPreserved: true
+  requestDigestsPreserved: true
+  resultDigestsPreserved: true
+  stateHistoryPreserved: true
+  retrySemanticsPreserved: true
+  fencingSemanticsPreserved: true
+  migrationDefaultFamily: AGENT_SESSION
+
+digestCanonicalization:
+  schema2: preserve_existing_algorithm
+  schema3: explicit_versioned_algorithm
+
+githubImplementation:
+  typedPayload: authorized
+  structuralValidation: authorized
+  semanticValidation: authorized
+  persistence: authorized
+  migrationCompatibility: authorized
+  liveGitHubAPI: notAuthorized
+  productionCredentials: notAuthorized
+  webhookIngestion: notAuthorized
+  mergeExecution: notAuthorized
+
+completedRequires:
+  observationPresent: true
+  markerMatched: true
+  payloadDigestMatched: true
+  operationInstanceMatched: true
+  idempotencyKeyMatched: true
+  expectedExternalStateMatched: true
+  resultStatus: PASS
+
+completedForbiddenWhen:
+  - stateWasAmbiguousWithoutObservation
+  - markerMatchedIsFalse
+  - payloadDigestMatchedIsFalse
+  - operationInstanceMismatch
+  - idempotencyKeyMismatch
+  - expectedStateMismatch
+  - mergeGateMissing
+  - mergeGateNotAccepted
+  - mergeGateSubjectMismatch
+
+markerEquality:
+  structuralCheck: JSON_SCHEMA
+  valueEqualityCheck: GO_SEMANTIC_VALIDATOR
+  fields:
+    - marker.operationInstanceId == metadata.operationInstanceId
+    - marker.idempotencyKey == metadata.idempotencyKey
+    - marker.payloadDigest == metadata.payloadDigest
+  reasonCodes:
+    - MARKER_OPERATION_INSTANCE_MISMATCH
+    - MARKER_IDEMPOTENCY_KEY_MISMATCH
+    - MARKER_PAYLOAD_DIGEST_MISMATCH
+
+mergeGate:
+  requiredFor: MERGE_PULL_REQUEST
+  minimumLength: 1
+  canonicalLookupRequired: true
+  exactSubjectRequired: true
+  reasonCodes:
+    - MERGE_GATE_MISSING
+    - MERGE_GATE_NOT_FOUND
+    - MERGE_GATE_NOT_ACCEPTED
+    - MERGE_GATE_SUPERSEDED
+    - MERGE_GATE_REPOSITORY_MISMATCH
+    - MERGE_GATE_PULL_REQUEST_MISMATCH
+    - MERGE_GATE_SUBJECT_MISMATCH
+
+migration:
+  id: external-action-schema-2-to-3
+  fromVersion: 2
+  toVersion: 3
+  requirements:
+    idempotent: true
+    restartSafe: true
+    eventBacked: true
+    partialMigrationRejected: true
+    existingRecordsPreserved: true
+    unknownFamilyRejected: true
+  rollback:
+    allowedBeforeSchema3Records: conditional
+    allowedAfterGitHubRecords: false
+    destructiveDowngrade: prohibited
+
+acceptance:
+  envelope:
+    familyRequired: true
+    schemaVersionRequired: true
+    unknownFamilyRejected: true
+    payloadDecodedByFamily: true
+    permissiveFallbackAbsent: true
+  agentSession:
+    existingSemanticsPreserved: true
+    existingKeysPreserved: true
+    existingDigestsPreserved: true
+    existingHistoryPreserved: true
+  github:
+    typedPayloadValidated: true
+    noLiveCalls: true
+    noCredentials: true
+  completion:
+    positiveObservationRequired: true
+    markerEqualityCheckedInGo: true
+    payloadDigestEqualityCheckedInGo: true
+    ambiguousCannotComplete: true
+  merge:
+    nonEmptyGateRequired: true
+    canonicalGateLookupRequired: true
+    exactSubjectRequired: true
+  migration:
+    schema2To3: PASS
+    replayIdempotent: PASS
+    restartSafe: PASS
+    partialMigrationRejected: PASS
+    unsafeDowngradeRejected: PASS
+  verification:
+    targetedTests: PASS
+    targetedRace: PASS
+    fullRace: PASS
+    makeCheck: PASS
+    goVet: PASS
+    gitDiffCheck: PASS
+    requiredMutationsKilled: true
+  gates:
+    review: REVIEW_ACCEPTED
+    audit: AUDIT_ACCEPTED
+    remoteCIExactSha: PASS
+
+requiredTests:
+  - ExistingSchema2SessionActionMigratesToAgentSession
+  - MigrationPreservesIdempotencyKey
+  - MigrationPreservesDigests
+  - MigrationReplayIsIdempotent
+  - PartialMigrationDoesNotBecomeCurrent
+  - UnknownFamilyRejected
+  - GitHubPayloadRejectedAsAgentSessionPayload
+  - AgentSessionPayloadRejectedAsGitHubPayload
+  - CompletedRequiresPositiveObservation
+  - CompletedRejectsMarkerMismatch
+  - CompletedRejectsPayloadDigestMismatch
+  - CompletedRejectsAmbiguousWithoutObservation
+  - EmptyMergeGateRefRejected
+  - MissingMergeGateRejected
+  - MergeGateMustMatchExpectedHead
+  - UnsafeDowngradeRejectedWithSchema3Records
+
+requiredMutations:
+  - M01: unknown family accepted
+  - M02: GitHub payload decoded as AGENT_SESSION
+  - M03: COMPLETED accepts markerMatched=false
+  - M04: COMPLETED accepts payloadDigestMatched=false
+  - M05: marker metadata mismatch accepted
+  - M06: empty mergeGateRef accepted
+  - M07: merge gate subject mismatch accepted
+  - M08: migration changes session idempotency key
+  - M09: partial migration marked current
+  - M10: downgrade allowed with GitHub records
