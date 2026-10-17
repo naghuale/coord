@@ -238,11 +238,11 @@ All crash paths are idempotent via `MessageID` replay. No second recovery write 
 
 | Transition | Guards required | Prohibited when |
 |---|---|---|
-| `FENCE_ONLY` | orphanProven, fenceCommitted | terminal Run, active live session |
-| `MARK_INTERRUPTED` | orphanProven, stopProofRecorded, fenceCommitted | Run not Stalled |
-| `RESUME_OBSERVATION` | stopProofRecorded, resultObservationPresent | no external observation |
-| `PREPARE_REPLACEMENT` | orphanProven, stopProofRecorded, fenceCommitted | prior run not terminal after fence |
-| `COMPLETE_EXISTING` | resultObservationPresent, stopProofRecorded | conflicting terminal state |
+| `FENCE_ONLY` | orphanProven, fenceCommitted | terminal Run (Done or Failed); active live session |
+| `MARK_INTERRUPTED` | orphanProven, stopProofRecorded, fenceCommitted | terminal Run (Done or Failed); Run not Stalled |
+| `RESUME_OBSERVATION` | stopProofRecorded, resultObservationPresent | terminal Run (Done or Failed); no external observation |
+| `PREPARE_REPLACEMENT` | orphanProven, stopProofRecorded, fenceCommitted | terminal Run (Done or Failed); prior run not terminal after fence |
+| `COMPLETE_EXISTING` | resultObservationPresent, stopProofRecorded | terminal Run (Done or Failed) — explicit guard independent of result semantics; conflicting terminal state |
 
 **Fail-closed violations** (always reject with error, never proceed):
 - `RUN_RECOVERY_OBSERVATION_MISSING` — StopProof ExternalAction not in positive OBSERVED state
