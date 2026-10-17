@@ -5,18 +5,156 @@ import sys
 import tempfile
 import shutil
 import yaml
+import os
+import hashlib
+from contextlib import contextmanager
+from unittest.mock import patch
 
 SOURCE = Path(__file__).resolve().parents[1]
 CHECKER_REL = Path("scripts/check-architecture-sync")
 
 
+def ignore_repository_metadata(path, names):
+    # .git can be a directory OR a linked-worktree pointer file. Project-local
+    # scratch is excluded too: the destination may be below SOURCE/.scratch.
+    return [name for name in names if name in (".git", ".scratch")]
+
+
+def project_scratch():
+    root = Path(os.environ.get("COORD_PROJECT_ROOT", SOURCE)).resolve()
+    if not SOURCE.resolve().is_relative_to(root):
+        raise AssertionError("source is outside configured project root")
+    for part in (root / ".scratch", root / ".scratch" / "tmp"):
+        if part.is_symlink():
+            raise AssertionError("scratch symlink is forbidden")
+        part.mkdir(mode=0o700, exist_ok=True)
+    return (root / ".scratch" / "tmp").resolve()
+
+
+def project_temporary_directory():
+    return tempfile.TemporaryDirectory(prefix="architecture-fixture-", dir=project_scratch())
+
+
+def git(repo, *args):
+    environment = os.environ.copy()
+    # Inherited repository overrides must not redirect fixture Git operations.
+    for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES"):
+        environment.pop(name, None)
+    environment["GIT_OPTIONAL_LOCKS"] = "0"
+    return subprocess.run(["git", "-c", "core.hooksPath=" + os.devnull,
+                           "-c", "maintenance.auto=false", "-c", "gc.auto=0",
+                           "-c", "core.fsmonitor=false", *args],
+                          cwd=repo, env=environment, check=True, capture_output=True)
+
+
+def copy_fixture(source, destination):
+    shutil.copytree(source, destination, ignore=ignore_repository_metadata)
+    if (destination / ".git").exists():
+        name = "LinkedWorktreeFixtureExcludesGitFile" if (source / ".git").is_file() else "NormalCheckoutFixtureExcludesGitDirectory"
+        raise AssertionError(name + ": repository metadata copied")
+
+
+def initialize_repository(repo):
+    git(repo, "init", "-q")
+    git(repo, "config", "--local", "user.email", "test@example.invalid")
+    git(repo, "config", "--local", "user.name", "Architecture Test")
+
+
+def fingerprint(path):
+    if path.is_symlink():
+        return ("symlink", os.readlink(path))
+    return (path.stat().st_mode, hashlib.sha256(path.read_bytes()).hexdigest())
+
+
+def host_snapshot(repo):
+    git_dir = Path(git(repo, "rev-parse", "--absolute-git-dir").stdout.decode().strip())
+    common = Path(git(repo, "rev-parse", "--git-common-dir").stdout.decode().strip())
+    if not common.is_absolute():
+        common = repo / common
+    common = common.resolve()
+    metadata = {}
+    for base in {git_dir, common}:
+        for relative in ("config", "HEAD", "index", "packed-refs", "refs", "worktrees"):
+            path = base / relative
+            paths = path.rglob("*") if path.is_dir() else [path]
+            for item in paths:
+                if item.is_file() or item.is_symlink():
+                    metadata[str(item)] = fingerprint(item)
+    if (repo / ".git").is_file():
+        metadata[str(repo / ".git")] = fingerprint(repo / ".git")
+    worktree = {}
+    for entry in git(repo, "ls-files", "-co", "--exclude-standard", "-z").stdout.split(b"\0"):
+        if entry:
+            path = repo / os.fsdecode(entry)
+            if path.is_file() or path.is_symlink():
+                worktree[os.fsdecode(entry)] = fingerprint(path)
+    return {"metadata": metadata, "worktree": worktree,
+            "head": git(repo, "rev-parse", "HEAD").stdout,
+            "refs": git(repo, "for-each-ref", "--format=%(refname) %(objectname)").stdout,
+            "status": git(repo, "status", "--porcelain=v1", "--untracked-files=all").stdout}
+
+
+@contextmanager
+def protect_host(repo):
+    before = host_snapshot(repo)
+    try:
+        yield before
+    finally:
+        after = host_snapshot(repo)
+        if before != after:
+            raise AssertionError("host repository config/refs/HEAD/index/worktree changed")
+
+
+def fixture_isolation_case(linked):
+    with project_temporary_directory() as td:
+        seed = Path(td) / "seed"
+        seed.mkdir()
+        initialize_repository(seed)
+        (seed / "sentinel").write_text("host must remain unchanged")
+        git(seed, "add", ".")
+        git(seed, "-c", "commit.gpgsign=false", "commit", "-qm", "seed")
+        source = seed
+        if linked:
+            source = Path(td) / "linked"
+            git(seed, "worktree", "add", "--detach", str(source), "HEAD")
+        exclusion = "LinkedWorktreeFixtureExcludesGitFile" if linked else "NormalCheckoutFixtureExcludesGitDirectory"
+        assert (source / ".git").is_file() if linked else (source / ".git").is_dir()
+        with protect_host(seed), protect_host(source):
+            destination = Path(td) / "copy"
+            copy_fixture(source, destination)
+            assert not (destination / ".git").exists(), exclusion
+            print("PASS " + exclusion)
+            initialize_repository(destination)
+            common = Path(git(destination, "rev-parse", "--git-common-dir").stdout.decode().strip())
+            if not common.is_absolute():
+                common = destination / common
+            assert common.resolve() == (destination / ".git").resolve(), "FixtureCreatesIndependentRepository"
+            assert common.resolve() != (seed / ".git").resolve(), "FixtureCreatesIndependentRepository"
+            print("PASS FixtureCreatesIndependentRepository")
+            git(destination, "config", "--local", "fixture.isolation", "true")
+            assert b"fixture.isolation" not in git(seed, "config", "--local", "--list").stdout, "FixtureGitConfigDoesNotTouchHost"
+            print("PASS FixtureGitConfigDoesNotTouchHost")
+            (destination / "sentinel").write_text("fixture-only change")
+            git(destination, "add", ".")
+            git(destination, "-c", "commit.gpgsign=false", "commit", "-qm", "fixture")
+            assert git(destination, "rev-parse", "HEAD").stdout != git(seed, "rev-parse", "HEAD").stdout, "FixtureCommitDoesNotTouchHostRefs"
+            print("PASS FixtureCommitDoesNotTouchHostRefs")
+        assert Path(td).resolve().is_relative_to(project_scratch()), "TemporaryPathIsProjectLocal"
+        print("PASS TemporaryPathIsProjectLocal")
+    # Fail if this harness ever asks tempfile to select a system default.
+    with patch("tempfile.gettempdir", side_effect=AssertionError("SystemTmpIsNotUsed")), \
+            patch("tempfile.gettempdirb", side_effect=AssertionError("SystemTmpIsNotUsed")):
+        with project_temporary_directory() as td:
+            assert Path(td).resolve().is_relative_to(project_scratch()), "SystemTmpIsNotUsed"
+    print("PASS SystemTmpIsNotUsed")
+
+
+
 def run_case(name, mutate, expected):
-    with tempfile.TemporaryDirectory() as td:
+    with protect_host(SOURCE), project_temporary_directory() as td:
         repo = Path(td) / "repo"
-        shutil.copytree(SOURCE, repo)
-        subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
-        subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=repo, check=True)
-        subprocess.run(["git", "config", "user.name", "Architecture Test"], cwd=repo, check=True)
+        copy_fixture(SOURCE, repo)
+        initialize_repository(repo)
         # Fixtures referenced by registry.
         for p in ["docs/ADR-0001-CANONICAL-COORDINATION-MODEL.md", "docs/ADR-0004-RUNTIME-AND-DAEMON-MODEL.md", "docs/TASK-MODEL.md", "docs/rfc/RFC-0001-LOCAL-PROJECT-OPERATIONS.md"]:
             path = repo / p; path.parent.mkdir(parents=True, exist_ok=True); path.write_text("fixture")
@@ -89,8 +227,8 @@ def run_case(name, mutate, expected):
             "func TestCoorddReadinessFailsClosedForActiveTaskRunWithoutAgentSessionBinding(t interface{}){}",
             "",
         ]) )
-        subprocess.run(["git", "add", "."], cwd=repo, check=True)
-        subprocess.run(["git", "commit", "-qm", "fixture"], cwd=repo, check=True)
+        git(repo, "add", ".")
+        git(repo, "-c", "commit.gpgsign=false", "commit", "-qm", "fixture")
         mutate(repo)
         result = subprocess.run([sys.executable, str(repo/CHECKER_REL)], cwd=repo, capture_output=True, text=True)
         ok = result.returncode == expected
@@ -113,6 +251,8 @@ def missing_test(repo):
     p=repo/"docs/architecture/COMPONENT-STATUS.yaml"; d=yaml.safe_load(p.read_text()); d['components'][0]['evidence']['tests']=['NoSuchTest']; p.write_text(yaml.safe_dump(d, sort_keys=False))
 
 def main():
+    fixture_isolation_case(linked=False)
+    fixture_isolation_case(linked=True)
     run_case("valid registry", no_change, 0)
     run_case("partial requires missing list", bad_partial, 1)
     run_case("proposed is non-normative", proposed_normative, 1)
