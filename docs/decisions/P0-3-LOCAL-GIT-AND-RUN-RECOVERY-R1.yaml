@@ -1,0 +1,322 @@
+decision: P0-3-LOCAL-GIT-AND-RUN-RECOVERY-R1
+class: R
+issue: 7
+status: accepted
+authority: AGENTS.md
+decisionDate: "2026-10-17"
+
+decisionProvenance: >
+  OWNER accepted both decisions in response to WP-P03-01 integration map
+  (commit 44e59c2, REVIEW-P03-WP01-INTEGRATION-MAP REVIEW_ACCEPTED) and
+  the decision compatibility check finding that EXTERNAL-ACTION-CONTRACT-R1
+  fixes an exhaustive allowedFamilies: [AGENT_SESSION, GITHUB] list
+  (model.go:173 fail-closed guard). PR #74 carries the integration map.
+
+prerequisite:
+  issue: 7
+  workPackage: WP-P03-01
+  integrationMapCommit: 44e59c2
+  integrationMapReview: REVIEW_ACCEPTED
+  decisionCompatibilityCheck: LOCAL_GIT_blocked_by_R1_exhaustive_allowlist
+
+context: >
+  WP-P03-01 confirmed ApplyInboxCommand as the sole canonical writer,
+  EXTERNAL-ACTION-CONTRACT-R1 as the exhaustive family allowlist authority,
+  and two implementation gaps for P0-3 Phase 1: (1) local git operations
+  are absent from the GitHubOperation enum and require a separate typed
+  family; (2) orphaned Runs (no active AgentSession) have no canonical
+  recovery command. Both gaps require explicit OWNER decisions before
+  WP-P03-02A/B can proceed.
+
+decisions:
+
+  # Decision 1: LOCAL_GIT as third canonical ExternalAction family
+  localGitFamily:
+    authorized: true
+    justification: >
+      LOCAL_GIT and GITHUB have distinct boundaries: LOCAL_GIT operates on
+      repository/branch/index/tree/commit without network or credentials;
+      GITHUB operates on Issue/PR/pipeline via external API and credential
+      boundary. Placing local commits in GITHUB would distort target identity,
+      idempotency, observation, failure modes, credential requirements, and
+      recovery semantics. A separate non-ExternalAction durable path would
+      violate EXTERNAL-ACTION-CONTRACT-R1 norm no-parallel-action-store.
+      LOCAL_GIT uses the same common ExternalAction envelope, Outbox,
+      claim epoch, DISPATCHING, family dispatcher, observation, Inbox,
+      and canonical completion path.
+
+    prohibitedParallelStructures:
+      - second action store
+      - second retry engine
+      - second claim mechanism
+      - second recovery loop
+      - separate canonical writer
+
+  # Decision 2: Coordinator authority for orphaned Run recovery
+  coordinatorRunRecovery:
+    coordinatorAuthorityAccepted: true
+    ownerAuthorityRequiredByDefault: false
+    commandName: ApplyRunRecoveryCommand
+    ownerNamedCommandProhibited: true
+    justification: >
+      Coordinator may fence an orphaned Run without OWNER involvement when all
+      guards are satisfied. The command name must not encode authority;
+      "Owner flag ≠ proof of authority."
+
+# ExternalAction schema extension
+externalAction:
+  commonEnvelopePreserved: true
+  allowedFamilies:
+    - AGENT_SESSION
+    - GITHUB
+    - LOCAL_GIT
+  parallelActionStoreAllowed: false
+  parallelRetryEngineAllowed: false
+  parallelClaimModelAllowed: false
+  parallelRecoveryLoopAllowed: false
+
+# LOCAL_GIT family specification
+localGit:
+  authorized: true
+  credentialsAllowed: false
+  networkAllowed: false
+  pushAllowed: false
+  mergeAllowed: false
+  protectedBranchWriteAllowed: false
+  systemTmpAllowed: false
+  arbitraryShellAllowed: false
+
+  allowedOperations:
+    - OBSERVE_REPOSITORY
+    - CREATE_ISOLATED_BRANCH
+    - WRITE_ALLOWLISTED_FILES
+    - OBSERVE_TREE
+    - CREATE_COMMIT
+    - OBSERVE_COMMIT
+
+  prohibitedOperations:
+    - PUSH_BRANCH
+    - DELETE_BRANCH
+    - MERGE_BRANCH
+    - REBASE
+    - RESET_HARD
+    - CLEAN
+    - WRITE_MAIN
+    - CREATE_TAG
+    - DELETE_TAG
+    - CHANGE_REMOTE
+    - CHANGE_GIT_CONFIG
+    - USE_SYSTEM_TMP
+
+  decompositionRequired: >
+    One ExternalAction = one observable side effect.
+    CREATE_ISOLATED_BRANCH, WRITE_ALLOWLISTED_FILES, and CREATE_COMMIT
+    must be separate actions, each with its own observation. This narrows
+    ambiguous state after crash.
+
+  payload:
+    fields:
+      operation: LocalGitOperation
+      repositoryID: string
+      repositoryRoot: string
+      baseSHA: string
+      branch: string
+      allowedPaths: "[]string"
+      expectedInputTree: string
+      expectedOutputTree: string
+      changeSetDigest: string
+      commitMessage: string
+    requiredByOperation:
+      CREATE_ISOLATED_BRANCH: [repositoryId, repositoryRoot, baseSha, branch]
+      WRITE_ALLOWLISTED_FILES:
+        - repositoryId
+        - repositoryRoot
+        - branch
+        - allowedPaths
+        - expectedInputTree
+        - expectedOutputTree
+        - changeSetDigest
+      CREATE_COMMIT:
+        - repositoryId
+        - repositoryRoot
+        - branch
+        - baseSha
+        - expectedOutputTree
+        - changeSetDigest
+        - commitMessage
+
+  admissionGuards:
+    repositoryBindingExact: true
+    projectRootContainmentRequired: true
+    workspaceRootContainmentRequired: true
+    baseShaFullLengthRequired: true
+    baseShaObservedMatchRequired: true
+    branchIsolatedRequired: true
+    branchProtectedRejected: true
+    branchMainRejected: true
+    exactAllowlistRequired: true
+    wildcardExpansionFrozen: true
+    unknownTrackedChangesRejected: true
+    unknownUntrackedChangesPreserved: true
+    mixedOwnershipRejected: true
+    expectedInputTreeRequired: true
+    expectedOutputTreeRequired: true
+
+  idempotencyIdentity:
+    includes:
+      - OperationInstanceID
+      - RepositoryID
+      - BaseSHA
+      - Branch
+      - ExpectedOutputTree
+      - ChangeSetDigest
+    excludes:
+      - timestamp
+      - processID
+      - temporaryPath
+      - randomCommitMessageSuffix
+
+  crashRecovery:
+    afterDispatching: >
+      OBSERVE_COMMIT → find commit by parent + tree + operation marker
+      → verify changed paths → bind existing commit → no second commit
+
+  commitTrailer:
+    correlationEvidence: true
+    soleProofProhibited: true
+    fields:
+      - "Coord-Operation: <OperationInstanceID>"
+      - "Coord-Change-Digest: <ChangeSetDigest>"
+
+# Run recovery specification
+runRecovery:
+  commandName: ApplyRunRecoveryCommand
+  coordinatorMayRecoverWhenAll:
+    - runExists
+    - runRevisionMatches
+    - assignmentExists
+    - expectedGenerationMatches
+    - activeAgentSessionAbsentOrUnavailable
+    - externalObservationPresent
+    - acceptedRecoveryReasonPresent
+    - logicalFenceCommitted
+    - requiredStopProofSatisfied
+    - replacementDoesNotPrecedeFence
+
+  ownerRequiredWhenAny:
+    - acceptedRecoveryNormConflict
+    - forcedTakeoverWithoutRequiredStopProof
+    - weakeningOfFencingContract
+    - riskAcceptanceRequired
+    - unknownWriterMayStillHaveMutationAuthority
+
+  allowedTransitions:
+    - FENCE_ONLY
+    - MARK_INTERRUPTED
+    - RESUME_OBSERVATION
+    - PREPARE_REPLACEMENT
+    - COMPLETE_EXISTING
+
+  allowedEvents:
+    - RUN_RECOVERY_REQUESTED
+    - RUN_GENERATION_FENCED
+    - RUN_STOP_PROOF_RECORDED
+    - RUN_RECOVERY_COMPLETED
+    - RUN_RECOVERY_BLOCKED
+
+  prohibitedEvents:
+    - OWNER_FENCE_EVENT
+    - OWNER_RECOVERY_APPLIED
+
+  allowedReasonCodes:
+    - RUN_ORPHANED
+    - RUN_SESSION_UNAVAILABLE
+    - RUN_SESSION_TERMINATED
+    - RUN_GENERATION_STALE
+    - RUN_RESULT_ALREADY_OBSERVED
+    - RUN_REPLACEMENT_REQUIRED
+
+  failClosedViolations:
+    - RUN_RECOVERY_OBSERVATION_MISSING
+    - RUN_RECOVERY_GENERATION_MISMATCH
+    - RUN_RECOVERY_REVISION_CONFLICT
+    - RUN_RECOVERY_STOP_PROOF_INSUFFICIENT
+    - RUN_RECOVERY_FENCE_NOT_COMMITTED
+    - RUN_RECOVERY_AUTHORITY_NOT_PROVEN
+    - RUN_RECOVERY_DUPLICATE_COMMAND_CONFLICT
+
+# Live write boundary (unchanged)
+liveProductionWriteActivation:
+  authorized: false
+
+# Work package assignments
+workPackages:
+
+  wpP03_02A:
+    id: P03-WP02A-LOCAL-GIT-CONTRACT
+    title: Typed LOCAL_GIT write intent
+    decisionRef: P0-3-LOCAL-GIT-AND-RUN-RECOVERY-R1
+    decisionClass: TD-R2
+    state: AUTHORIZED
+    allowed:
+      - ExternalAction family enum extension
+      - LOCAL_GIT typed payload
+      - structural validator
+      - semantic validator
+      - fake/in-memory local Git adapter
+      - idempotency and recovery model
+      - schema migration if required
+      - compatibility tests
+    prohibited:
+      - live push
+      - network
+      - credentials
+      - protected branch writes
+      - production activation
+    testLimits:
+      acceptedInvariants: 9
+      focusedScenariosTarget: "9-12"
+      mutationMappingsTarget: "6-8"
+
+  wpP03_02B:
+    id: P03-WP02B-RUN-RECOVERY-DESIGN
+    title: ApplyRunRecoveryCommand design
+    decisionRef: P0-3-LOCAL-GIT-AND-RUN-RECOVERY-R1
+    decisionClass: TD-R2
+    state: DESIGN_AUTHORIZED
+    firstPhase:
+      designOnly: true
+    required:
+      - current Run and AgentSession model inventory
+      - exact command boundary
+      - event ownership
+      - observation contract
+      - fence contract
+      - stop-proof contract
+      - revision and generation CAS
+      - idempotency
+      - crash matrix
+    implementationAllowedAfter:
+      - Design Review ACCEPTED
+      - TD-R2 Design Audit ACCEPTED
+    testLimits:
+      designScenariosRequired:
+        - missing session but no stop proof
+        - stale generation
+        - revision conflict
+        - fence already committed
+        - duplicate command
+        - late result after fence
+        - replacement before stop proof
+        - accepted orphan recovery
+
+# Summary
+summary:
+  addLocalGitFamily: ACCEPTED
+  localGitPhase1: AUTHORIZED
+  coordinatorRunRecoveryAuthority: ACCEPTED_WITH_GUARDS
+  applyOwnerRecoveryCommand: REJECTED
+  applyRunRecoveryCommand: AUTHORIZED_FOR_DESIGN
+  livePush: NOT_AUTHORIZED
+  productionCredentials: NOT_AUTHORIZED
+  directMainWrite: PROHIBITED
