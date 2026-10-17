@@ -19,6 +19,9 @@ var ErrActionAuthority = errors.New("external action authority invalid")
 // These in-process methods are called only by the daemon's configured adapter;
 // they are not exposed as unauthenticated HTTP or transport endpoints.
 func workflowAuthority(state *CanonicalState, a externalaction.Action) error {
+	if a.Family != externalaction.AgentSession {
+		return ErrActionAuthority
+	}
 	b := a.Binding
 	id := taskid.ID(b.TaskID)
 	t, ok := state.Tasks[id]
