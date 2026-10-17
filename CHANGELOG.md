@@ -1,5 +1,10 @@
 # История изменений
 
+## 2026-10-17 — Shadow Validation pilot: WP-SV-01 Integration Map + WP-SV-02 Shadow run model (Refs #70)
+
+- WP-SV-01 (документация): read-only integration map — production entry point, adapter boundary, AgentSession bindings, Review/Audit command path, shadow store boundary, write denylist (17 методов), crash injection point, разрешённые пути.
+- WP-SV-02: `internal/shadowpilot` — типы `ShadowRun`, `AgentResult`, `BaselineResult`, `ComparisonResult` (10 dimensions, derived outcome), `EvidenceBundle` (read-only refs, `ProductionAuthorityAsserted: false` enforced). Fixture `testdata/shadow-validation/input.yaml` с subjectSha `b4334cd`. Ключевой инвариант: `StopProductionStateMutation` — любое присвоение `ProductionAuthorityAsserted: true` является stop condition (`TestEvidenceBundleValidateRejectsProductionAuthority`). Unsafe divergence trumps NOT_EVALUATED (`TestNewComparisonResultUnsafeTrumpsNotEvaluated`).
+
 ## 2026-10-17 — R104 rationale-loss evidence classification (Refs #43)
 
 - Проведён read-only анализ 12 случаев потери rationale по Issue #43. Три случая закрыты существующей реализацией (ReviewResult/AuditResult сохраняют Findings в canonical events; migration не затрагивает Task events; DP-003 охватывает document-layer расхождения). Семь случаев классифицированы как DP-003 (две поверхности расходятся: supersession reason хранится в `DomainEvent.Summary`, но не попадает в CLI-проекцию `superseded_ids`; `gate evaluate` выводит Status без reason codes). Два случая классифицированы как DP-004 (граница нормы R104 и типов не сверяется: `AuditedProperty.Note` опционален без `Evidence []Reference`; `Finding.Status = RESOLVED` не требует `ResolutionEvidenceRefs`). Новый класс DP не требуется; существующих DP-003/DP-004 достаточно. Результат зафиксирован в `docs/DEFECT_PATTERNS.md` (документация).

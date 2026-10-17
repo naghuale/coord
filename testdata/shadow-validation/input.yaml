@@ -1,0 +1,38 @@
+scenario: shadow-validation-single-agent-review-flow
+decision: SHADOW-VALIDATION-PILOT-R1
+
+subject:
+  sha: b4334cd2438837140bc112b97cba49eb1a478f08
+  repository: naghuale/coord
+
+task:
+  mode: READ_ONLY
+  operation: VERIFY_FIXTURE_DIGEST_AND_INVARIANT
+
+expectedInvariants:
+  - id: file_digest_stable
+    description: file digest is stable across reads
+  - id: supplied_subject_matches
+    description: supplied subject SHA matches committed fixture header
+  - id: assignment_generation_matches
+    description: assignment generation recorded in result matches assigned generation
+
+outputSchema:
+  kind: AgentResult
+  requiredFields:
+    - assignmentId
+    - agentId
+    - sessionId
+    - generation
+    - subjectSha
+    - inputDigest
+    - findings
+    - completedAt
+
+writes:
+  repository: prohibited
+  github: prohibited
+  main: prohibited
+  issueState: prohibited
+  canonicalStore: prohibited
+  credentials: prohibited
