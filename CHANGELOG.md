@@ -1,5 +1,9 @@
 # История изменений
 
+## 2026-10-17 — Shadow Validation pilot: WP-SV-05 Crash/restart (Refs #70)
+
+- WP-SV-05: `internal/shadowpilot/crash_recovery.go` — `ShadowCheckpoint` (полное persisted состояние после crash), `AgentLiveness` (explicit liveness observation, никогда не выводится из RUNNING), `PlanRecovery()` (8 фаз: NO_LAUNCH/OBSERVE_FIRST/FENCED_NO_RESTART/ALREADY_COMPLETE/DUPLICATE_BLOCKED/RESUME_GRAPH/READINESS_ONLY), `ValidateCheckpointIntegrity()` (COMPLETED без result → error; mismatched/superseded review subject → error). Ключевые инварианты: persisted RUNNING ≠ live (`TestPersistedRunningRequiresFreshObservation`), stale generation rejected (`TestStaleGenerationResultRejectedAfterRestart`), old review не применяется к corrected subject (`TestOldReviewDoesNotApplyToCorrectedSubject`), partial state не становится current (`TestPartialStateDoesNotBecomeCurrent`). 12 scenario tests + 8 mutations M01–M08 killed. `TestRestartBeforeIntentDoesNotLaunch`, `TestReadinessRecomputesIdenticallyAfterRestart` (документация — shadow pilot).
+
 ## 2026-10-17 — Shadow Validation pilot: WP-SV-04 Review/Audit Graph (Refs #70)
 
 - WP-SV-04: `internal/shadowpilot/review_audit.go` — `ShadowReviewResult` (reviewerID≠executorID enforced via `IndependenceViolation`), `ShadowAuditResult` (auditorID≠executorID, auditorID≠reviewerID), `ShadowFinding` (BLOCKING/NON_BLOCKING, OPEN/CLOSED; `Close()` требует evidenceRef — `StopRationaleOrEvidenceLost`), `ShadowDiscussionNode` (rationale preserved, нет поля verdict — структурный запрет M03), `ComputeReadiness()` (детерминированная readiness по exact subjectSHA; superseded results → NOT_EVALUATED; NOT_EVALUATED ≠ PASS; mixed-subject → NOT_EVALUATED). 8 mutation tests M01–M08 (все убиты), 12 тестов сценариев. `TestReviewerCannotEqualExecutor`, `TestM01ReviewerIndependenceDisabledIsRejected`, `TestAcceptedReviewAndAuditSameSubjectCanBecomeReady` (документация — shadow pilot, не production).
