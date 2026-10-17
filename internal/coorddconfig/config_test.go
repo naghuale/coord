@@ -120,3 +120,37 @@ func TestLoadRejectsNonLoopbackAndMissingTransport(t *testing.T) {
 		t.Fatalf("missing production transport was not rejected: %v", err)
 	}
 }
+
+func TestGitHubFixturesAreCredentialFreeReadOnlyRecords(t *testing.T) {
+	path, _ := validConfigFile(t)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatal(err)
+	}
+	raw["github_observation_fixtures"] = []any{map[string]any{
+		"operation": "OBSERVE_PULL_REQUEST", "target": map[string]any{"repository": "naghuale/coord", "pull_request_number": 64, "expected_head": "0123456789012345678901234567890123456789", "expected_state": "OPEN"}, "external_id": "pr-64", "state": "OPEN",
+	}}
+	encoded, _ := json.Marshal(raw)
+	if err := os.WriteFile(path, encoded, 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.GitHubObservationFixtures) != 1 || cfg.GitHubObservationFixtures[0].ExternalID != "pr-64" {
+		t.Fatalf("fixture not loaded: %+v", cfg.GitHubObservationFixtures)
+	}
+	raw["github_observation_fixtures"] = []any{map[string]any{"operation": "CREATE_PULL_REQUEST", "target": map[string]any{"repository": "naghuale/coord"}, "external_id": "pr-write", "state": "OPEN", "token": "must-not-be-accepted"}}
+	encoded, _ = json.Marshal(raw)
+	if err := os.WriteFile(path, encoded, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Fatal("credential-bearing write fixture accepted")
+	}
+}

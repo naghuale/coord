@@ -1,5 +1,9 @@
 # История изменений
 
+## 2026-10-17 — Completion candidate и credential-free GitHub observation wiring (Refs #67)
+
+- Кандидат завершения проходит строгую проверку canonical Task/Run, exact subject, Action Map, Completion Policy и watchdog до записи canonical event; публикация выполняется после commit (`TestRunWithReadinessProcessesCandidateBeforeReceivingNextMessage`, `TestUnsupportedOwnerBoundaryIsNotPublished`). Добавлен только in-memory GitHub observation backend для fixture, без live API, credentials, writes или merge (`TestObserveExistingPR64WithoutCreate`).
+
 ## 2026-10-17 — Изоляция architecture-sync fixtures (Refs #59)
 
 - `scripts/check-architecture-sync-test` исключает `.git` как каталог и как linked-worktree pointer file; fixture создаёт собственный repository. Проверки `NormalCheckoutFixtureExcludesGitDirectory`, `LinkedWorktreeFixtureExcludesGitFile` и `FixtureCreatesIndependentRepository` выполняются самим harness (документация).

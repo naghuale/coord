@@ -82,11 +82,12 @@ type Action struct {
 // Result is returned only by the configured trusted adapter. The request/action
 // identity and claim epoch are supplied by the runtime, never by an LLM.
 type Result struct {
-	GitHub     *GitHubObservation `json:"github,omitempty"`
-	Outcome    string             `json:"outcome"`
-	Evidence   string             `json:"evidence"`
-	StopMethod string             `json:"stop_method,omitempty"`
-	Stopped    bool               `json:"stopped,omitempty"`
+	GitHub        *GitHubObservation `json:"github,omitempty"`
+	Outcome       string             `json:"outcome"`
+	Evidence      string             `json:"evidence"`
+	EvidenceClass string             `json:"evidence_class,omitempty"`
+	StopMethod    string             `json:"stop_method,omitempty"`
+	Stopped       bool               `json:"stopped,omitempty"`
 }
 type Observation struct {
 	ID            string    `json:"id"`

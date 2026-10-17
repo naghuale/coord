@@ -3,22 +3,55 @@ package task
 import (
 	"coord/taskid"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 )
 
+type CompletionBoundary string
+
+const (
+	CompletionNoBoundary       CompletionBoundary = "NONE"
+	CompletionOwnerBoundary    CompletionBoundary = "OWNER_REQUIRED"
+	CompletionHumanBoundary    CompletionBoundary = "HUMAN_ACTION_REQUIRED"
+	CompletionExternalBoundary CompletionBoundary = "BLOCKED_EXTERNAL"
+)
+
+type CoordinatorCompletion struct {
+	DecisionDigest string             `json:"decision_digest"`
+	Transition     string             `json:"transition"`
+	Boundary       CompletionBoundary `json:"boundary"`
+	Subject        SubjectBinding     `json:"subject"`
+}
+
+var completionDigestPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+func (c CoordinatorCompletion) Validate() error {
+	if !completionDigestPattern.MatchString(c.DecisionDigest) || c.Transition == "" || len(c.Transition) > 128 {
+		return fmt.Errorf("invalid coordinator completion identity")
+	}
+	switch c.Boundary {
+	case CompletionNoBoundary, CompletionOwnerBoundary, CompletionHumanBoundary, CompletionExternalBoundary:
+	default:
+		return fmt.Errorf("unknown coordinator completion boundary")
+	}
+	return c.Subject.Validate()
+}
+
 type EventType string
 
 const (
-	TaskCreated              EventType = "TASK_CREATED"
-	TaskOwnershipTransferred EventType = "TASK_OWNERSHIP_TRANSFERRED"
-	ReviewResultRecorded     EventType = "REVIEW_RESULT_RECORDED"
-	AuditResultRecorded      EventType = "AUDIT_RESULT_RECORDED"
-	ExecutorResultRecorded   EventType = "EXECUTOR_RESULT_RECORDED"
-	DiscussionNodeRecorded   EventType = "DISCUSSION_NODE_RECORDED"
-	DiscussionEdgeRecorded   EventType = "DISCUSSION_EDGE_RECORDED"
-	ReviewResultSuperseded   EventType = "REVIEW_RESULT_SUPERSEDED"
-	AuditResultSuperseded    EventType = "AUDIT_RESULT_SUPERSEDED"
+	TaskCreated                   EventType = "TASK_CREATED"
+	TaskOwnershipTransferred      EventType = "TASK_OWNERSHIP_TRANSFERRED"
+	ReviewResultRecorded          EventType = "REVIEW_RESULT_RECORDED"
+	AuditResultRecorded           EventType = "AUDIT_RESULT_RECORDED"
+	ExecutorResultRecorded        EventType = "EXECUTOR_RESULT_RECORDED"
+	DiscussionNodeRecorded        EventType = "DISCUSSION_NODE_RECORDED"
+	DiscussionEdgeRecorded        EventType = "DISCUSSION_EDGE_RECORDED"
+	ReviewResultSuperseded        EventType = "REVIEW_RESULT_SUPERSEDED"
+	AuditResultSuperseded         EventType = "AUDIT_RESULT_SUPERSEDED"
+	ExternalActionStateRecorded   EventType = "EXTERNAL_ACTION_STATE_RECORDED"
+	CoordinatorCompletionRecorded EventType = "COORDINATOR_COMPLETION_RECORDED"
 )
 
 // DomainEvent is an auditable fact in a Task's canonical history.
@@ -40,8 +73,12 @@ type DomainEvent struct {
 	// SupersededResultID is set only for ReviewResultSuperseded and
 	// AuditResultSuperseded events. It names the ResultID of the result
 	// that is no longer eligible for readiness evaluation.
-	SupersededResultID string    `json:"superseded_result_id,omitempty"`
-	CreatedAt          time.Time `json:"created_at"`
+	SupersededResultID    string                 `json:"superseded_result_id,omitempty"`
+	ExternalActionID      string                 `json:"external_action_id,omitempty"`
+	ExternalActionStatus  string                 `json:"external_action_status,omitempty"`
+	ExternalObservationID string                 `json:"external_observation_id,omitempty"`
+	CoordinatorCompletion *CoordinatorCompletion `json:"coordinator_completion,omitempty"`
+	CreatedAt             time.Time              `json:"created_at"`
 }
 
 func EventID(id taskid.ID, seq uint64) string {
@@ -57,6 +94,12 @@ func (e DomainEvent) Validate() error {
 	}
 	if e.Type == "" || strings.TrimSpace(string(e.Type)) != string(e.Type) || e.CreatedAt.IsZero() {
 		return fmt.Errorf("invalid event type or timestamp")
+	}
+	if e.Type != ExternalActionStateRecorded && (e.ExternalActionID != "" || e.ExternalActionStatus != "" || e.ExternalObservationID != "") {
+		return fmt.Errorf("external action metadata is only valid on EXTERNAL_ACTION_STATE_RECORDED")
+	}
+	if e.Type != CoordinatorCompletionRecorded && e.CoordinatorCompletion != nil {
+		return fmt.Errorf("coordinator completion payload is only valid on its typed event")
 	}
 	switch e.Type {
 	case DiscussionNodeRecorded:
@@ -115,7 +158,29 @@ func (e DomainEvent) Validate() error {
 			return fmt.Errorf("AUDIT_RESULT_SUPERSEDED must not carry a typed result payload")
 		}
 	default:
-		if e.ReviewResult != nil || e.AuditResult != nil || e.ExecutorResult != nil || e.DiscussionNode != nil || e.DiscussionEdge != nil {
+		if e.Type == CoordinatorCompletionRecorded {
+			if e.CoordinatorCompletion == nil || e.ExternalActionID != "" || e.Summary != e.CoordinatorCompletion.DecisionDigest || e.ReviewResult != nil || e.AuditResult != nil || e.ExecutorResult != nil || e.DiscussionNode != nil || e.DiscussionEdge != nil || e.SupersededResultID != "" {
+				return fmt.Errorf("COORDINATOR_COMPLETION_RECORDED requires typed completion payload only")
+			}
+			if err := e.CoordinatorCompletion.Validate(); err != nil {
+				return err
+			}
+		} else if e.Type == ExternalActionStateRecorded {
+			if e.ExternalActionID == "" || e.ExternalActionStatus == "" || e.Summary != e.ExternalActionID || e.ReviewResult != nil || e.AuditResult != nil || e.ExecutorResult != nil || e.DiscussionNode != nil || e.DiscussionEdge != nil || e.SupersededResultID != "" {
+				return fmt.Errorf("EXTERNAL_ACTION_STATE_RECORDED requires action identity and status only")
+			}
+			switch e.ExternalActionStatus {
+			case "PENDING", "CLAIMED", "DISPATCHING", "DISPATCHED", "AMBIGUOUS", "OBSERVED", "COMPLETED", "FAILED", "BLOCKED", "FENCED":
+			default:
+				return fmt.Errorf("unknown external action status")
+			}
+			if (e.ExternalActionStatus == "OBSERVED" || e.ExternalActionStatus == "COMPLETED") && e.ExternalObservationID == "" {
+				return fmt.Errorf("observed external action requires observation identity")
+			}
+			if e.ExternalActionStatus != "OBSERVED" && e.ExternalActionStatus != "COMPLETED" && e.ExternalObservationID != "" {
+				return fmt.Errorf("observation identity on unobserved action")
+			}
+		} else if e.ReviewResult != nil || e.AuditResult != nil || e.ExecutorResult != nil || e.DiscussionNode != nil || e.DiscussionEdge != nil || e.ExternalActionID != "" || e.ExternalActionStatus != "" || e.ExternalObservationID != "" {
 			return fmt.Errorf("event type %q cannot contain a typed payload", e.Type)
 		}
 	}
