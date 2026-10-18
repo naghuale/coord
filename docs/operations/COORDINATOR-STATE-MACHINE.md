@@ -26,6 +26,47 @@ reconciled, the more restrictive fail-closed interpretation applies.
 All elements in this section are **active** — derived from R142, RFC-0001, and
 the Operations Ledger. They apply to the current repository development process.
 
+### Ready-work dispatch
+
+`COORDINATOR-ACT-ON-READY-WORK-R1` in `AGENTS.md` requires same-turn execution
+of already-authorized ready work. The following are **local coordinator
+workflow states**, not new canonical Task/Run states, events, or transitions.
+They refine the existing autonomous continuation/dispatch process and do not
+extend the machine-readable canonical schema or mutation authority.
+
+Selection follows the existing priority order: current security defects,
+corrections and Review/Audit gates precede starting a new ROADMAP item.
+Every action still requires its existing authority and admission preconditions.
+
+| From | Condition | Required actions in the current turn | To | OWNER question allowed |
+|---|---|---|---|---|
+| `ROADMAP_ITEM_DISCOVERED` | Unblocked; `ownerRequired=false`; authority delegated | Select highest-priority ready item; record factual basis; create/update tracking; prepare full contract/assignment card | `READY_FOR_DISPATCH` | No |
+| `READY_FOR_DISPATCH` | Eligible Executor and authorized dispatch capability available; admission preconditions satisfied | Dispatch; record assignment ID, session identity, generation and actual transport status; verify admission under R146 | `EXECUTION_DISPATCHED` | No |
+| `READY_FOR_DISPATCH` | Eligible Executor unavailable | Record resource blocker; prepare complete assignment; continue other ready work | `BLOCKED_BY_EXECUTOR_AVAILABILITY` | No |
+| `READY_FOR_DISPATCH` | Required dispatch capability or admission prerequisite unavailable | Record exact technical blocker and complete payload; continue independent available steps | `BLOCKED` | No |
+| `EXECUTION_DISPATCHED` | Exact-subject assignment acceptance verified from authoritative evidence | Record admission; monitor required outputs and liveness; continue independent work | `EXECUTION_IN_PROGRESS` | No |
+| `ROADMAP_ITEM_DISCOVERED` | OwnerBoundaryCheck proves `ownerRequired=true` | Record consequences and narrow question; present only technically valid options; continue independent authorized work | `OWNER_DECISION_REQUIRED` | Yes, only for proven boundary |
+| `ROADMAP_ITEM_DISCOVERED` | Blocked | Identify exact blocker and its dependencies; prepare unavailable action; continue other ready work | `BLOCKED` | No |
+
+`READY_FOR_DISPATCH` is transient. A recommendation, optional offer, or
+`READY_WITHOUT_DISPATCH` does not complete coordinator analysis when dispatch
+is authorized and possible. `DELIVERED` is not `ADMITTED` or `RUNNING`;
+`EXECUTION_DISPATCHED` must retain the actual observed status, and unconfirmed
+admission invokes R146 reconciliation rather than passive waiting.
+
+One unavailable operation blocks only its real dependants. For example,
+unavailable GitHub publication requires a complete local sub-task payload and
+`PENDING_EXTERNAL_ACTION`; it does not prevent local assignment/dispatch unless
+the accepted admission policy requires a live issue ID. In that case prepare
+the assignment and record the dependent dispatch blocker without claiming it
+was executed. An unavailable tool is not an OWNER permission question.
+
+Record `selectedWorkItem`, `selectionBasis`, `actionsExecuted`, `trackingRecord`,
+`assignmentId`, `executor`, `dispatchStatus`, `ownerRequired`, `blockers`, and
+`nextAutomaticTransition` as specified by the AGENTS rule. Existing
+OwnerBoundaryCheck, Review/Audit, Commit Readiness and security gates remain
+mandatory; no rule in this subsection bypasses them.
+
 ### Executor verdicts
 
 | Verdict | Coordinator action | OWNER |
