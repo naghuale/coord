@@ -1,5 +1,38 @@
 # История изменений
 
+## 2026-10-18 — P0-3: ApplyRunRecoveryCommand implementation (WP-P03-02B, Refs #7)
+
+- Added `ApplyRunRecoveryCommand` in `store/canonical_run_recovery.go` (TD-R2):
+  `RunRecoveryCommand`, `RunRecoveryReceipt`, `RunRecoveryTransition`; 5 transitions
+  (MARK_INTERRUPTED implemented, 4 fail-closed); 7 specific violation sentinels +
+  `ErrRunRecoveryTransitionForbidden` for admission/refusal boundaries; KSC-C
+  stop-proof validation (Kind==Stop, Completed, Stopped, StopMethod, full Binding,
+  parent fence Completed+FENCED); MARK_INTERRUPTED atomically commits Run→Failed +
+  3 events. FENCE_ONLY/PREPARE_REPLACEMENT/COMPLETE_EXISTING/RESUME_OBSERVATION
+  fail-closed. (`TestApplyRunRecoveryMarksInterruptedAtomically`,
+  `TestApplyRunRecoveryExactReplayReturnsOriginalReceiptWithoutWrites`,
+  `TestRunRecoveryFailClosedTransitionsHaveNoSideEffects`,
+  `TestRunRecoveryPublicEntryMapsAllSevenAcceptedCodes`)
+- Test coverage in `store/canonical_run_recovery_test.go`: stop-proof mutation
+  matrix with direct binding-field predicates via `mutateStopAndFenceBinding`;
+  duplicate-transition guard; guard precedence (14 cases); 26 stop-proof mutations.
+  (`TestRunRecoveryStopProofMutationMatrixFailsClosed`,
+  `TestRunRecoveryGuardCodesAndPrecedence`,
+  `TestRunRecoveryDuplicateTransitionRejected`)
+- opencode:workspace-oe3 REVIEW_ACCEPTED (round 2) on 442f1acc;
+  opencode:workspace-o42 AUDIT_CHANGES_REQUIRED (F-1: direct binding predicates
+  unproven; F-2: duplicate transition guard unproven). Corrective round applied:
+  mutateStopAndFenceBinding for A-F-1, direct normalizer test for A-F-2. Re-review
+  and re-audit on corrective commit required before AUDIT_ACCEPTED may be recorded.
+  (`TestRunRecoveryStopProofMutationMatrixFailsClosed`,
+  `TestRunRecoveryNormalizerRejectsDuplicateTransition`)
+- Architecture component `run-recovery-command` registered in
+  `docs/architecture/COMPONENT-STATUS.yaml` (partial; MARK_INTERRUPTED implemented,
+  4 transitions remaining); anchors added to `docs/ARCHITECTURE.md` and
+  `docs/TARGET-ARCHITECTURE.md`. (`TestApplyRunRecoveryMarksInterruptedAtomically`,
+  `TestRunRecoveryStopProofMutationMatrixFailsClosed`,
+  `TestRunRecoveryDuplicateTransitionRejected`)
+
 ## 2026-10-17 — P0-3: LOCAL_GIT family contract + OWNER decision (Refs #7)
 
 - Added `LOCAL_GIT` as third canonical `ExternalActionFamily` per decision

@@ -263,6 +263,24 @@ func TestRunRecoveryStopProofMutationMatrixFailsClosed(t *testing.T) {
 		name   string
 		mutant func(*CanonicalStore)
 	}{
+		{"subject SHA binding (direct)", func(s *CanonicalStore) {
+			mutateStopAndFenceBinding(s, func(b *externalaction.Binding) { b.SubjectSHA = strings.Repeat("b", 40) })
+		}},
+		{"generation binding (direct)", func(s *CanonicalStore) {
+			mutateStopAndFenceBinding(s, func(b *externalaction.Binding) { b.Generation++ })
+		}},
+		{"fence binding (direct)", func(s *CanonicalStore) {
+			mutateStopAndFenceBinding(s, func(b *externalaction.Binding) { b.Fence++ })
+		}},
+		{"session binding (direct)", func(s *CanonicalStore) {
+			mutateStopAndFenceBinding(s, func(b *externalaction.Binding) { b.SessionID = "other-session" })
+		}},
+		{"task binding (direct)", func(s *CanonicalStore) {
+			mutateStopAndFenceBinding(s, func(b *externalaction.Binding) { b.TaskID = "other-task" })
+		}},
+		{"run binding (direct)", func(s *CanonicalStore) {
+			mutateStopAndFenceBinding(s, func(b *externalaction.Binding) { b.RunID = "other-run" })
+		}},
 		{"session binding", func(s *CanonicalStore) {
 			mutateStopBinding(s, func(b *externalaction.Binding) { b.SessionID = "other" })
 		}},
@@ -341,6 +359,15 @@ func mutateStopBinding(s *CanonicalStore, mutate func(*externalaction.Binding)) 
 	mutate(&action.Binding)
 	action.Key = externalaction.Key(action)
 	s.state.Orchestration.Actions["stop-1"] = action
+}
+
+func mutateStopAndFenceBinding(s *CanonicalStore, mutate func(*externalaction.Binding)) {
+	for _, id := range []string{"stop-1", "fence-1"} {
+		action := s.state.Orchestration.Actions[id]
+		mutate(&action.Binding)
+		action.Key = externalaction.Key(action)
+		s.state.Orchestration.Actions[id] = action
+	}
 }
 
 func mutateStopResult(s *CanonicalStore, mutate func(*externalaction.Result)) {
@@ -432,6 +459,32 @@ func TestRunRecoveryMultipleFailClosedTransitionsUseForbiddenCode(t *testing.T) 
 	}
 	if p.saveCalls != saves || !reflect.DeepEqual(before, s.state) || !reflect.DeepEqual(diskBefore, p.state) {
 		t.Fatal("unsupported transition set changed canonical state")
+	}
+}
+
+func TestRunRecoveryDuplicateTransitionRejected(t *testing.T) {
+	s, p, cmd := recoveryTestStore(t)
+	cmd.AllowedTransitions = []RunRecoveryTransition{RunRecoveryMarkInterrupted, RunRecoveryMarkInterrupted}
+	before, _ := copyCanonicalState(s.state)
+	diskBefore, _ := copyCanonicalState(p.state)
+	saves := p.saveCalls
+	if _, _, err := s.ApplyRunRecoveryCommand(cmd); !errors.Is(err, ErrRunRecoveryTransitionForbidden) {
+		t.Fatalf("error=%v, want RUN_RECOVERY_TRANSITION_FORBIDDEN", err)
+	}
+	if p.saveCalls != saves || !reflect.DeepEqual(before, s.state) || !reflect.DeepEqual(diskBefore, p.state) {
+		t.Fatal("duplicate transition input mutated canonical state")
+	}
+}
+
+func TestRunRecoveryNormalizerRejectsDuplicateTransition(t *testing.T) {
+	transitions, err := normalizeRunRecoveryTransitions([]RunRecoveryTransition{
+		RunRecoveryMarkInterrupted, RunRecoveryMarkInterrupted,
+	})
+	if !errors.Is(err, ErrRunRecoveryTransitionForbidden) {
+		t.Fatalf("err=%v, want ErrRunRecoveryTransitionForbidden", err)
+	}
+	if transitions != nil {
+		t.Fatalf("transitions=%v, want nil on duplicate rejection", transitions)
 	}
 }
 
