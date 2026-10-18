@@ -82,10 +82,14 @@ func TestCorrectiveReadinessGuards(t *testing.T) {
 }
 
 func TestCorrectiveNewReportHonorsAggregate(t *testing.T) {
-	for _, outcome := range []shadowpilot.ComparisonOutcome{shadowpilot.OutcomeUnsafeDivergence, shadowpilot.OutcomeSafeDivergence, shadowpilot.OutcomeNotEvaluated, "", "UNKNOWN"} {
+	for _, outcome := range []shadowpilot.ComparisonOutcome{shadowpilot.OutcomeUnsafeDivergence, shadowpilot.OutcomeSafeDivergence, shadowpilot.OutcomeNotEvaluated} {
 		t.Run(string(outcome), func(t *testing.T) {
 			comparison := allMatchComparison()
-			comparison.Outcome = outcome
+			comparison.Dimensions[0].Outcome = outcome
+			comparison, err := shadowpilot.NewComparisonResult(comparison.ShadowRunID, comparison.Dimensions)
+			if err != nil {
+				t.Fatal(err)
+			}
 			r, err := shadowpilot.NewReport("pilot", sha1, "0.1", 1, reportT0, allWPs(), cleanRuntime(), comparison, cleanRecovery(), true, true, validEvidence(t, comparison.ShadowRunID))
 			if err != nil {
 				t.Fatal(err)
@@ -102,10 +106,15 @@ func TestCorrectiveReportRejectsForgedRecommendation(t *testing.T) {
 		name string
 		edit func(*shadowpilot.ShadowValidationReport)
 	}{
-		{"unsafe counts", func(r *shadowpilot.ShadowValidationReport) { r.Comparison.Matched--; r.Comparison.UnsafeDivergences++ }},
-		{"not evaluated counts", func(r *shadowpilot.ShadowValidationReport) { r.Comparison.Matched--; r.Comparison.NotEvaluated++ }},
-		{"unsafe aggregate", func(r *shadowpilot.ShadowValidationReport) {
+		{"unsafe counts", func(r *shadowpilot.ShadowValidationReport) {
+			r.Comparison.Matched--
+			r.Comparison.UnsafeDivergences++
 			r.Comparison.Outcome = shadowpilot.OutcomeUnsafeDivergence
+		}},
+		{"not evaluated counts", func(r *shadowpilot.ShadowValidationReport) {
+			r.Comparison.Matched--
+			r.Comparison.NotEvaluated++
+			r.Comparison.Outcome = shadowpilot.OutcomeNotEvaluated
 		}},
 		{"pending WP", func(r *shadowpilot.ShadowValidationReport) { r.WorkPackages[0].Status = shadowpilot.WPPending }},
 		{"no review", func(r *shadowpilot.ShadowValidationReport) { r.ReviewAccepted = false }},

@@ -127,10 +127,6 @@ func TestNewReportNotEvaluatedDimensionGivesRepeat(t *testing.T) {
 		dims = append(dims, shadowpilot.DimensionResult{Dimension: d, Outcome: outcome})
 	}
 	cr, _ := shadowpilot.NewComparisonResult("sv-run-03", dims)
-	// Pin the per-dimension gate independently: even an optimistic aggregate
-	// must not erase NOT_EVALUATED evidence. Non-MATCH aggregate policy is
-	// tested separately in TestCorrectiveNewReportHonorsAggregate.
-	cr.Outcome = shadowpilot.OutcomeMatch
 	r, err := shadowpilot.NewReport(
 		"SHADOW-VALIDATION-PILOT-R1", sha1, "0.1.0", 42, reportT0,
 		allWPs(), cleanRuntime(), cr, cleanRecovery(), true, true, validEvidence(t, cr.ShadowRunID),
@@ -138,8 +134,16 @@ func TestNewReportNotEvaluatedDimensionGivesRepeat(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if r.Recommendation != shadowpilot.RepeatShadowValidation {
-		t.Fatalf("NOT_EVALUATED dimensions must give REPEAT_SHADOW_VALIDATION, got %q", r.Recommendation)
+	// The legacy per-dimension REPEAT rule remains; NewReport's aggregate
+	// boundary deliberately applies the stricter non-MATCH -> CORRECTION rule.
+	if got := shadowpilot.DeriveRecommendation(shadowpilot.P03AdmissionGates{
+		AllWPsIntegrated: true, NotEvaluatedBlockingProperties: r.Comparison.NotEvaluated,
+		ReviewAccepted: true, AuditAccepted: true,
+	}); got != shadowpilot.RepeatShadowValidation {
+		t.Fatalf("per-dimension gate must give REPEAT, got %q", got)
+	}
+	if r.Recommendation != shadowpilot.CorrectionRequired {
+		t.Fatalf("non-MATCH report aggregate must give CORRECTION_REQUIRED, got %q", r.Recommendation)
 	}
 }
 

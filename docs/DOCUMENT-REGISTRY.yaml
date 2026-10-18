@@ -207,6 +207,23 @@ validation:
     - every invariant id maps to exactly one registered normative source
     - DOCUMENT-MAP links resolve to existing files
 documents:
+  - id: shadow-validation-pilot-r1-source-record
+    path: docs/decisions/SHADOW-VALIDATION-PILOT-R1.yaml
+    class: historical
+    status: historical
+    purpose:
+      - Exact Issue 70 completion-report source pointer and captured-text digest
+      - POINTER_ONLY; not original decision acceptance or current normative authority
+    usedBy: [COORDINATOR, EXECUTOR, REVIEWER, AUDITOR]
+    readWhen: [ASSIGNMENT_START, REVIEW, AUDIT, HISTORICAL_INVESTIGATION]
+    updateWhen: [RESOLUTION_REFERENCE_ADDED]
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: none
+    ownership: {creates: EXECUTOR, updates: COORDINATOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: required, owner: false}
+    immutableHistoricalClaims: true
   - id: agents
     path: AGENTS.md
     class: process

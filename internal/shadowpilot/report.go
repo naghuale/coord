@@ -93,6 +93,20 @@ func summariseComparison(result ComparisonResult) ComparisonSummary {
 	return s
 }
 
+func (s ComparisonSummary) derivedOutcome() ComparisonOutcome {
+	var present []DimensionResult
+	for _, group := range []struct {
+		count   int
+		outcome ComparisonOutcome
+	}{{s.Matched, OutcomeMatch}, {s.SafeDivergences, OutcomeSafeDivergence},
+		{s.UnsafeDivergences, OutcomeUnsafeDivergence}, {s.NotEvaluated, OutcomeNotEvaluated}} {
+		if group.count > 0 {
+			present = append(present, DimensionResult{Outcome: group.outcome})
+		}
+	}
+	return deriveOutcome(present)
+}
+
 // RecoverySummary summarises the crash/restart validation evidence.
 type RecoverySummary struct {
 	CrashPointsTested     int `json:"crash_points_tested"`
@@ -167,6 +181,9 @@ func (r ShadowValidationReport) Validate() error {
 	if c.Matched < 0 || c.SafeDivergences < 0 || c.UnsafeDivergences < 0 || c.NotEvaluated < 0 ||
 		c.Matched+c.SafeDivergences+c.UnsafeDivergences+c.NotEvaluated != c.DimensionsTotal {
 		return errors.New("report: invalid comparison counts")
+	}
+	if c.Outcome != c.derivedOutcome() {
+		return errors.New("report: comparison aggregate does not match dimension counts")
 	}
 	switch r.Recommendation {
 	case AdmitP03, CorrectionRequired, RepeatShadowValidation, OwnerDecisionRequired:
@@ -265,8 +282,12 @@ func NewReport(
 		return ShadowValidationReport{}, errors.New("new report: main_sha must be a commit SHA")
 	}
 
-	if _, err := NewComparisonResult(comparison.ShadowRunID, comparison.Dimensions); err != nil {
+	derived, err := NewComparisonResult(comparison.ShadowRunID, comparison.Dimensions)
+	if err != nil {
 		return ShadowValidationReport{}, fmt.Errorf("new report: %w", err)
+	}
+	if comparison.Outcome != derived.Outcome {
+		return ShadowValidationReport{}, errors.New("new report: supplied comparison aggregate does not match dimensions")
 	}
 
 	report := ShadowValidationReport{
@@ -278,7 +299,7 @@ func NewReport(
 		ProducedAt:        producedAt,
 		WorkPackages:      workPackages,
 		Runtime:           runtime,
-		Comparison:        summariseComparison(comparison),
+		Comparison:        summariseComparison(derived),
 		Recovery:          recovery,
 		ReviewAccepted:    reviewAccepted,
 		AuditAccepted:     auditAccepted,

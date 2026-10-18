@@ -1,60 +1,359 @@
 {
-  "subjectBranch": "feature/issue70-shadow-validation-wp-sv-05-06",
-
-  "wpSv05": {
-    "invariants": [
-      {"id": "I1", "description": "no launch before durable intent",                  "test": "TestRestartBeforeIntentDoesNotLaunch",             "mutation": "M01: persisted RUNNING accepted as live"},
-      {"id": "I2", "description": "observation before retry after restart",           "test": "TestRestartAfterIntentObservesBeforeDispatch",     "mutation": null},
-      {"id": "I3", "description": "persisted RUNNING does not prove liveness",        "test": "TestPersistedRunningRequiresFreshObservation",     "mutation": "M01: TestM01PersistedRunningAcceptedAsLiveIsRejected"},
-      {"id": "I4", "description": "persisted ADMITTED is not RUNNING",               "test": "TestPersistedAdmittedIsNotRunning",               "mutation": null},
-      {"id": "I5", "description": "duplicate execution is rejected",                  "test": "TestRestartDoesNotDuplicateExecution",            "mutation": "M02: TestM02RestartDuplicateExecutionIsBlocked"},
-      {"id": "I6", "description": "stale generation result is rejected",              "test": "TestStaleGenerationResultRejectedAfterRestart",  "mutation": "M03: TestM03StaleGenerationResultAcceptedIsRejected"},
-      {"id": "I7a","description": "review result survives restart",                   "test": "TestReviewResultSurvivesRestart",                 "mutation": "M04: TestM04ReviewResultLostIsDetected"},
-      {"id": "I7b","description": "finding/rationale survive restart",                "test": "TestFindingAndRationaleSurviveRestart",           "mutation": "M05: TestM05FindingRationaleStructurallyPreserved"},
-      {"id": "I8", "description": "old review cannot apply to corrected subject",     "test": "TestOldReviewDoesNotApplyToCorrectedSubject",    "mutation": "M06: TestM06OldReviewAppliedToNewSubjectIsRejected"},
-      {"id": "I9", "description": "audit result survives restart",                    "test": "TestAuditResultSurvivesRestart",                 "mutation": null},
-      {"id": "I10","description": "readiness recomputes identically after restart",   "test": "TestReadinessRecomputesIdenticallyAfterRestart",  "mutation": "M07: TestM07MixedSubjectAuditAfterRestartIsRejected"},
-      {"id": "I11","description": "partial state cannot become current",              "test": "TestPartialStateDoesNotBecomeCurrent",           "mutation": "M08: TestM08PartialStateBecomesCurrentIsRejected"}
+  "subjectBranch": "feat/issue70-shadowpilot-corrective-f1-f6",
+  "baseCommit": "0cb6daa9052fc15715217dfcf244d70311faaa03",
+  "coveredWorkPackages": [
+    "WP-SV-01",
+    "WP-SV-02",
+    "WP-SV-03",
+    "WP-SV-04",
+    "WP-SV-05",
+    "WP-SV-06"
+  ],
+  "scopeStatement": {
+    "packageWide": false,
+    "scope": "Selected WP-SV-05..WP-SV-06 mutation-backed invariants and the explicitly enumerated F1/F4/F5 corrective subset in WP-SV-02..04; not an exhaustive package assurance claim.",
+    "mutationEvidenceWorkPackages": [
+      "WP-SV-05",
+      "WP-SV-06"
     ],
-    "invariantsTotal": 8,
-    "invariantsCovered": 8,
-    "scenarioTests": 12,
-    "mutations": {
-      "compiled": 8,
-      "killed": 8,
-      "survived": 0
+    "testOnlyBaselineWorkPackages": [
+      "WP-SV-01",
+      "WP-SV-02",
+      "WP-SV-03",
+      "WP-SV-04"
+    ],
+    "targetedCorrectiveMutationSubsetWorkPackages": [
+      "WP-SV-02",
+      "WP-SV-03",
+      "WP-SV-04"
+    ],
+    "noEvidenceWorkPackages": [],
+    "limitations": [
+      "Test-only baseline means no exhaustive per-invariant mutation claim for WP-SV-01..04; named corrective mutants in WP-SV-02..04 are separately enumerated below.",
+      "No complete mutation enumeration is claimed for any WP. Zero survivors refers only to the executed battery.",
+      "Historical claims of eight WP-SV-05 mutants and historical equivalent mutants are not added to current totals.",
+      "Scope is model correctness, not successful live pilot execution or production write authorization."
+    ]
+  },
+  "workPackageEvidence": [
+    {
+      "workPackage": "WP-SV-01",
+      "testEvidencePaths": [
+        "internal/shadowpilot/comparison_test.go"
+      ],
+      "mutationAssurance": "TEST_ONLY"
     },
-    "newFailureClassesUncovered": 0,
-    "result": "SUFFICIENT"
+    {
+      "workPackage": "WP-SV-02",
+      "testEvidencePaths": [
+        "internal/shadowpilot/run_test.go",
+        "internal/shadowpilot/evidence_test.go",
+        "internal/shadowpilot/integrity_roundtrip_test.go"
+      ],
+      "mutationAssurance": "SELECTED_ENUMERATED_MUTANTS"
+    },
+    {
+      "workPackage": "WP-SV-03",
+      "testEvidencePaths": [
+        "internal/shadowpilot/executor_test.go"
+      ],
+      "mutationAssurance": "SELECTED_ENUMERATED_MUTANTS"
+    },
+    {
+      "workPackage": "WP-SV-04",
+      "testEvidencePaths": [
+        "internal/shadowpilot/review_audit_test.go"
+      ],
+      "mutationAssurance": "SELECTED_ENUMERATED_MUTANTS"
+    },
+    {
+      "workPackage": "WP-SV-05",
+      "testEvidencePaths": [
+        "internal/shadowpilot/crash_recovery_test.go"
+      ],
+      "mutationAssurance": "SELECTED_ENUMERATED_MUTANTS"
+    },
+    {
+      "workPackage": "WP-SV-06",
+      "testEvidencePaths": [
+        "internal/shadowpilot/report_test.go"
+      ],
+      "mutationAssurance": "SELECTED_ENUMERATED_MUTANTS"
+    }
+  ],
+  "perInvariant": [
+    {
+      "id": "RD-BLOCKED",
+      "workPackage": "WP-SV-04",
+      "test": "TestCorrectiveReadinessGuards",
+      "mutation": "RD-BLOCKED",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/RD-BLOCKED/test.log",
+      "evidenceDigest": "sha256:9bbbe5171985b16081e239a4e0c1ee6b7f2b6b4de395670a9aee8d3640987f77"
+    },
+    {
+      "id": "RD-REVIEW-CHANGES",
+      "workPackage": "WP-SV-04",
+      "test": "TestCorrectiveReadinessGuards",
+      "mutation": "RD-REVIEW-CHANGES",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/RD-REVIEW-CHANGES/test.log",
+      "evidenceDigest": "sha256:a47a4ca339a357f126474c05c47eddfd3d11b688e7b92d40d97942d9d356df41"
+    },
+    {
+      "id": "RD-AUDIT-SUPERSEDED",
+      "workPackage": "WP-SV-04",
+      "test": "TestCorrectiveReadinessGuards",
+      "mutation": "RD-AUDIT-SUPERSEDED",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/RD-AUDIT-SUPERSEDED/test.log",
+      "evidenceDigest": "sha256:4046c94dea2dbf5e7e4d446800697cc9dd2034c63c93307678abaead1d80fbfc"
+    },
+    {
+      "id": "CR-LIVE-GEN-MISMATCH",
+      "workPackage": "WP-SV-05",
+      "test": "TestCorrectiveRecoveryLiveGeneration",
+      "mutation": "CR-LIVE-GEN-MISMATCH",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/CR-LIVE-GEN-MISMATCH/test.log",
+      "evidenceDigest": "sha256:e4bcd6fad619e34e74e3afd585b0a4b1b063f58d09963e6c8a2f24c4ddc11b43"
+    },
+    {
+      "id": "CR-FENCED-RESTART",
+      "workPackage": "WP-SV-05",
+      "test": "TestCorrectiveRecoveryFenced",
+      "mutation": "CR-FENCED-RESTART",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/CR-FENCED-RESTART/test.log",
+      "evidenceDigest": "sha256:cc2bc8280b5afa54c49acdd591a76a0c24368e289f5293db8adb0e06fd9c0b89"
+    },
+    {
+      "id": "CR-INTEGRITY-SUPERSEDED",
+      "workPackage": "WP-SV-05",
+      "test": "TestCorrectiveCheckpointSupersededReview",
+      "mutation": "CR-INTEGRITY-SUPERSEDED",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/CR-INTEGRITY-SUPERSEDED/test.log",
+      "evidenceDigest": "sha256:cf89deb34dfeb6abf327d737268ec856f1222cc5e3a602cb0b9d5047fa8f2fa8"
+    },
+    {
+      "id": "EV-VALIDATE-DUP",
+      "workPackage": "WP-SV-02",
+      "test": "TestCorrectiveEvidenceDuplicateRefs",
+      "mutation": "EV-VALIDATE-DUP",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/EV-VALIDATE-DUP/test.log",
+      "evidenceDigest": "sha256:1366d90f46f54f4d278d8e0105f56f188be5b3a5f4fbe22f1665238d14aa4558"
+    },
+    {
+      "id": "RP-VALIDATE-DIMENSIONS",
+      "workPackage": "WP-SV-06",
+      "test": "TestCorrectiveReportDimensionCount",
+      "mutation": "RP-VALIDATE-DIMENSIONS",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/RP-VALIDATE-DIMENSIONS/test.log",
+      "evidenceDigest": "sha256:6444b12b4c4da2ccbfe65991d6bd205bd6221b064056f0a91d5a4f3ea54b5530"
+    },
+    {
+      "id": "RD-NIL-REVIEW",
+      "workPackage": "WP-SV-04",
+      "test": "TestCorrectiveReadinessGuards",
+      "mutation": "RD-NIL-REVIEW",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/RD-NIL-REVIEW/test.log",
+      "evidenceDigest": "sha256:2d573137d676cb4fe321b8f4b288a872355f82eb44ebd7a23e0ea8bdbd5a93c3"
+    },
+    {
+      "id": "RP-AGGREGATE-BINDING",
+      "workPackage": "WP-SV-06",
+      "test": "TestCorrectiveNewReportRejectsAggregateMismatch",
+      "mutation": "RP-AGGREGATE-BINDING",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/RP-AGGREGATE-BINDING/test.log",
+      "evidenceDigest": "sha256:59b51d5ed89562d7d3aa45288e5f729727772d4a603cb28ae4cfff832358874e"
+    },
+    {
+      "id": "RP-SUMMARY-AGGREGATE",
+      "workPackage": "WP-SV-06",
+      "test": "TestCorrectiveReportAggregateConsistency",
+      "mutation": "RP-SUMMARY-AGGREGATE",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/RP-SUMMARY-AGGREGATE/test.log",
+      "evidenceDigest": "sha256:abbbdc3864be87d18781bcabc04c2b5a83e568f0357449c10eafcd8aeee09792"
+    },
+    {
+      "id": "RP-AGGREGATE",
+      "workPackage": "WP-SV-06",
+      "test": "TestCorrectiveNewReportHonorsAggregate",
+      "mutation": "RP-AGGREGATE",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/RP-AGGREGATE/test.log",
+      "evidenceDigest": "sha256:663b965d5eb34bb9d96e6844351113b018f8120856f91249c4d0b8cf4c91b8ac"
+    },
+    {
+      "id": "RD-INDEPENDENCE",
+      "workPackage": "WP-SV-04",
+      "test": "TestCorrectiveReadinessEnforcesIndependence",
+      "mutation": "RD-INDEPENDENCE",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/RD-INDEPENDENCE/test.log",
+      "evidenceDigest": "sha256:e0d37ac6920a78b836e2d0336527c31998e5235186df6f00ffe163183629f8b0"
+    },
+    {
+      "id": "RD-REVIEW-VALIDATION",
+      "workPackage": "WP-SV-04",
+      "test": "TestCorrectiveReadinessEnforcesIndependence",
+      "mutation": "RD-REVIEW-VALIDATION",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/RD-REVIEW-VALIDATION/test.log",
+      "evidenceDigest": "sha256:a158060faab178f6bad2b397880ff746c4e2bd7a48fd63a474ba3606103a2f9b"
+    },
+    {
+      "id": "RD-AUDIT-VALIDATION",
+      "workPackage": "WP-SV-04",
+      "test": "TestCorrectiveReadinessEnforcesIndependence",
+      "mutation": "RD-AUDIT-VALIDATION",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/RD-AUDIT-VALIDATION/test.log",
+      "evidenceDigest": "sha256:0a4705fab21b731b8c70f0fbf4344adc2c29e537425e8686930d8c5087ee643e"
+    },
+    {
+      "id": "RP-RECOMMENDATION",
+      "workPackage": "WP-SV-06",
+      "test": "TestCorrectiveReportRejectsForgedRecommendation",
+      "mutation": "RP-RECOMMENDATION",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/RP-RECOMMENDATION/test.log",
+      "evidenceDigest": "sha256:a4457e39f73fa726a348536f180e8af446ddcd790ebbddc3be75615998dc1b47"
+    },
+    {
+      "id": "EX-ASSIGNMENT",
+      "workPackage": "WP-SV-03",
+      "test": "TestCorrectiveCompleteBindsEveryIdentity",
+      "mutation": "EX-ASSIGNMENT",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/EX-ASSIGNMENT/test.log",
+      "evidenceDigest": "sha256:96832e565ab7249988b7416aedc43e1294dbfbed4258d9f55d8f6e5fdfd8afef"
+    },
+    {
+      "id": "EX-AGENT",
+      "workPackage": "WP-SV-03",
+      "test": "TestCorrectiveCompleteBindsEveryIdentity",
+      "mutation": "EX-AGENT",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/EX-AGENT/test.log",
+      "evidenceDigest": "sha256:24511bf03726e4ba65667a9fb09b424354f28fb498ae383252100835ae81ff44"
+    },
+    {
+      "id": "EX-SESSION",
+      "workPackage": "WP-SV-03",
+      "test": "TestCorrectiveCompleteBindsEveryIdentity",
+      "mutation": "EX-SESSION",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/EX-SESSION/test.log",
+      "evidenceDigest": "sha256:41bf24322cab5847cd8d270bf81681a87f0492ac53967db03145b472f2f7cd95"
+    },
+    {
+      "id": "EX-INPUT",
+      "workPackage": "WP-SV-03",
+      "test": "TestCorrectiveCompleteBindsEveryIdentity",
+      "mutation": "EX-INPUT",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/EX-INPUT/test.log",
+      "evidenceDigest": "sha256:475f294f79efa92c2a196578a45b62211c0ad4546287e09f49d7af1a1ef2eb9d"
+    },
+    {
+      "id": "EV-EMPTY-MANIFEST",
+      "workPackage": "WP-SV-02",
+      "test": "TestCorrectiveEvidenceSealEnforcement",
+      "mutation": "EV-EMPTY-MANIFEST",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/EV-EMPTY-MANIFEST/test.log",
+      "evidenceDigest": "sha256:3305118b53436a9584fa53c4328f7e28ca19c7ab35569108ac2096cef79a187f"
+    },
+    {
+      "id": "EV-PROVENANCE",
+      "workPackage": "WP-SV-02",
+      "test": "TestCorrectiveEvidenceSealEnforcement",
+      "mutation": "EV-PROVENANCE",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/EV-PROVENANCE/test.log",
+      "evidenceDigest": "sha256:b9051135be748a9d4bed085309478c400579214148571771317971b2d217b14d"
+    },
+    {
+      "id": "EV-DIGEST",
+      "workPackage": "WP-SV-02",
+      "test": "TestCorrectiveEvidenceJSONTampering",
+      "mutation": "EV-DIGEST",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/EV-DIGEST/test.log",
+      "evidenceDigest": "sha256:85f49691b10330d5e45755462c5747dbab5f35a29a316ad495ac21e85c75e7cd"
+    },
+    {
+      "id": "EV-CROSS-RUN",
+      "workPackage": "WP-SV-02",
+      "test": "TestCorrectiveEvidenceJSONTampering",
+      "mutation": "EV-CROSS-RUN",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/EV-CROSS-RUN/test.log",
+      "evidenceDigest": "sha256:7f041733043f46b4873451c44b945f89836a90c17db96815fde6ebe3e22577aa"
+    },
+    {
+      "id": "EV-MANIFEST-REFS",
+      "workPackage": "WP-SV-02",
+      "test": "TestCorrectiveEvidenceIntegrity",
+      "mutation": "EV-MANIFEST-REFS",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/EV-MANIFEST-REFS/test.log",
+      "evidenceDigest": "sha256:f606d75fabce9e4dd5fb58cbb0ba0cf9e024b2bdfaa6095de4c2429cb9ccf503"
+    },
+    {
+      "id": "BASELINE-DIGEST",
+      "workPackage": "WP-SV-02",
+      "test": "TestCorrectiveBaselineDigest",
+      "mutation": "BASELINE-DIGEST",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/BASELINE-DIGEST/test.log",
+      "evidenceDigest": "sha256:6d25ba0d01430510dc554b8b9c460f46e1d3796557cbc7b70c0b6dadbcd4f9ee"
+    },
+    {
+      "id": "RP-EVIDENCE",
+      "workPackage": "WP-SV-06",
+      "test": "TestCorrectiveEvidenceZeroValueRejected",
+      "mutation": "RP-EVIDENCE",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/RP-EVIDENCE/test.log",
+      "evidenceDigest": "sha256:434daf479c0834e683f31e67dcea381dca4e59ea2c4c0a766768a552ddc516e5"
+    }
+  ],
+  "primaryEvidenceAcceptanceTests": [
+    "TestCorrectiveEvidenceJSONTampering",
+    "TestCorrectiveEvidenceSealEnforcement",
+    "TestCorrectiveEvidenceZeroValueRejected"
+  ],
+  "mutationMethod": {
+    "compilingGoOverlays": true,
+    "sourceFilesUnchangedByMutants": true,
+    "testFilter": "TestCorrective",
+    "runnerEvidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutation_check.py",
+    "resultsEvidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/results.json",
+    "totalsScope": "Only this corrective battery; no historical counts included."
   },
-
-  "wpSv06": {
-    "invariants": [
-      {"id": "R1", "description": "unsafe divergence has highest priority",           "test": "TestNewReportUnsafeDivergenceGivesCorrectionRequired",  "mutation": null},
-      {"id": "R2", "description": "blocking NOT_EVALUATED prevents admission",        "test": "TestNewReportNotEvaluatedDimensionGivesRepeat",         "mutation": null},
-      {"id": "R3", "description": "production writes must equal zero",                "test": "TestNewReportProductionWritesGivesCorrectionRequired",  "mutation": null},
-      {"id": "R4", "description": "GitHub writes must equal zero",                    "test": "TestDeriveRecommendationGitHubWritesGiveCorrectionRequired", "mutation": null},
-      {"id": "R5", "description": "credential use must equal zero",                   "test": "(validated via RuntimeEvidence.Validate in TestNewReportProductionWritesGivesCorrectionRequired)", "mutation": null},
-      {"id": "R6", "description": "duplicate/stale/partial recovery results = 0",    "test": "TestNewReportDuplicateLaunchGivesCorrectionRequired",    "mutation": null},
-      {"id": "R7", "description": "all required WPs must be integrated",              "test": "TestNewReportPendingWPGivesRepeat",                      "mutation": null},
-      {"id": "R8", "description": "Review and Audit must be accepted",                "test": "TestNewReportNoReviewGivesOwnerDecision",               "mutation": null},
-      {"id": "R9", "description": "recommendation is deterministic",                  "test": "TestReadinessRecomputesIdenticallyAfterRestart + TestDeriveRecommendationPrecedenceUnsafeBeatsNotEvaluated", "mutation": null}
-    ],
-    "invariantsTotal": 9,
-    "invariantsCovered": 9,
-    "focusedTests": 13,
-    "newFailureClassesUncovered": 0,
-    "result": "SUFFICIENT"
+  "totals": {
+    "actualTestFunctions": 122,
+    "compiledMutations": 27,
+    "mutationsKilled": 27,
+    "equivalentMutations": 0,
+    "materialSurvivors": 0,
+    "survivors": 0
   },
-
   "regression": {
-    "totalPassingTests": 103,
-    "status": "PASS",
-    "raceStatus": "not run separately",
-    "fullLogsIncludedInAgentContext": false
+    "totalPassingTests": 122,
+    "packageStatus": "PASS",
+    "fullMakeCheck": "PASS",
+    "raceStatus": "PASS",
+    "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/final-make-check.log",
+    "evidenceDigest": "sha256:e44e2d070202350a74ce87094e364af2c4dc41848432932dcfadae06dbf3fd2b"
   },
-
-  "uncoveredFailureClasses": [],
-  "duplicateTestCandidates": [],
-  "overallResult": "SUFFICIENT"
+  "overallResult": "SCOPED_EVIDENCE_ONLY_REQUIRES_INDEPENDENT_REVIEW_AND_AUDIT"
 }
