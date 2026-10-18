@@ -71,6 +71,9 @@ func TestEvidenceBundleValidateAcceptsMultipleKinds(t *testing.T) {
 	_ = b.AddRef(shadowpilot.EvidenceRef{Kind: shadowpilot.EvidenceReviewResult, ID: "rr-001"})
 	_ = b.AddRef(shadowpilot.EvidenceRef{Kind: shadowpilot.EvidenceAuditResult, ID: "ar-001"})
 	_ = b.AddRef(shadowpilot.EvidenceRef{Kind: shadowpilot.EvidenceDiscussionNode, ID: "dn-001"})
+	if err := b.Seal("test-fixture:multiple-kinds"); err != nil {
+		t.Fatal(err)
+	}
 	if err := b.Validate(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

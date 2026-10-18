@@ -161,7 +161,7 @@ type BaselineResult struct {
 
 // NewBaselineResult constructs a BaselineResult and sets its digest.
 func NewBaselineResult(subjectSHA, inputDigest string, findings []Finding, at time.Time) (BaselineResult, error) {
-	b := BaselineResult{SubjectSHA: subjectSHA, InputDigest: inputDigest, Findings: findings, RecordedAt: at}
+	b := BaselineResult{SubjectSHA: subjectSHA, InputDigest: inputDigest, Findings: append([]Finding(nil), findings...), RecordedAt: at}
 	if err := b.validate(); err != nil {
 		return BaselineResult{}, err
 	}
@@ -182,6 +182,27 @@ func (b BaselineResult) validate() error {
 	}
 	if b.RecordedAt.IsZero() {
 		return errors.New("baseline: recorded_at required")
+	}
+	for _, finding := range b.Findings {
+		if err := finding.Validate(); err != nil {
+			return fmt.Errorf("baseline: %w", err)
+		}
+	}
+	return nil
+}
+
+// Validate verifies a loaded baseline against its content digest. The digest
+// binds subject, input and findings; RecordedAt is checked as metadata.
+func (b BaselineResult) Validate() error {
+	if err := b.validate(); err != nil {
+		return err
+	}
+	digest, err := baselineDigest(b)
+	if err != nil {
+		return err
+	}
+	if b.Digest != digest {
+		return errors.New("baseline: digest mismatch")
 	}
 	return nil
 }

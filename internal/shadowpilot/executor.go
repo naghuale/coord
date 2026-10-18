@@ -198,7 +198,7 @@ func (e *ShadowExecution) RecordHeartbeat(h ShadowHeartbeat) error {
 }
 
 // Complete transitions the execution to COMPLETED with the given result.
-// The result's generation and subject SHA must match the assignment.
+// All result identity fields must match the assignment before any state change.
 func (e *ShadowExecution) Complete(r AgentResult, now time.Time) error {
 	if e.State == ExecutorFenced {
 		return errors.New("shadow execution: fenced execution cannot be completed")
@@ -218,6 +218,10 @@ func (e *ShadowExecution) Complete(r AgentResult, now time.Time) error {
 	if !strings.EqualFold(r.SubjectSHA, e.Assignment.SubjectSHA) {
 		return fmt.Errorf("shadow execution: result subject_sha %q != assignment %q",
 			r.SubjectSHA, e.Assignment.SubjectSHA)
+	}
+	if r.AssignmentID != e.Assignment.AssignmentID || r.AgentID != e.Assignment.AgentID ||
+		r.SessionID != e.Assignment.SessionID || r.InputDigest != e.Assignment.InputDigest {
+		return errors.New("shadow execution: result assignment, agent, session or input digest does not match assignment")
 	}
 	e.State = ExecutorCompleted
 	e.Result = &r

@@ -300,6 +300,15 @@ func ComputeReadiness(review *ShadowReviewResult, audit *ShadowAuditResult, subj
 	if audit == nil {
 		return ReadinessResult{ShadowReadinessNotEvaluated, "no audit result"}
 	}
+	if err := review.Validate(); err != nil {
+		return ReadinessResult{ShadowReadinessBlocked, err.Error()}
+	}
+	if err := audit.Validate(); err != nil {
+		return ReadinessResult{ShadowReadinessBlocked, err.Error()}
+	}
+	if review.ExecutorID != audit.ExecutorID || review.ReviewerID != audit.ReviewerID || review.Generation != audit.Generation {
+		return ReadinessResult{ShadowReadinessBlocked, "review and audit role/generation bindings differ"}
+	}
 
 	// Superseded results cannot contribute to readiness.
 	if review.Superseded {

@@ -68,15 +68,16 @@ func (r RuntimeEvidence) Validate() error {
 
 // ComparisonSummary summarises the outcome across all 10 comparison dimensions.
 type ComparisonSummary struct {
-	DimensionsTotal   int `json:"dimensions_total"`
-	Matched           int `json:"matched"`
-	SafeDivergences   int `json:"safe_divergences"`
-	UnsafeDivergences int `json:"unsafe_divergences"`
-	NotEvaluated      int `json:"not_evaluated"`
+	Outcome           ComparisonOutcome `json:"outcome"`
+	DimensionsTotal   int               `json:"dimensions_total"`
+	Matched           int               `json:"matched"`
+	SafeDivergences   int               `json:"safe_divergences"`
+	UnsafeDivergences int               `json:"unsafe_divergences"`
+	NotEvaluated      int               `json:"not_evaluated"`
 }
 
 func summariseComparison(result ComparisonResult) ComparisonSummary {
-	s := ComparisonSummary{DimensionsTotal: len(result.Dimensions)}
+	s := ComparisonSummary{Outcome: result.Outcome, DimensionsTotal: len(result.Dimensions)}
 	for _, d := range result.Dimensions {
 		switch d.Outcome {
 		case OutcomeMatch:
@@ -118,6 +119,7 @@ func (r RecoverySummary) Validate() error {
 // recommendation. Only ADMIT_P0_3 allows the coordinator to prepare a P0-3
 // scope; it does not authorize any production writes.
 type ShadowValidationReport struct {
+	ShadowRunID       ShadowRunID        `json:"shadow_run_id"`
 	PilotID           string             `json:"pilot_id"`
 	MainSHA           string             `json:"main_sha"`
 	CoordVersion      string             `json:"coord_version"`
@@ -130,12 +132,15 @@ type ShadowValidationReport struct {
 	// ReviewAccepted and AuditAccepted must both be true for ADMIT_P0_3.
 	ReviewAccepted bool                    `json:"review_accepted"`
 	AuditAccepted  bool                    `json:"audit_accepted"`
-	EvidenceRefs   []EvidenceRef           `json:"evidence_refs,omitempty"`
+	Evidence       EvidenceBundle          `json:"evidence"`
 	Recommendation AdmissionRecommendation `json:"recommendation"`
 }
 
 // Validate checks that all required fields are present and consistent.
 func (r ShadowValidationReport) Validate() error {
+	if err := r.Evidence.Verify(r.ShadowRunID); err != nil {
+		return fmt.Errorf("report: %w", err)
+	}
 	if strings.TrimSpace(r.PilotID) == "" {
 		return errors.New("report: pilot_id required")
 	}
@@ -158,12 +163,45 @@ func (r ShadowValidationReport) Validate() error {
 		return fmt.Errorf("report: comparison dimensions_total must be %d, got %d",
 			len(allDimensions), r.Comparison.DimensionsTotal)
 	}
+	c := r.Comparison
+	if c.Matched < 0 || c.SafeDivergences < 0 || c.UnsafeDivergences < 0 || c.NotEvaluated < 0 ||
+		c.Matched+c.SafeDivergences+c.UnsafeDivergences+c.NotEvaluated != c.DimensionsTotal {
+		return errors.New("report: invalid comparison counts")
+	}
 	switch r.Recommendation {
 	case AdmitP03, CorrectionRequired, RepeatShadowValidation, OwnerDecisionRequired:
 	default:
 		return fmt.Errorf("report: unknown recommendation %q", r.Recommendation)
 	}
+	if r.Recommendation != r.deriveRecommendation() {
+		return errors.New("report: recommendation does not match evidence gates")
+	}
 	return nil
+}
+
+func (r ShadowValidationReport) deriveRecommendation() AdmissionRecommendation {
+	// A caller-supplied aggregate must never be more permissive than its
+	// declared outcome, even when every dimension was reported as MATCH.
+	if r.Comparison.Outcome != OutcomeMatch {
+		return CorrectionRequired
+	}
+	allIntegrated := len(r.WorkPackages) > 0
+	for _, wp := range r.WorkPackages {
+		if wp.Status != WPIntegrated {
+			allIntegrated = false
+		}
+	}
+	return DeriveRecommendation(P03AdmissionGates{
+		AllWPsIntegrated:               allIntegrated,
+		UnsafeDivergences:              r.Comparison.UnsafeDivergences,
+		NotEvaluatedBlockingProperties: r.Comparison.NotEvaluated,
+		DuplicateLaunches:              r.Recovery.DuplicateLaunches,
+		StaleResultsAccepted:           r.Recovery.StaleResultsAccepted,
+		ProductionWrites:               r.Runtime.ProductionWrites,
+		GitHubWrites:                   r.Runtime.GitHubWrites,
+		ReviewAccepted:                 r.ReviewAccepted,
+		AuditAccepted:                  r.AuditAccepted,
+	})
 }
 
 // P03AdmissionGates records each gate that must pass for ADMIT_P0_3.
@@ -218,7 +256,7 @@ func NewReport(
 	recovery RecoverySummary,
 	reviewAccepted bool,
 	auditAccepted bool,
-	evidenceRefs []EvidenceRef,
+	evidence EvidenceBundle,
 ) (ShadowValidationReport, error) {
 	if strings.TrimSpace(pilotID) == "" {
 		return ShadowValidationReport{}, errors.New("new report: pilot_id required")
@@ -227,30 +265,12 @@ func NewReport(
 		return ShadowValidationReport{}, errors.New("new report: main_sha must be a commit SHA")
 	}
 
-	compSummary := summariseComparison(comparison)
-
-	allIntegrated := true
-	for _, wp := range workPackages {
-		if wp.Status != WPIntegrated {
-			allIntegrated = false
-			break
-		}
+	if _, err := NewComparisonResult(comparison.ShadowRunID, comparison.Dimensions); err != nil {
+		return ShadowValidationReport{}, fmt.Errorf("new report: %w", err)
 	}
-
-	gates := P03AdmissionGates{
-		AllWPsIntegrated:               allIntegrated,
-		UnsafeDivergences:              compSummary.UnsafeDivergences,
-		NotEvaluatedBlockingProperties: compSummary.NotEvaluated,
-		DuplicateLaunches:              recovery.DuplicateLaunches,
-		StaleResultsAccepted:           recovery.StaleResultsAccepted,
-		ProductionWrites:               runtime.ProductionWrites,
-		GitHubWrites:                   runtime.GitHubWrites,
-		ReviewAccepted:                 reviewAccepted,
-		AuditAccepted:                  auditAccepted,
-	}
-	recommendation := DeriveRecommendation(gates)
 
 	report := ShadowValidationReport{
+		ShadowRunID:       comparison.ShadowRunID,
 		PilotID:           pilotID,
 		MainSHA:           mainSHA,
 		CoordVersion:      coordVersion,
@@ -258,13 +278,16 @@ func NewReport(
 		ProducedAt:        producedAt,
 		WorkPackages:      workPackages,
 		Runtime:           runtime,
-		Comparison:        compSummary,
+		Comparison:        summariseComparison(comparison),
 		Recovery:          recovery,
 		ReviewAccepted:    reviewAccepted,
 		AuditAccepted:     auditAccepted,
-		EvidenceRefs:      evidenceRefs,
-		Recommendation:    recommendation,
+		Evidence:          evidence,
 	}
+	report.Evidence.Refs = append([]EvidenceRef(nil), evidence.Refs...)
+	report.Evidence.Manifest = append([]EvidenceRef(nil), evidence.Manifest...)
+	report.WorkPackages = append([]WorkPackageEntry(nil), workPackages...)
+	report.Recommendation = report.deriveRecommendation()
 	if err := report.Validate(); err != nil {
 		return ShadowValidationReport{}, err
 	}
