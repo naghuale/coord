@@ -313,3 +313,34 @@ components:
     documents:
       currentAnchor: durable-orchestration-candidate
       targetAnchor: durable-orchestration-candidate
+
+  - id: run-recovery-command
+    title: ApplyRunRecoveryCommand — coordinator-driven orphaned Run recovery
+    status: partial
+    normativeSources:
+      - docs/ADR-0005-STORAGE-MODEL.md
+    implemented:
+      - MARK_INTERRUPTED transition (Run→Failed, task blocked, stop-proof gated)
+      - KSC-C stop-proof validation (Kind==Stop, Completed, Stopped, StopMethod, full binding, parent fence)
+      - fail-closed FENCE_ONLY, PREPARE_REPLACEMENT, COMPLETE_EXISTING, RESUME_OBSERVATION
+      - 7 specific violation codes plus FORBIDDEN for admission/refusal boundaries
+      - replay idempotency via inbox receipt matching
+    missing:
+      - PREPARE_REPLACEMENT transition (Q3 schedule)
+      - FENCE_ONLY transition (FO-C implementation)
+      - COMPLETE_EXISTING transition (CEE-C implementation)
+      - RESUME_OBSERVATION transition (DS-6 unblocking required)
+    evidence:
+      symbols:
+        - ApplyRunRecoveryCommand
+        - RunRecoveryCommand
+        - RunRecoveryReceipt
+      tests:
+        - TestApplyRunRecoveryMarksInterruptedAtomically
+        - TestApplyRunRecoveryExactReplayReturnsOriginalReceiptWithoutWrites
+        - TestRunRecoveryStopProofMutationMatrixFailsClosed
+        - TestRunRecoveryDuplicateTransitionRejected
+      issues: []
+    documents:
+      currentAnchor: run-recovery-command
+      targetAnchor: run-recovery-command
