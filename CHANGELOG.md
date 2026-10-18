@@ -1,5 +1,19 @@
 # История изменений
 
+## 2026-10-18 — Coordinator: execute authorized ready work
+
+- Added OWNER-requested `COORDINATOR-ACT-ON-READY-WORK-R1` to `AGENTS.md`:
+  same-turn selection, tracking, contract/assignment and eligible Executor
+  dispatch; recommendation-only completion and permission-offers are forbidden
+  for already-authorized actions. Unavailable operations require a complete
+  payload and exact blocker while independent work continues. (документация)
+- Added the local workflow transition table to
+  `docs/operations/COORDINATOR-STATE-MACHINE.md` and the compact obligation to
+  the Coordinator recovery prompt. Existing priority, admission, R146 evidence,
+  Review/Audit and OWNER/security boundaries remain mandatory. This is a
+  process instruction change; no runtime dispatcher implementation is claimed.
+  (документация)
+
 ## 2026-10-18 — P0-3: ApplyRunRecoveryCommand implementation (WP-P03-02B, Refs #7)
 
 - Added `ApplyRunRecoveryCommand` in `store/canonical_run_recovery.go` (TD-R2):

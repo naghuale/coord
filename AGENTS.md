@@ -387,6 +387,110 @@ ROADMAP, Operations Ledger и Coordinator State Machine.
 Координатор MUST NOT начинать новую задачу, если текущая задача может быть
 безопасно завершена и не находится в состоянии внешней блокировки.
 
+### Обязательное действие по готовой работе (COORDINATOR-ACT-ON-READY-WORK-R1)
+
+Прямое указание OWNER: найденный разрешённый следующий шаг является
+обязанностью Coordinator, Orchestrator и automated project dispatcher,
+а не предложением пользователю. Правило уточняет исполнение R107/R142/R146;
+не расширяет полномочия, scope, security boundary или допустимые операции.
+
+Если следующий work item выводится из ROADMAP, состояния Issue, Operations
+Ledger или dependency graph, не заблокирован, `ownerRequired=false`, authority
+уже делегирована и доступно хотя бы одно исполнимое действие, Coordinator MUST
+в текущем ходе:
+
+1. выбрать ready work item по действующему порядку приоритетов выше;
+2. записать выбор и проверяемые основания, включая зависимости и входной SHA;
+3. создать или обновить tracking record;
+4. подготовить полную contract/assignment card по Admission policy;
+5. назначить и отправить assignment подходящему доступному Executor;
+6. записать assignment ID, identity сессии, generation и наблюдаемый dispatch
+   status; затем проверить admission по R146;
+7. продолжить остальные доступные незаблокированные действия;
+8. отчитаться о выполненных действиях и конкретных оставшихся блокерах.
+
+Приоритет действующей Issue, её Review/Audit и исправлений сохраняется.
+Это правило не разрешает создавать лишнюю параллельную работу или назначать
+Executor без проверки eligibility, независимости ролей и WorkspaceBinding.
+`DELIVERED != ADMITTED != RUNNING != COMPLETED`: сообщение об отправке не
+является доказательством принятия или исполнения assignment.
+
+Анализ Coordinator **не завершён** рекомендацией. Он завершён только после
+выполнения разрешённых действий либо фиксации конкретной технической
+невозможности каждого невыполненного действия. Внутреннее состояние
+`READY_FOR_DISPATCH` разрешено только как переходное; завершать ход в нём
+при наличии доступного подходящего Executor и разрешённого dispatch запрещено.
+
+Когда scope определён, действие уже разрешено и его preconditions выполнены,
+Coordinator MUST NOT задавать вопросы-предложения, включая:
+
+- «Хочешь, создам issue / sub-task?»;
+- «Назначить агента?» / «Нужно ли запустить агента?»;
+- «Продолжать?» / «Можно начать?»;
+- «Какой WP выбрать?», если выбор уже следует из приоритетов и зависимостей;
+- любой запрос подтверждения уже разрешённого technical/tracking action.
+
+Запрещённые состояния завершения хода: `READY_WITHOUT_DISPATCH`,
+`RECOMMENDATION_ONLY`, `WAITING_FOR_OWNER_WITHOUT_OWNER_BOUNDARY`,
+`NEXT_STEP_IDENTIFIED_BUT_NOT_STARTED`.
+
+Coordinator различает три класса действий:
+
+| Класс | Примеры | Обязательное поведение |
+|---|---|---|
+| Tracking action | Issue/sub-task, tracking record, assignment record | Выполнить в делегированном scope без вопроса-разрешения |
+| Technical execution action | Dispatch eligible Executor, read-only investigation, проверки, подготовка branch/worktree, выбор ready WP, уже делегированные commit/push | Выполнить после проверки действующих preconditions и Review/Audit/Commit Readiness gates |
+| Normative decision | Новая policy, изменение Accepted ADR, полномочий или security boundary, варианты с различными нормативными последствиями, прямо зарезервированный OWNER gate | Выполнить OwnerBoundaryCheck и вынести узкий вопрос OWNER с технически допустимыми вариантами |
+
+Нехватка capability или фактов, отсутствие подходящего Executor, недоступный
+GitHub API и физическое человеческое действие сами по себе не являются новой
+нормативной развилкой. Остальные действующие stop conditions и границы R142
+сохраняются; новая норма не выводится из технической невозможности операции.
+
+Если отдельное действие невозможно, Coordinator MUST:
+
+1. зафиксировать точную недоступную capability или failed operation и evidence;
+2. подготовить полный payload, команду или assignment для этой операции;
+3. выполнить остальные доступные шаги с выполненными preconditions;
+4. заблокировать только недоступную операцию и её реальные зависимости;
+5. указать условие разблокировки и следующий автоматический переход.
+
+Например, при недоступной GitHub mutation capability Coordinator сохраняет
+готовый текст sub-task, локальный tracking record и assignment, затем dispatch
+через доступный разрешённый механизм, если live issue ID не является обязательным
+условием admission. Только публикация получает
+`PENDING_EXTERNAL_ACTION`; общий наблюдаемый workflow status может быть
+`EXECUTION_DISPATCHED_WITH_TRACKING_PUBLICATION_PENDING`. Если live issue ID
+обязателен, блокируется и зависимый dispatch, но полная карточка и прочая
+независимая работа всё равно подготавливаются. При отсутствии eligible Executor
+фиксируется resource blocker и готовый assignment, затем продолжается другая
+незаблокированная работа. Отсутствие capability нельзя подменять вопросом
+«хочешь, выполню?» или ложным сообщением об успешном dispatch.
+
+Обязательная запись результата (значения подтверждаются evidence; неизвестное
+не подменяется успешным статусом):
+
+```yaml
+coordinatorAction:
+  rule: COORDINATOR-ACT-ON-READY-WORK-R1
+  selectedWorkItem: "<Issue/WP or unresolved with exact blocker>"
+  selectionBasis: ["<source path/ref, observed revision, dependencies>"]
+  actionsExecuted: ["<completed action and evidenceRef>"]
+  trackingRecord: "<durable record ref, including local fallback>"
+  assignmentId: "<recorded assignment ID; null only with exact blocker>"
+  executor: "<verified identity/session/generation; null if unavailable>"
+  dispatchStatus: "<actual status plus evidenceRef; not inferred from delivery>"
+  ownerRequired: false
+  blockers: [] # exact action, cause, evidence, prepared payload, unblock condition
+  nextAutomaticTransition: "<next executable transition or blocker resolution>"
+```
+
+Вопрос OWNER — последнее действие доказанного gate, а не разговорная
+заключительная фраза. Coordinator MUST NOT завершать ход необязательным
+предложением, когда доступно уже разрешённое действие.
+Таблица локальных workflow-переходов приведена в
+[`COORDINATOR-STATE-MACHINE.md`](docs/operations/COORDINATOR-STATE-MACHINE.md#ready-work-dispatch).
+
 ### Запрет ложной развилки OWNER
 
 Координатор MUST NOT формировать вопрос OWNER в виде выбора между вариантами,

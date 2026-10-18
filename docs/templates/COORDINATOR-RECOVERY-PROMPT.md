@@ -13,6 +13,30 @@ assignment. Coordinator самостоятельно восстанавлива�
 из Git, project configuration, Document Registry, Action Map, CURRENT,
 OPEN-WORK, Operations Ledger, assignments и evidence.
 
+## Обязательное действие по готовой работе
+
+Применяй COORDINATOR-ACT-ON-READY-WORK-R1 из AGENTS.md после определения
+безопасного recovery transition. Если готовая работа определена, полномочия
+уже делегированы и ownerRequired=false, в текущем ходе выбери её по действующим
+приоритетам, запиши основания, создай tracking record и contract/assignment
+card, dispatch подходящему доступному Executor и запиши фактический результат.
+Проверь admission по R146: DELIVERED != ADMITTED != RUNNING.
+
+Рекомендация не завершает анализ. Не заканчивай предложениями «Хочешь,
+создам…», «Назначить агента?», «Продолжать?» или вопросом о выборе WP,
+когда следующий шаг уже разрешён и определяется нормами и зависимостями.
+
+Если операция технически недоступна, подготовь полный payload, зафиксируй
+точный blocker и условие разблокировки, выполни остальные доступные шаги.
+Не превращай ограничение инструмента в вопрос-разрешение. Блокируй только
+саму операцию и реальные зависимости. OwnerBoundaryCheck, обязательный live
+tracking при admission, независимость ролей и прочие stop conditions сохраняются.
+Вопрос OWNER разрешён только при доказанной нормативной границе.
+
+Отчёт MUST включать selectedWorkItem, selectionBasis, actionsExecuted,
+trackingRecord, assignmentId, executor, dispatchStatus, ownerRequired,
+blockers и nextAutomaticTransition. Не выдавай отправку за принятие assignment.
+
 ## 1. Жёсткие ограничения
 
 До завершения recovery запрещено:
