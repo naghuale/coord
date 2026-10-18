@@ -1,6 +1,7 @@
 package shadowpilot_test
 
 import (
+	"strings"
 	"testing"
 
 	"coord/internal/shadowpilot"
@@ -20,13 +21,13 @@ func TestNewEvidenceBundleIsEmpty(t *testing.T) {
 }
 
 func TestEvidenceBundleValidateRejectsProductionAuthority(t *testing.T) {
-	b := shadowpilot.EvidenceBundle{
-		ShadowRunID:                 "sv-run-1",
-		Refs:                        []shadowpilot.EvidenceRef{},
-		ProductionAuthorityAsserted: true,
+	b := validEvidence(t, "sv-run-1")
+	if err := b.Validate(); err != nil {
+		t.Fatalf("invalid baseline bundle: %v", err)
 	}
-	if err := b.Validate(); err == nil {
-		t.Fatal("expected error when production_authority_asserted is true")
+	b.ProductionAuthorityAsserted = true
+	if err := b.Validate(); err == nil || !strings.Contains(err.Error(), "production_authority_asserted") {
+		t.Fatalf("expected independent production authority rejection, got %v", err)
 	}
 }
 
