@@ -22,8 +22,10 @@
 - opencode:workspace-oe3 REVIEW_ACCEPTED (round 2) on 442f1acc;
   opencode:workspace-o42 AUDIT_CHANGES_REQUIRED (F-1: direct binding predicates
   unproven; F-2: duplicate transition guard unproven). Corrective round applied:
-  mutateStopAndFenceBinding for A-F-1, direct normalizer test for A-F-2. Re-review
-  and re-audit on corrective commit required before AUDIT_ACCEPTED may be recorded.
+  mutateStopAndFenceBinding for A-F-1, direct normalizer test for A-F-2.
+  opencode:workspace-oe3 REVIEW_ACCEPTED on corrective commit 508060c;
+  opencode:workspace-o42 AUDIT_ACCEPTED on 508060c. Merged to main via PR #77
+  (merge commit d72455a), CI green.
   (`TestRunRecoveryStopProofMutationMatrixFailsClosed`,
   `TestRunRecoveryNormalizerRejectsDuplicateTransition`)
 - Architecture component `run-recovery-command` registered in
