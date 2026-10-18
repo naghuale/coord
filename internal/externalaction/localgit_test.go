@@ -108,9 +108,20 @@ func TestLocalGitWriteFilesRequiredFields(t *testing.T) {
 	}
 }
 
+func TestLocalGitUnknownOperationRejected(t *testing.T) {
+	p := externalaction.LocalGitActionPayload{
+		Operation:      "UNKNOWN_OP",
+		RepositoryID:   "repo-1",
+		RepositoryRoot: localGitRoot,
+	}
+	if err := p.Validate(); err == nil {
+		t.Fatal("expected error for unknown operation")
+	}
+}
+
 // I3: Protected branches rejected for mutation operations.
 func TestLocalGitProtectedBranchRejected(t *testing.T) {
-	for _, branch := range []string{"main", "master", "MAIN", "Main", "refs/heads/main"} {
+	for _, branch := range []string{"main", "master", "MAIN", "Main", "refs/heads/main", "refs/heads/master", "REFS/HEADS/MASTER"} {
 		p := makeCommitPayload(branch)
 		if err := p.Validate(); err == nil {
 			t.Errorf("expected rejection for protected branch %q", branch)
@@ -127,7 +138,7 @@ func TestLocalGitFeatureBranchAccepted(t *testing.T) {
 
 // I4: System tmp roots rejected.
 func TestLocalGitSystemTmpRejected(t *testing.T) {
-	for _, root := range []string{"/tmp/repo", "/private/tmp/repo", "/var/tmp/repo"} {
+	for _, root := range []string{"/tmp/repo", "/private/tmp/repo", "/var/tmp/repo", "/tmp/../tmp/repo", "/private/tmp//repo", "/workspace/../tmp/repo"} {
 		p := externalaction.LocalGitActionPayload{
 			Operation:      externalaction.LocalGitObserveRepository,
 			RepositoryID:   "repo-1",
