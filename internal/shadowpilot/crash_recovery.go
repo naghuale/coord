@@ -39,6 +39,7 @@ type AgentLiveness struct {
 type RecoveryAction string
 
 const (
+	RecoveryPlanBlocked RecoveryAction = "PLAN_BLOCKED"
 	// RecoveryNoLaunch: crash before durable intent — no agent was dispatched;
 	// nothing to recover.
 	RecoveryNoLaunch RecoveryAction = "NO_LAUNCH"
@@ -88,6 +89,9 @@ func (p RecoveryPlan) Is(a RecoveryAction) bool {
 //   - Old ReviewResult does not apply to a corrected subject: Superseded flag
 //     and subject SHA mismatch both trigger NOT_EVALUATED readiness downstream.
 func PlanRecovery(checkpoint ShadowCheckpoint, liveness *AgentLiveness) RecoveryPlan {
+	if err := ValidateCheckpointIntegrity(checkpoint); err != nil {
+		return RecoveryPlan{Action: string(RecoveryPlanBlocked), Reason: err.Error(), StaleGeneration: asStaleGenError(err)}
+	}
 	// Phase 1: crash before durable assignment intent.
 	if checkpoint.Assignment == nil {
 		return RecoveryPlan{Action: string(RecoveryNoLaunch),
@@ -202,15 +206,44 @@ func asStaleGenError(err error) *StaleGenerationError {
 //   - audit result subject SHA does not match assignment subject SHA.
 func ValidateCheckpointIntegrity(checkpoint ShadowCheckpoint) error {
 	if checkpoint.Assignment == nil {
+		if checkpoint.Execution != nil || checkpoint.ReviewResult != nil || checkpoint.AuditResult != nil {
+			return errors.New("checkpoint integrity: assignment missing")
+		}
 		return nil // pre-intent crash is valid
+	}
+	a := checkpoint.Assignment
+	if err := a.Validate(); err != nil {
+		return fmt.Errorf("checkpoint integrity: %w", err)
 	}
 	if checkpoint.Execution != nil {
 		exec := checkpoint.Execution
+		ea := exec.Assignment
+		if ea.ShadowRunID != a.ShadowRunID || ea.AssignmentID != a.AssignmentID || ea.AgentID != a.AgentID || ea.SessionID != a.SessionID || ea.Generation != a.Generation || ea.InputDigest != a.InputDigest || !strings.EqualFold(ea.SubjectSHA, a.SubjectSHA) {
+			return errors.New("checkpoint integrity: execution assignment identity mismatch")
+		}
 		if exec.State == ExecutorCompleted && exec.Result == nil {
 			return errors.New("checkpoint integrity: COMPLETED execution has no result")
 		}
+		if exec.Result != nil {
+			if err := checkGeneration(exec, a); err != nil {
+				return err
+			}
+			r := exec.Result
+			if err := r.Validate(); err != nil {
+				return fmt.Errorf("checkpoint integrity: %w", err)
+			}
+			if r.AssignmentID != a.AssignmentID || r.AgentID != a.AgentID || r.SessionID != a.SessionID || r.InputDigest != a.InputDigest || !strings.EqualFold(r.SubjectSHA, a.SubjectSHA) {
+				return errors.New("checkpoint integrity: result identity mismatch")
+			}
+		}
 	}
 	if checkpoint.ReviewResult != nil {
+		if err := checkpoint.ReviewResult.Validate(); err != nil {
+			return err
+		}
+		if checkpoint.ReviewResult.ExecutorID != a.AgentID || checkpoint.ReviewResult.Generation != a.Generation {
+			return errors.New("checkpoint integrity: review executor/generation mismatch")
+		}
 		if !strings.EqualFold(checkpoint.ReviewResult.SubjectSHA, checkpoint.Assignment.SubjectSHA) {
 			return fmt.Errorf("checkpoint integrity: review result subject %q != assignment %q — old review from prior subject",
 				checkpoint.ReviewResult.SubjectSHA, checkpoint.Assignment.SubjectSHA)
@@ -220,6 +253,18 @@ func ValidateCheckpointIntegrity(checkpoint ShadowCheckpoint) error {
 		}
 	}
 	if checkpoint.AuditResult != nil {
+		if err := checkpoint.AuditResult.Validate(); err != nil {
+			return err
+		}
+		if checkpoint.AuditResult.ExecutorID != a.AgentID || checkpoint.AuditResult.Generation != a.Generation {
+			return errors.New("checkpoint integrity: audit executor/generation mismatch")
+		}
+		if checkpoint.AuditResult.Superseded {
+			return errors.New("checkpoint integrity: audit result is superseded")
+		}
+		if checkpoint.ReviewResult != nil && checkpoint.ReviewResult.ReviewerID != checkpoint.AuditResult.ReviewerID {
+			return errors.New("checkpoint integrity: reviewer identity mismatch")
+		}
 		if !strings.EqualFold(checkpoint.AuditResult.SubjectSHA, checkpoint.Assignment.SubjectSHA) {
 			return fmt.Errorf("checkpoint integrity: audit result subject %q != assignment %q",
 				checkpoint.AuditResult.SubjectSHA, checkpoint.Assignment.SubjectSHA)

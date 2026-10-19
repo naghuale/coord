@@ -270,6 +270,16 @@ func (r ShadowAuditResult) Validate() error {
 	return nil
 }
 
+// HasOpenBlockingFindings reports unresolved audit findings independently of verdict.
+func (r ShadowAuditResult) HasOpenBlockingFindings() bool {
+	for _, f := range r.Findings {
+		if f.Severity == FindingBlocking && f.Status == FindingOpen {
+			return true
+		}
+	}
+	return false
+}
+
 // ShadowReadiness is the deterministic readiness computed from a review and
 // audit result pair anchored to the same exact subject SHA.
 type ShadowReadiness string
@@ -293,7 +303,7 @@ type ReadinessResult struct {
 // or BLOCKED rather than passing.
 //
 // Precedence: BLOCKED > CHANGES_REQUIRED > NOT_EVALUATED > READY.
-func ComputeReadiness(review *ShadowReviewResult, audit *ShadowAuditResult, subjectSHA string) ReadinessResult {
+func ComputeReadiness(review *ShadowReviewResult, audit *ShadowAuditResult, assignment ShadowAssignment) ReadinessResult {
 	if review == nil {
 		return ReadinessResult{ShadowReadinessNotEvaluated, "no review result"}
 	}
@@ -306,6 +316,14 @@ func ComputeReadiness(review *ShadowReviewResult, audit *ShadowAuditResult, subj
 	if err := audit.Validate(); err != nil {
 		return ReadinessResult{ShadowReadinessBlocked, err.Error()}
 	}
+	if err := assignment.Validate(); err != nil {
+		return ReadinessResult{ShadowReadinessBlocked, err.Error()}
+	}
+	if review.ExecutorID != assignment.AgentID || audit.ExecutorID != assignment.AgentID ||
+		review.Generation != assignment.Generation || audit.Generation != assignment.Generation {
+		return ReadinessResult{ShadowReadinessBlocked, "review/audit executor or generation does not match assignment"}
+	}
+	subjectSHA := assignment.SubjectSHA
 	if review.ExecutorID != audit.ExecutorID || review.ReviewerID != audit.ReviewerID || review.Generation != audit.Generation {
 		return ReadinessResult{ShadowReadinessBlocked, "review and audit role/generation bindings differ"}
 	}
@@ -332,6 +350,9 @@ func ComputeReadiness(review *ShadowReviewResult, audit *ShadowAuditResult, subj
 			"review and audit reference different subject SHAs"}
 	}
 
+	if audit.HasOpenBlockingFindings() {
+		return ReadinessResult{ShadowReadinessBlocked, "audit has open blocking finding(s)"}
+	}
 	// NOT_EVALUATED verdict is never treated as PASS.
 	if audit.Verdict == ShadowAuditNotEvaluated {
 		return ReadinessResult{ShadowReadinessNotEvaluated, "audit verdict is NOT_EVALUATED"}

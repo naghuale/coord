@@ -81,7 +81,7 @@ func TestAdmitRejectsExecutorWhoIsAlsoReviewer(t *testing.T) {
 // ShadowExecution lifecycle tests
 
 func TestNewShadowExecutionIsAdmitted(t *testing.T) {
-	ex, err := shadowpilot.NewShadowExecution(validAssignment())
+	ex, err := newAdmittedExecution(validAssignment())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestNewShadowExecutionIsAdmitted(t *testing.T) {
 }
 
 func TestStartTransitionsToRunning(t *testing.T) {
-	ex, _ := shadowpilot.NewShadowExecution(validAssignment())
+	ex, _ := newAdmittedExecution(validAssignment())
 	if err := ex.Start(t0); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestStartTransitionsToRunning(t *testing.T) {
 }
 
 func TestStartRejectsDoubleStart(t *testing.T) {
-	ex, _ := shadowpilot.NewShadowExecution(validAssignment())
+	ex, _ := newAdmittedExecution(validAssignment())
 	_ = ex.Start(t0)
 	if err := ex.Start(t0); err == nil {
 		t.Fatal("expected error for double Start")
@@ -109,7 +109,7 @@ func TestStartRejectsDoubleStart(t *testing.T) {
 }
 
 func TestRecordHeartbeatIncrements(t *testing.T) {
-	ex, _ := shadowpilot.NewShadowExecution(validAssignment())
+	ex, _ := newAdmittedExecution(validAssignment())
 	_ = ex.Start(t0)
 	hb := shadowpilot.ShadowHeartbeat{
 		ShadowRunID: "sv-run-exec-1",
@@ -126,7 +126,7 @@ func TestRecordHeartbeatIncrements(t *testing.T) {
 }
 
 func TestRecordHeartbeatRejectsOutOfOrder(t *testing.T) {
-	ex, _ := shadowpilot.NewShadowExecution(validAssignment())
+	ex, _ := newAdmittedExecution(validAssignment())
 	_ = ex.Start(t0)
 	hb := shadowpilot.ShadowHeartbeat{ShadowRunID: "sv-run-exec-1", Generation: 1, Sequence: 5, At: t0.Add(time.Second)}
 	_ = ex.RecordHeartbeat(hb)
@@ -137,7 +137,7 @@ func TestRecordHeartbeatRejectsOutOfOrder(t *testing.T) {
 }
 
 func TestRecordHeartbeatRejectsWrongGeneration(t *testing.T) {
-	ex, _ := shadowpilot.NewShadowExecution(validAssignment())
+	ex, _ := newAdmittedExecution(validAssignment())
 	_ = ex.Start(t0)
 	hb := shadowpilot.ShadowHeartbeat{ShadowRunID: "sv-run-exec-1", Generation: 99, Sequence: 1, At: t0.Add(time.Second)}
 	if err := ex.RecordHeartbeat(hb); err == nil {
@@ -146,7 +146,7 @@ func TestRecordHeartbeatRejectsWrongGeneration(t *testing.T) {
 }
 
 func TestRecordHeartbeatRejectsIfNotRunning(t *testing.T) {
-	ex, _ := shadowpilot.NewShadowExecution(validAssignment())
+	ex, _ := newAdmittedExecution(validAssignment())
 	hb := shadowpilot.ShadowHeartbeat{ShadowRunID: "sv-run-exec-1", Generation: 1, Sequence: 1, At: t0.Add(time.Second)}
 	if err := ex.RecordHeartbeat(hb); err == nil {
 		t.Fatal("expected error: heartbeat before Start")
@@ -169,7 +169,7 @@ func validAgentResult(a shadowpilot.ShadowAssignment) shadowpilot.AgentResult {
 
 func TestCompleteTransitionsToCompleted(t *testing.T) {
 	a := validAssignment()
-	ex, _ := shadowpilot.NewShadowExecution(a)
+	ex, _ := newAdmittedExecution(a)
 	_ = ex.Start(t0)
 	if err := ex.Complete(validAgentResult(a), t0.Add(5*time.Second)); err != nil {
 		t.Fatalf("Complete: %v", err)
@@ -184,7 +184,7 @@ func TestCompleteTransitionsToCompleted(t *testing.T) {
 
 func TestCompleteRejectsStaleGeneration(t *testing.T) {
 	a := validAssignment()
-	ex, _ := shadowpilot.NewShadowExecution(a)
+	ex, _ := newAdmittedExecution(a)
 	_ = ex.Start(t0)
 	r := validAgentResult(a)
 	r.Generation = 99
@@ -200,7 +200,7 @@ func TestCompleteRejectsStaleGeneration(t *testing.T) {
 
 func TestCompleteRejectsSubjectMismatch(t *testing.T) {
 	a := validAssignment()
-	ex, _ := shadowpilot.NewShadowExecution(a)
+	ex, _ := newAdmittedExecution(a)
 	_ = ex.Start(t0)
 	r := validAgentResult(a)
 	r.SubjectSHA = "aacc4ee0d713846a537b623db2ee2dba7114e9e4"
@@ -211,7 +211,7 @@ func TestCompleteRejectsSubjectMismatch(t *testing.T) {
 
 func TestFencedExecutionCannotBeCompleted(t *testing.T) {
 	a := validAssignment()
-	ex, _ := shadowpilot.NewShadowExecution(a)
+	ex, _ := newAdmittedExecution(a)
 	_ = ex.Start(t0)
 	_ = ex.Fence(shadowpilot.StopViolation{
 		Condition: shadowpilot.StopWriteOutsideShadowStore,
@@ -227,7 +227,7 @@ func TestFencedExecutionCannotBeCompleted(t *testing.T) {
 
 func TestFenceCannotOccurAfterComplete(t *testing.T) {
 	a := validAssignment()
-	ex, _ := shadowpilot.NewShadowExecution(a)
+	ex, _ := newAdmittedExecution(a)
 	_ = ex.Start(t0)
 	_ = ex.Complete(validAgentResult(a), t0.Add(time.Second))
 	if err := ex.Fence(shadowpilot.StopViolation{
@@ -240,7 +240,7 @@ func TestFenceCannotOccurAfterComplete(t *testing.T) {
 
 func TestCheckHeartbeatTimeoutFencesStaleExecution(t *testing.T) {
 	a := validAssignment()
-	ex, _ := shadowpilot.NewShadowExecution(a)
+	ex, _ := newAdmittedExecution(a)
 	_ = ex.Start(t0)
 	hb := shadowpilot.ShadowHeartbeat{
 		ShadowRunID: "sv-run-exec-1",
@@ -260,7 +260,7 @@ func TestCheckHeartbeatTimeoutFencesStaleExecution(t *testing.T) {
 
 func TestCheckHeartbeatTimeoutNoOpIfNotRunning(t *testing.T) {
 	a := validAssignment()
-	ex, _ := shadowpilot.NewShadowExecution(a)
+	ex, _ := newAdmittedExecution(a)
 	// still ADMITTED
 	if err := ex.CheckHeartbeatTimeout(t0.Add(time.Hour), time.Second); err != nil {
 		t.Fatalf("unexpected error on non-running execution: %v", err)

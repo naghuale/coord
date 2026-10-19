@@ -22,11 +22,11 @@ func TestComputeReadinessRejectsUnknownAuditVerdict(t *testing.T) {
 	for _, verdict := range []shadowpilot.ShadowAuditVerdict{"", "UNKNOWN"} {
 		t.Run(string(verdict), func(t *testing.T) {
 			r, a := validReviewResult(), validAuditResult()
-			if got := shadowpilot.ComputeReadiness(&r, &a, sha1); got.Readiness != shadowpilot.ShadowReadinessReady {
+			if got := shadowpilot.ComputeReadiness(&r, &a, readinessAssignment(sha1)); got.Readiness != shadowpilot.ShadowReadinessReady {
 				t.Fatalf("invalid baseline: %+v", got)
 			}
 			a.Verdict = verdict
-			got := shadowpilot.ComputeReadiness(&r, &a, sha1)
+			got := shadowpilot.ComputeReadiness(&r, &a, readinessAssignment(sha1))
 			if got.Readiness != shadowpilot.ShadowReadinessBlocked || !strings.Contains(got.Reason, "unknown verdict") {
 				t.Fatalf("unknown audit verdict must BLOCK: %+v", got)
 			}

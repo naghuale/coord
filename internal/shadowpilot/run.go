@@ -4,7 +4,7 @@
 // it does not write to the canonical store, does not acquire the namespace lock,
 // and does not send messages via the production Telepathy transport.
 //
-// Decision: SHADOW-VALIDATION-PILOT-R1 (ACCEPTED 2026-10-17)
+// Decision: SHADOW-VALIDATION-PILOT-R1 (see docs/decisions/SHADOW-VALIDATION-PILOT-R1.yaml, POINTER_ONLY)
 package shadowpilot
 
 import (
@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 )
@@ -41,7 +42,13 @@ type ShadowRun struct {
 	CreatedAt    time.Time   `json:"created_at"`
 }
 
-var sha40 = func(s string) bool { return len(s) == 40 || len(s) == 64 }
+var sha40 = func(s string) bool {
+	if len(s) != 40 && len(s) != 64 {
+		return false
+	}
+	_, err := hex.DecodeString(s)
+	return err == nil
+}
 
 func (r ShadowRun) Validate() error {
 	if err := r.ID.Validate(); err != nil {
@@ -125,6 +132,13 @@ func (r AgentResult) Validate() error {
 // comparison. The Findings slice is sorted by ID before hashing to ensure
 // deterministic output regardless of insertion order.
 func AgentResultDigest(r AgentResult) (string, error) {
+	r.Findings = slices.Clone(r.Findings)
+	slices.SortFunc(r.Findings, func(a, b Finding) int {
+		if c := strings.Compare(a.ID, b.ID); c != 0 {
+			return c
+		}
+		return strings.Compare(a.Summary, b.Summary)
+	})
 	data, err := json.Marshal(r)
 	if err != nil {
 		return "", err

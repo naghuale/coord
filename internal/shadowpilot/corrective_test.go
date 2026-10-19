@@ -9,6 +9,16 @@ import (
 	"coord/internal/shadowpilot"
 )
 
+func newAdmittedExecution(a shadowpilot.ShadowAssignment) (shadowpilot.ShadowExecution, error) {
+	return shadowpilot.NewShadowExecution(a, a.SubjectSHA, []string{"agent-reviewer"})
+}
+
+func readinessAssignment(subject string) shadowpilot.ShadowAssignment {
+	a := validAssignment()
+	a.SubjectSHA = subject
+	return a
+}
+
 func validEvidence(t *testing.T, id shadowpilot.ShadowRunID) shadowpilot.EvidenceBundle {
 	t.Helper()
 	b, err := shadowpilot.NewEvidenceBundle(id)
@@ -37,7 +47,7 @@ func TestCorrectiveReadinessEnforcesIndependence(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			r, a := validReviewResult(), validAuditResult()
 			tc.edit(&r, &a)
-			got := shadowpilot.ComputeReadiness(&r, &a, sha1)
+			got := shadowpilot.ComputeReadiness(&r, &a, readinessAssignment(sha1))
 			if got.Readiness != shadowpilot.ShadowReadinessBlocked || !strings.Contains(got.Reason, string(tc.condition)) {
 				t.Fatalf("independence violation must BLOCK with stop condition: %+v", got)
 			}
@@ -69,12 +79,12 @@ func TestCorrectiveReadinessGuards(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r, a := validReviewResult(), validAuditResult()
-			if got := shadowpilot.ComputeReadiness(&r, &a, sha1); got.Readiness != shadowpilot.ShadowReadinessReady {
+			if got := shadowpilot.ComputeReadiness(&r, &a, readinessAssignment(sha1)); got.Readiness != shadowpilot.ShadowReadinessReady {
 				t.Fatalf("invalid baseline: %+v", got)
 			}
 			rp := &r
 			tc.edit(&rp, &a)
-			if got := shadowpilot.ComputeReadiness(rp, &a, sha1); got.Readiness != tc.want {
+			if got := shadowpilot.ComputeReadiness(rp, &a, readinessAssignment(sha1)); got.Readiness != tc.want {
 				t.Fatalf("got %+v, want %s", got, tc.want)
 			}
 		})
@@ -154,7 +164,7 @@ func TestCorrectiveCompleteBindsEveryIdentity(t *testing.T) {
 	for _, field := range []string{"assignment", "agent", "session", "input"} {
 		t.Run(field, func(t *testing.T) {
 			a := validAssignment()
-			e, err := shadowpilot.NewShadowExecution(a)
+			e, err := newAdmittedExecution(a)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -206,6 +216,7 @@ func TestCorrectiveRecoveryFenced(t *testing.T) {
 
 func TestCorrectiveCheckpointSupersededReview(t *testing.T) {
 	a, r := crashAssignment(), validReviewResult()
+	r.Generation = a.Generation
 	r.Superseded = true
 	if err := shadowpilot.ValidateCheckpointIntegrity(shadowpilot.ShadowCheckpoint{Assignment: &a, ReviewResult: &r}); err == nil {
 		t.Fatal("superseded review treated as current")

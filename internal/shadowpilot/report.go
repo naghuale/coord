@@ -42,6 +42,25 @@ type WorkPackageEntry struct {
 	Status WorkPackageStatus `json:"status"`
 }
 
+func (w WorkPackageEntry) Validate() error {
+	if strings.TrimSpace(w.Name) == "" {
+		return errors.New("work package: name required")
+	}
+	switch w.Status {
+	case WPIntegrated:
+		if !sha40(w.SHA) {
+			return errors.New("work package: integrated SHA must be a hex commit SHA")
+		}
+	case WPPending, WPSkipped:
+		if w.SHA != "" && !sha40(w.SHA) {
+			return errors.New("work package: invalid SHA")
+		}
+	default:
+		return errors.New("work package: unknown status")
+	}
+	return nil
+}
+
 // RuntimeEvidence records the execution constraints that were verified during
 // the shadow pilot.
 type RuntimeEvidence struct {
@@ -54,6 +73,21 @@ type RuntimeEvidence struct {
 }
 
 func (r RuntimeEvidence) Validate() error {
+	if !r.RealEntryPointUsed {
+		return errors.New("runtime evidence: real entry point required")
+	}
+	if strings.TrimSpace(r.AdapterKind) == "" {
+		return errors.New("runtime evidence: adapter_kind required")
+	}
+	if r.FakeOrLive != "fake" && r.FakeOrLive != "live" {
+		return errors.New("runtime evidence: fake_or_live must be fake or live")
+	}
+	// Known adapter identities carry a mode. Other non-empty adapter kinds
+	// retain their declared mode; this validator does not authenticate adapters.
+	mode := map[string]string{"fake": "fake", "shadow-fake": "fake", "live": "live", "shadow-live": "live"}[r.AdapterKind]
+	if mode != "" && mode != r.FakeOrLive {
+		return errors.New("runtime evidence: adapter_kind contradicts fake_or_live")
+	}
 	if r.ProductionWrites != 0 {
 		return fmt.Errorf("runtime evidence: production_writes must be 0, got %d", r.ProductionWrites)
 	}
@@ -116,6 +150,9 @@ type RecoverySummary struct {
 }
 
 func (r RecoverySummary) Validate() error {
+	if r.CrashPointsTested < 1 {
+		return errors.New("recovery summary: at least one crash point must be tested")
+	}
 	if r.DuplicateLaunches != 0 {
 		return fmt.Errorf("recovery summary: duplicate_launches must be 0, got %d", r.DuplicateLaunches)
 	}
@@ -161,11 +198,22 @@ func (r ShadowValidationReport) Validate() error {
 	if !sha40(r.MainSHA) {
 		return errors.New("report: main_sha must be a 40 or 64 hex character commit SHA")
 	}
+	if strings.TrimSpace(r.CoordVersion) == "" {
+		return errors.New("report: coord_version required")
+	}
+	if r.CanonicalRevision == 0 {
+		return errors.New("report: canonical_revision must be positive")
+	}
 	if r.ProducedAt.IsZero() {
 		return errors.New("report: produced_at required")
 	}
 	if len(r.WorkPackages) == 0 {
 		return errors.New("report: work_packages required")
+	}
+	for _, wp := range r.WorkPackages {
+		if err := wp.Validate(); err != nil {
+			return err
+		}
 	}
 	if err := r.Runtime.Validate(); err != nil {
 		return err
@@ -197,11 +245,6 @@ func (r ShadowValidationReport) Validate() error {
 }
 
 func (r ShadowValidationReport) deriveRecommendation() AdmissionRecommendation {
-	// A caller-supplied aggregate must never be more permissive than its
-	// declared outcome, even when every dimension was reported as MATCH.
-	if r.Comparison.Outcome != OutcomeMatch {
-		return CorrectionRequired
-	}
 	allIntegrated := len(r.WorkPackages) > 0
 	for _, wp := range r.WorkPackages {
 		if wp.Status != WPIntegrated {
@@ -209,6 +252,8 @@ func (r ShadowValidationReport) deriveRecommendation() AdmissionRecommendation {
 		}
 	}
 	return DeriveRecommendation(P03AdmissionGates{
+		ComparisonOutcome:              r.Comparison.Outcome,
+		SafeDivergences:                r.Comparison.SafeDivergences,
 		AllWPsIntegrated:               allIntegrated,
 		UnsafeDivergences:              r.Comparison.UnsafeDivergences,
 		NotEvaluatedBlockingProperties: r.Comparison.NotEvaluated,
@@ -223,15 +268,19 @@ func (r ShadowValidationReport) deriveRecommendation() AdmissionRecommendation {
 
 // P03AdmissionGates records each gate that must pass for ADMIT_P0_3.
 type P03AdmissionGates struct {
-	AllWPsIntegrated               bool `json:"all_wps_integrated"`
-	UnsafeDivergences              int  `json:"unsafe_divergences"`
-	NotEvaluatedBlockingProperties int  `json:"not_evaluated_blocking_properties"`
-	DuplicateLaunches              int  `json:"duplicate_launches"`
-	StaleResultsAccepted           int  `json:"stale_results_accepted"`
-	ProductionWrites               int  `json:"production_writes"`
-	GitHubWrites                   int  `json:"github_writes"`
-	ReviewAccepted                 bool `json:"review_accepted"`
-	AuditAccepted                  bool `json:"audit_accepted"`
+	// Empty ComparisonOutcome preserves counter-only use; report callers pass
+	// the verified aggregate so all non-MATCH outcomes require correction.
+	ComparisonOutcome              ComparisonOutcome `json:"comparison_outcome,omitempty"`
+	SafeDivergences                int               `json:"safe_divergences"`
+	AllWPsIntegrated               bool              `json:"all_wps_integrated"`
+	UnsafeDivergences              int               `json:"unsafe_divergences"`
+	NotEvaluatedBlockingProperties int               `json:"not_evaluated_blocking_properties"`
+	DuplicateLaunches              int               `json:"duplicate_launches"`
+	StaleResultsAccepted           int               `json:"stale_results_accepted"`
+	ProductionWrites               int               `json:"production_writes"`
+	GitHubWrites                   int               `json:"github_writes"`
+	ReviewAccepted                 bool              `json:"review_accepted"`
+	AuditAccepted                  bool              `json:"audit_accepted"`
 }
 
 // DeriveRecommendation computes the admission recommendation from the evidence
@@ -240,7 +289,8 @@ type P03AdmissionGates struct {
 //
 // Precedence: CORRECTION_REQUIRED (unsafe) > REPEAT (not_evaluated) > ADMIT/OWNER.
 func DeriveRecommendation(gates P03AdmissionGates) AdmissionRecommendation {
-	if gates.UnsafeDivergences > 0 ||
+	if (gates.ComparisonOutcome != "" && gates.ComparisonOutcome != OutcomeMatch) ||
+		gates.SafeDivergences > 0 || gates.UnsafeDivergences > 0 ||
 		gates.DuplicateLaunches > 0 ||
 		gates.StaleResultsAccepted > 0 ||
 		gates.ProductionWrites > 0 ||

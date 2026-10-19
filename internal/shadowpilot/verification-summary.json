@@ -1,6 +1,6 @@
 {
   "subjectBranch": "feat/issue70-shadowpilot-corrective-f1-f6",
-  "baseCommit": "0cb6daa9052fc15715217dfcf244d70311faaa03",
+  "baseCommit": "b48c83a5a27cfeb2bf39b091afa169c787844865",
   "coveredWorkPackages": [
     "WP-SV-01",
     "WP-SV-02",
@@ -11,7 +11,7 @@
   ],
   "scopeStatement": {
     "packageWide": false,
-    "scope": "Selected WP-SV-05..WP-SV-06 mutation-backed invariants and the explicitly enumerated F1/F4/F5 corrective subset in WP-SV-02..04; not an exhaustive package assurance claim.",
+    "scope": "Selected model invariants and explicitly enumerated corrective/audit findings across WP-SV-02..06, plus test-only baseline evidence for WP-SV-01. Not an exhaustive package assurance claim.",
     "mutationEvidenceWorkPackages": [
       "WP-SV-05",
       "WP-SV-06"
@@ -48,35 +48,40 @@
       "testEvidencePaths": [
         "internal/shadowpilot/run_test.go",
         "internal/shadowpilot/evidence_test.go",
-        "internal/shadowpilot/integrity_roundtrip_test.go"
+        "internal/shadowpilot/integrity_roundtrip_test.go",
+        "internal/shadowpilot/audit_round_test.go"
       ],
       "mutationAssurance": "SELECTED_ENUMERATED_MUTANTS"
     },
     {
       "workPackage": "WP-SV-03",
       "testEvidencePaths": [
-        "internal/shadowpilot/executor_test.go"
+        "internal/shadowpilot/executor_test.go",
+        "internal/shadowpilot/audit_round_test.go"
       ],
       "mutationAssurance": "SELECTED_ENUMERATED_MUTANTS"
     },
     {
       "workPackage": "WP-SV-04",
       "testEvidencePaths": [
-        "internal/shadowpilot/review_audit_test.go"
+        "internal/shadowpilot/review_audit_test.go",
+        "internal/shadowpilot/audit_round_test.go"
       ],
       "mutationAssurance": "SELECTED_ENUMERATED_MUTANTS"
     },
     {
       "workPackage": "WP-SV-05",
       "testEvidencePaths": [
-        "internal/shadowpilot/crash_recovery_test.go"
+        "internal/shadowpilot/crash_recovery_test.go",
+        "internal/shadowpilot/audit_round_test.go"
       ],
       "mutationAssurance": "SELECTED_ENUMERATED_MUTANTS"
     },
     {
       "workPackage": "WP-SV-06",
       "testEvidencePaths": [
-        "internal/shadowpilot/report_test.go"
+        "internal/shadowpilot/report_test.go",
+        "internal/shadowpilot/audit_round_test.go"
       ],
       "mutationAssurance": "SELECTED_ENUMERATED_MUTANTS"
     }
@@ -86,244 +91,571 @@
       "id": "RD-BLOCKED",
       "workPackage": "WP-SV-04",
       "test": "TestCorrectiveReadinessGuards",
+      "testEvidencePath": "internal/shadowpilot/corrective_test.go",
       "mutation": "RD-BLOCKED",
       "verdict": "KILLED",
-      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/RD-BLOCKED/test.log",
-      "evidenceDigest": "sha256:9bbbe5171985b16081e239a4e0c1ee6b7f2b6b4de395670a9aee8d3640987f77"
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/RD-BLOCKED/test.log",
+      "evidenceDigest": "sha256:f8cf071394d8e1e1dbf555e4f8c958bb3ebda1295836d0a25e5b7b5ce0552021"
     },
     {
       "id": "RD-REVIEW-CHANGES",
       "workPackage": "WP-SV-04",
       "test": "TestCorrectiveReadinessGuards",
+      "testEvidencePath": "internal/shadowpilot/corrective_test.go",
       "mutation": "RD-REVIEW-CHANGES",
       "verdict": "KILLED",
-      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/RD-REVIEW-CHANGES/test.log",
-      "evidenceDigest": "sha256:a47a4ca339a357f126474c05c47eddfd3d11b688e7b92d40d97942d9d356df41"
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/RD-REVIEW-CHANGES/test.log",
+      "evidenceDigest": "sha256:c3de777bbc03bf19b0b456e46448b70408c83415b7e092ecb25123c34bc77380"
     },
     {
       "id": "RD-AUDIT-SUPERSEDED",
       "workPackage": "WP-SV-04",
       "test": "TestCorrectiveReadinessGuards",
+      "testEvidencePath": "internal/shadowpilot/corrective_test.go",
       "mutation": "RD-AUDIT-SUPERSEDED",
       "verdict": "KILLED",
-      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/RD-AUDIT-SUPERSEDED/test.log",
-      "evidenceDigest": "sha256:4046c94dea2dbf5e7e4d446800697cc9dd2034c63c93307678abaead1d80fbfc"
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/RD-AUDIT-SUPERSEDED/test.log",
+      "evidenceDigest": "sha256:769dd1f5135466f08589bdfe5a4660944e85bc85ecccfa7795f3ea558e985b1e"
     },
     {
       "id": "CR-LIVE-GEN-MISMATCH",
       "workPackage": "WP-SV-05",
       "test": "TestCorrectiveRecoveryLiveGeneration",
+      "testEvidencePath": "internal/shadowpilot/corrective_test.go",
       "mutation": "CR-LIVE-GEN-MISMATCH",
       "verdict": "KILLED",
-      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/CR-LIVE-GEN-MISMATCH/test.log",
-      "evidenceDigest": "sha256:e4bcd6fad619e34e74e3afd585b0a4b1b063f58d09963e6c8a2f24c4ddc11b43"
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/CR-LIVE-GEN-MISMATCH/test.log",
+      "evidenceDigest": "sha256:6a4f35fde9f6cc77f630f46a19d1e824b2009ddb2e7733816fdeea9e25a79411"
     },
     {
       "id": "CR-FENCED-RESTART",
       "workPackage": "WP-SV-05",
       "test": "TestCorrectiveRecoveryFenced",
+      "testEvidencePath": "internal/shadowpilot/corrective_test.go",
       "mutation": "CR-FENCED-RESTART",
       "verdict": "KILLED",
-      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/CR-FENCED-RESTART/test.log",
-      "evidenceDigest": "sha256:cc2bc8280b5afa54c49acdd591a76a0c24368e289f5293db8adb0e06fd9c0b89"
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/CR-FENCED-RESTART/test.log",
+      "evidenceDigest": "sha256:4027f09c39764108e7acf82854289615a464fa4d2ee153cc6b87401ee2d08dbe"
     },
     {
       "id": "CR-INTEGRITY-SUPERSEDED",
       "workPackage": "WP-SV-05",
       "test": "TestCorrectiveCheckpointSupersededReview",
+      "testEvidencePath": "internal/shadowpilot/corrective_test.go",
       "mutation": "CR-INTEGRITY-SUPERSEDED",
       "verdict": "KILLED",
-      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/CR-INTEGRITY-SUPERSEDED/test.log",
-      "evidenceDigest": "sha256:cf89deb34dfeb6abf327d737268ec856f1222cc5e3a602cb0b9d5047fa8f2fa8"
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/CR-INTEGRITY-SUPERSEDED/test.log",
+      "evidenceDigest": "sha256:2f985defe216f8328090d130752a3dfb32ecd5b6eb25fb5a803beaad42afb8d1"
     },
     {
       "id": "EV-VALIDATE-DUP",
       "workPackage": "WP-SV-02",
       "test": "TestCorrectiveEvidenceDuplicateRefs",
+      "testEvidencePath": "internal/shadowpilot/corrective_test.go",
       "mutation": "EV-VALIDATE-DUP",
       "verdict": "KILLED",
-      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/EV-VALIDATE-DUP/test.log",
-      "evidenceDigest": "sha256:1366d90f46f54f4d278d8e0105f56f188be5b3a5f4fbe22f1665238d14aa4558"
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/EV-VALIDATE-DUP/test.log",
+      "evidenceDigest": "sha256:c9fa1c3803a7603ce1d6ffc1ee1b9c0e24ef169b88f66a5530a75234bcff24e6"
     },
     {
       "id": "RP-VALIDATE-DIMENSIONS",
       "workPackage": "WP-SV-06",
       "test": "TestCorrectiveReportDimensionCount",
+      "testEvidencePath": "internal/shadowpilot/corrective_test.go",
       "mutation": "RP-VALIDATE-DIMENSIONS",
       "verdict": "KILLED",
-      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/RP-VALIDATE-DIMENSIONS/test.log",
-      "evidenceDigest": "sha256:6444b12b4c4da2ccbfe65991d6bd205bd6221b064056f0a91d5a4f3ea54b5530"
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/RP-VALIDATE-DIMENSIONS/test.log",
+      "evidenceDigest": "sha256:3399ad68b1f56ab18fc99bc1dbc7caa829ca8d3412be0283f37560c0049d4437"
     },
     {
       "id": "RD-NIL-REVIEW",
       "workPackage": "WP-SV-04",
       "test": "TestCorrectiveReadinessGuards",
+      "testEvidencePath": "internal/shadowpilot/corrective_test.go",
       "mutation": "RD-NIL-REVIEW",
       "verdict": "KILLED",
-      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/RD-NIL-REVIEW/test.log",
-      "evidenceDigest": "sha256:2d573137d676cb4fe321b8f4b288a872355f82eb44ebd7a23e0ea8bdbd5a93c3"
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/RD-NIL-REVIEW/test.log",
+      "evidenceDigest": "sha256:472d061625c901014c255642807bda1439b9ecd91f8ca60c50687399e1d82964"
     },
     {
       "id": "RP-AGGREGATE-BINDING",
       "workPackage": "WP-SV-06",
       "test": "TestCorrectiveNewReportRejectsAggregateMismatch",
+      "testEvidencePath": "internal/shadowpilot/integrity_roundtrip_test.go",
       "mutation": "RP-AGGREGATE-BINDING",
       "verdict": "KILLED",
-      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/RP-AGGREGATE-BINDING/test.log",
-      "evidenceDigest": "sha256:59b51d5ed89562d7d3aa45288e5f729727772d4a603cb28ae4cfff832358874e"
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/RP-AGGREGATE-BINDING/test.log",
+      "evidenceDigest": "sha256:b336615bf02bc2b6dbcdc22073e6ccc0328478ce89716529080ca02441ad69c4"
     },
     {
       "id": "RP-SUMMARY-AGGREGATE",
       "workPackage": "WP-SV-06",
       "test": "TestCorrectiveReportAggregateConsistency",
+      "testEvidencePath": "internal/shadowpilot/integrity_roundtrip_test.go",
       "mutation": "RP-SUMMARY-AGGREGATE",
       "verdict": "KILLED",
-      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/RP-SUMMARY-AGGREGATE/test.log",
-      "evidenceDigest": "sha256:abbbdc3864be87d18781bcabc04c2b5a83e568f0357449c10eafcd8aeee09792"
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/RP-SUMMARY-AGGREGATE/test.log",
+      "evidenceDigest": "sha256:3e3d96dbc01f4e54b1f233415974ae0faa00dfa86c161a40c737b4f5642bf69f"
     },
     {
       "id": "RP-AGGREGATE",
       "workPackage": "WP-SV-06",
       "test": "TestCorrectiveNewReportHonorsAggregate",
+      "testEvidencePath": "internal/shadowpilot/corrective_test.go",
       "mutation": "RP-AGGREGATE",
       "verdict": "KILLED",
-      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/RP-AGGREGATE/test.log",
-      "evidenceDigest": "sha256:663b965d5eb34bb9d96e6844351113b018f8120856f91249c4d0b8cf4c91b8ac"
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/RP-AGGREGATE/test.log",
+      "evidenceDigest": "sha256:54652efeaba8039bc5bcf9a5354294e688133e51f87bf0c4370be64c6098c381"
     },
     {
       "id": "RD-INDEPENDENCE",
       "workPackage": "WP-SV-04",
       "test": "TestCorrectiveReadinessEnforcesIndependence",
+      "testEvidencePath": "internal/shadowpilot/corrective_test.go",
       "mutation": "RD-INDEPENDENCE",
       "verdict": "KILLED",
-      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/RD-INDEPENDENCE/test.log",
-      "evidenceDigest": "sha256:e0d37ac6920a78b836e2d0336527c31998e5235186df6f00ffe163183629f8b0"
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/RD-INDEPENDENCE/test.log",
+      "evidenceDigest": "sha256:3369a356cfb192e29aa866ee1ec5ccc431deeabf5909ec424d6f2f31bbc01600"
     },
     {
       "id": "RD-REVIEW-VALIDATION",
       "workPackage": "WP-SV-04",
       "test": "TestCorrectiveReadinessEnforcesIndependence",
+      "testEvidencePath": "internal/shadowpilot/corrective_test.go",
       "mutation": "RD-REVIEW-VALIDATION",
       "verdict": "KILLED",
-      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/RD-REVIEW-VALIDATION/test.log",
-      "evidenceDigest": "sha256:a158060faab178f6bad2b397880ff746c4e2bd7a48fd63a474ba3606103a2f9b"
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/RD-REVIEW-VALIDATION/test.log",
+      "evidenceDigest": "sha256:d9bb2dd809acaf410350d8e2cf884674abf4ce77796a997537f1c2556a4a5c28"
     },
     {
       "id": "RD-AUDIT-VALIDATION",
       "workPackage": "WP-SV-04",
       "test": "TestCorrectiveReadinessEnforcesIndependence",
+      "testEvidencePath": "internal/shadowpilot/corrective_test.go",
       "mutation": "RD-AUDIT-VALIDATION",
       "verdict": "KILLED",
-      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/RD-AUDIT-VALIDATION/test.log",
-      "evidenceDigest": "sha256:0a4705fab21b731b8c70f0fbf4344adc2c29e537425e8686930d8c5087ee643e"
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/RD-AUDIT-VALIDATION/test.log",
+      "evidenceDigest": "sha256:7f4349a4a1d26f316260fd4748c9f19eeeff79ad26ea597d9799385f11d0439d"
     },
     {
       "id": "RP-RECOMMENDATION",
       "workPackage": "WP-SV-06",
       "test": "TestCorrectiveReportRejectsForgedRecommendation",
+      "testEvidencePath": "internal/shadowpilot/corrective_test.go",
       "mutation": "RP-RECOMMENDATION",
       "verdict": "KILLED",
-      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/RP-RECOMMENDATION/test.log",
-      "evidenceDigest": "sha256:a4457e39f73fa726a348536f180e8af446ddcd790ebbddc3be75615998dc1b47"
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/RP-RECOMMENDATION/test.log",
+      "evidenceDigest": "sha256:36703ae8ad668578fd1933bdf95d118603542659b42e4169ccfc724a6e1720ae"
     },
     {
       "id": "EX-ASSIGNMENT",
       "workPackage": "WP-SV-03",
       "test": "TestCorrectiveCompleteBindsEveryIdentity",
+      "testEvidencePath": "internal/shadowpilot/corrective_test.go",
       "mutation": "EX-ASSIGNMENT",
       "verdict": "KILLED",
-      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/EX-ASSIGNMENT/test.log",
-      "evidenceDigest": "sha256:96832e565ab7249988b7416aedc43e1294dbfbed4258d9f55d8f6e5fdfd8afef"
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/EX-ASSIGNMENT/test.log",
+      "evidenceDigest": "sha256:a4f4e21e0f08775e807f1bf8f3ebea93c9088e2ff721aab09d54b5433e737b04"
     },
     {
       "id": "EX-AGENT",
       "workPackage": "WP-SV-03",
       "test": "TestCorrectiveCompleteBindsEveryIdentity",
+      "testEvidencePath": "internal/shadowpilot/corrective_test.go",
       "mutation": "EX-AGENT",
       "verdict": "KILLED",
-      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/EX-AGENT/test.log",
-      "evidenceDigest": "sha256:24511bf03726e4ba65667a9fb09b424354f28fb498ae383252100835ae81ff44"
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/EX-AGENT/test.log",
+      "evidenceDigest": "sha256:4dd4fced375824d52de17e9cf9e2300eb48a7b687e99e4fcd89fce0176bf1785"
     },
     {
       "id": "EX-SESSION",
       "workPackage": "WP-SV-03",
       "test": "TestCorrectiveCompleteBindsEveryIdentity",
+      "testEvidencePath": "internal/shadowpilot/corrective_test.go",
       "mutation": "EX-SESSION",
       "verdict": "KILLED",
-      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/EX-SESSION/test.log",
-      "evidenceDigest": "sha256:41bf24322cab5847cd8d270bf81681a87f0492ac53967db03145b472f2f7cd95"
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/EX-SESSION/test.log",
+      "evidenceDigest": "sha256:7e23648f003f4a56ced94a76f92b6ae9210bdc89ae25df5a9ac9cda0f4698907"
     },
     {
       "id": "EX-INPUT",
       "workPackage": "WP-SV-03",
       "test": "TestCorrectiveCompleteBindsEveryIdentity",
+      "testEvidencePath": "internal/shadowpilot/corrective_test.go",
       "mutation": "EX-INPUT",
       "verdict": "KILLED",
-      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/EX-INPUT/test.log",
-      "evidenceDigest": "sha256:475f294f79efa92c2a196578a45b62211c0ad4546287e09f49d7af1a1ef2eb9d"
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/EX-INPUT/test.log",
+      "evidenceDigest": "sha256:56c9d7116fd469df9fbd1ba56c1ca8fbf89864894ff39f5551140e44f4d17592"
     },
     {
       "id": "EV-EMPTY-MANIFEST",
       "workPackage": "WP-SV-02",
-      "test": "TestCorrectiveEvidenceSealEnforcement",
+      "test": "TestCorrectiveEvidenceIntegrity",
+      "testEvidencePath": "internal/shadowpilot/corrective_test.go",
       "mutation": "EV-EMPTY-MANIFEST",
       "verdict": "KILLED",
-      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/EV-EMPTY-MANIFEST/test.log",
-      "evidenceDigest": "sha256:3305118b53436a9584fa53c4328f7e28ca19c7ab35569108ac2096cef79a187f"
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/EV-EMPTY-MANIFEST/test.log",
+      "evidenceDigest": "sha256:ad809567f9f79f07a094da947fbb749e6df02642acc69225164410299e7ecd63"
     },
     {
       "id": "EV-PROVENANCE",
       "workPackage": "WP-SV-02",
-      "test": "TestCorrectiveEvidenceSealEnforcement",
+      "test": "TestCorrectiveEvidenceIntegrity",
+      "testEvidencePath": "internal/shadowpilot/corrective_test.go",
       "mutation": "EV-PROVENANCE",
       "verdict": "KILLED",
-      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/EV-PROVENANCE/test.log",
-      "evidenceDigest": "sha256:b9051135be748a9d4bed085309478c400579214148571771317971b2d217b14d"
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/EV-PROVENANCE/test.log",
+      "evidenceDigest": "sha256:1acf80b6edcac4ca80e263147e8cbfdf000e7998f93cfc79978b7c6cd925f627"
     },
     {
       "id": "EV-DIGEST",
       "workPackage": "WP-SV-02",
-      "test": "TestCorrectiveEvidenceJSONTampering",
+      "test": "TestCorrectiveEvidenceIntegrity",
+      "testEvidencePath": "internal/shadowpilot/corrective_test.go",
       "mutation": "EV-DIGEST",
       "verdict": "KILLED",
-      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/EV-DIGEST/test.log",
-      "evidenceDigest": "sha256:85f49691b10330d5e45755462c5747dbab5f35a29a316ad495ac21e85c75e7cd"
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/EV-DIGEST/test.log",
+      "evidenceDigest": "sha256:93b444267fc168410dc091a1e315e9e8cee7202e55d89c841909b466ecb2cf75"
     },
     {
       "id": "EV-CROSS-RUN",
       "workPackage": "WP-SV-02",
-      "test": "TestCorrectiveEvidenceJSONTampering",
+      "test": "TestCorrectiveEvidenceIntegrity",
+      "testEvidencePath": "internal/shadowpilot/corrective_test.go",
       "mutation": "EV-CROSS-RUN",
       "verdict": "KILLED",
-      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/EV-CROSS-RUN/test.log",
-      "evidenceDigest": "sha256:7f041733043f46b4873451c44b945f89836a90c17db96815fde6ebe3e22577aa"
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/EV-CROSS-RUN/test.log",
+      "evidenceDigest": "sha256:b2e7d36f3ec1bebcb9086e852f6e8c588a574380afe9dbdbd2ac1459af6d92de"
     },
     {
       "id": "EV-MANIFEST-REFS",
       "workPackage": "WP-SV-02",
       "test": "TestCorrectiveEvidenceIntegrity",
+      "testEvidencePath": "internal/shadowpilot/corrective_test.go",
       "mutation": "EV-MANIFEST-REFS",
       "verdict": "KILLED",
-      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/EV-MANIFEST-REFS/test.log",
-      "evidenceDigest": "sha256:f606d75fabce9e4dd5fb58cbb0ba0cf9e024b2bdfaa6095de4c2429cb9ccf503"
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/EV-MANIFEST-REFS/test.log",
+      "evidenceDigest": "sha256:90fa3975a5b82e3ca88494316c33ffe4908c98e8b0a83bb53dda6e14827a5e48"
     },
     {
       "id": "BASELINE-DIGEST",
       "workPackage": "WP-SV-02",
       "test": "TestCorrectiveBaselineDigest",
+      "testEvidencePath": "internal/shadowpilot/corrective_test.go",
       "mutation": "BASELINE-DIGEST",
       "verdict": "KILLED",
-      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/BASELINE-DIGEST/test.log",
-      "evidenceDigest": "sha256:6d25ba0d01430510dc554b8b9c460f46e1d3796557cbc7b70c0b6dadbcd4f9ee"
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/BASELINE-DIGEST/test.log",
+      "evidenceDigest": "sha256:7571955df425c9fdd97851333761bb56b2be7d31f38647b1eab9e6c0d22026a2"
     },
     {
       "id": "RP-EVIDENCE",
       "workPackage": "WP-SV-06",
-      "test": "TestCorrectiveEvidenceZeroValueRejected",
+      "test": "TestCorrectiveReportRequiresEvidence",
+      "testEvidencePath": "internal/shadowpilot/corrective_test.go",
       "mutation": "RP-EVIDENCE",
       "verdict": "KILLED",
-      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/RP-EVIDENCE/test.log",
-      "evidenceDigest": "sha256:434daf479c0834e683f31e67dcea381dca4e59ea2c4c0a766768a552ddc516e5"
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/RP-EVIDENCE/test.log",
+      "evidenceDigest": "sha256:d43a1e3993895629fc4d0f754b925cebc1d282556cc23c7c7a211a7844f1aaf7"
+    },
+    {
+      "id": "M-1",
+      "workPackage": "WP-SV-06",
+      "test": "TestReportValidateRejectsZeroComparisonCounts",
+      "testEvidencePath": "internal/shadowpilot/exact_finding_test.go",
+      "mutation": "M-1",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/M-1/test.log",
+      "evidenceDigest": "sha256:44b9c809da352d8424dfbb04eed0b961ab42a7c4ec84cb2afcccc9690f132ca8"
+    },
+    {
+      "id": "M-2",
+      "workPackage": "WP-SV-04",
+      "test": "TestComputeReadinessRejectsUnknownAuditVerdict",
+      "testEvidencePath": "internal/shadowpilot/exact_finding_test.go",
+      "mutation": "M-2",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/M-2/test.log",
+      "evidenceDigest": "sha256:d69e51101e88c2b94f37def15af97631beec1c4e9c33e36f48ab8b91587d0801"
+    },
+    {
+      "id": "M-3",
+      "workPackage": "WP-SV-02",
+      "test": "TestEvidenceBundleValidateRejectsProductionAuthority",
+      "testEvidencePath": "internal/shadowpilot/evidence_test.go",
+      "mutation": "M-3",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/M-3/test.log",
+      "evidenceDigest": "sha256:b75ab7212aff5fb6f2c27c0d4812d91210226143ce9666b348975824144c508d"
+    },
+    {
+      "id": "M-4",
+      "workPackage": "WP-SV-02",
+      "test": "TestEvidenceDigestRejectsRelabelledRun",
+      "testEvidencePath": "internal/shadowpilot/exact_finding_test.go",
+      "mutation": "M-4",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/M-4/test.log",
+      "evidenceDigest": "sha256:a0f249ea9d912fe0f9099d9ab0e0d2ac2b64c4515847b9d08f02894b20fe7fcb"
+    },
+    {
+      "id": "A1-AUDIT-FINDINGS",
+      "workPackage": "WP-SV-04",
+      "test": "TestAuditRoundOpenAuditFindingsBlockReadiness",
+      "testEvidencePath": "internal/shadowpilot/audit_round_test.go",
+      "mutation": "A1-AUDIT-FINDINGS",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/A1-AUDIT-FINDINGS/test.log",
+      "evidenceDigest": "sha256:a446f776d256b174081a75d014a003c6a5c45e6b214864bf101fd299fbc089ec"
+    },
+    {
+      "id": "A2-ADMIT-CALLED",
+      "workPackage": "WP-SV-03",
+      "test": "TestAuditRoundConstructorEnforcesAdmission",
+      "testEvidencePath": "internal/shadowpilot/audit_round_test.go",
+      "mutation": "A2-ADMIT-CALLED",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/A2-ADMIT-CALLED/test.log",
+      "evidenceDigest": "sha256:2b02b2cf9d164840a79b7119a1f2c3497d89e45969d3eabcee68e8a728c85072"
+    },
+    {
+      "id": "A2-ADMISSION-RESULT",
+      "workPackage": "WP-SV-03",
+      "test": "TestAuditRoundConstructorEnforcesAdmission",
+      "testEvidencePath": "internal/shadowpilot/audit_round_test.go",
+      "mutation": "A2-ADMISSION-RESULT",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/A2-ADMISSION-RESULT/test.log",
+      "evidenceDigest": "sha256:9f17299fb035ac427d989abbeb62fdbae612716cee6b4a593586a62fa2723ed5"
+    },
+    {
+      "id": "A2-START-ADMISSION",
+      "workPackage": "WP-SV-03",
+      "test": "TestAuditRoundStartRequiresRecordedAdmission",
+      "testEvidencePath": "internal/shadowpilot/audit_round_test.go",
+      "mutation": "A2-START-ADMISSION",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/A2-START-ADMISSION/test.log",
+      "evidenceDigest": "sha256:a6a72e233c7c3470e71f201446440314a4e325c91eeb139c0d8adb3797d9b885"
+    },
+    {
+      "id": "A2-REVIEWER-SET",
+      "workPackage": "WP-SV-03",
+      "test": "TestAuditRoundConstructorEnforcesAdmission",
+      "testEvidencePath": "internal/shadowpilot/audit_round_test.go",
+      "mutation": "A2-REVIEWER-SET",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/A2-REVIEWER-SET/test.log",
+      "evidenceDigest": "sha256:ec97019f4a370e5962761ebbda8a793e941f3e245b3f73111b6fe4332bc1209b"
+    },
+    {
+      "id": "A2-REVIEWER-IDENTITY",
+      "workPackage": "WP-SV-03",
+      "test": "TestAuditRoundConstructorEnforcesAdmission",
+      "testEvidencePath": "internal/shadowpilot/audit_round_test.go",
+      "mutation": "A2-REVIEWER-IDENTITY",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/A2-REVIEWER-IDENTITY/test.log",
+      "evidenceDigest": "sha256:d2ad51b6fd7529d1b2bc830c64eabe45b7eb24ce9d8c0f1cc87acaadd0b36a70"
+    },
+    {
+      "id": "A3-PLANNER-INTEGRITY",
+      "workPackage": "WP-SV-05",
+      "test": "TestAuditRoundPlannerWiresIntegrity",
+      "testEvidencePath": "internal/shadowpilot/audit_round_test.go",
+      "mutation": "A3-PLANNER-INTEGRITY",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/A3-PLANNER-INTEGRITY/test.log",
+      "evidenceDigest": "sha256:4f819c3964ba21107918e0ae9c8728e50d33198405541047f8e5d6748140e89f"
+    },
+    {
+      "id": "A7-READINESS-ASSIGNMENT",
+      "workPackage": "WP-SV-04",
+      "test": "TestAuditRoundReadinessBindsAssignment",
+      "testEvidencePath": "internal/shadowpilot/audit_round_test.go",
+      "mutation": "A7-READINESS-ASSIGNMENT",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/A7-READINESS-ASSIGNMENT/test.log",
+      "evidenceDigest": "sha256:a2e6fe62da610d2b9ad0f3fa61e00e8773f18cb2e2fdb6aebfbb107a904e1a87"
+    },
+    {
+      "id": "A7-CHECKPOINT-REVIEW",
+      "workPackage": "WP-SV-05",
+      "test": "TestAuditRoundCheckpointBindsReviewAudit",
+      "testEvidencePath": "internal/shadowpilot/audit_round_test.go",
+      "mutation": "A7-CHECKPOINT-REVIEW",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/A7-CHECKPOINT-REVIEW/test.log",
+      "evidenceDigest": "sha256:4f927a9b8e79aa4cd9dabd25e564bcc0f3b9111c452cb4f5d4b2b52b14fc64bb"
+    },
+    {
+      "id": "A7-CHECKPOINT-AUDIT",
+      "workPackage": "WP-SV-05",
+      "test": "TestAuditRoundCheckpointBindsReviewAudit",
+      "testEvidencePath": "internal/shadowpilot/audit_round_test.go",
+      "mutation": "A7-CHECKPOINT-AUDIT",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/A7-CHECKPOINT-AUDIT/test.log",
+      "evidenceDigest": "sha256:929fa0089eb53d08c8bec24eb4a86e2eb6b3ce0b7204cc47406dd3aa80509e33"
+    },
+    {
+      "id": "A7-CHECKPOINT-EXECUTION",
+      "workPackage": "WP-SV-05",
+      "test": "TestAuditRoundCheckpointBindsExecution",
+      "testEvidencePath": "internal/shadowpilot/audit_round_test.go",
+      "mutation": "A7-CHECKPOINT-EXECUTION",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/A7-CHECKPOINT-EXECUTION/test.log",
+      "evidenceDigest": "sha256:c9270c6ffefecdcee22f42c6c5a227f61686e2d1db0fd8978bcb7521932f053b"
+    },
+    {
+      "id": "A7-CHECKPOINT-RESULT",
+      "workPackage": "WP-SV-05",
+      "test": "TestAuditRoundCheckpointBindsExecution",
+      "testEvidencePath": "internal/shadowpilot/audit_round_test.go",
+      "mutation": "A7-CHECKPOINT-RESULT",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/A7-CHECKPOINT-RESULT/test.log",
+      "evidenceDigest": "sha256:8b323aa406bd8a1db41f66cc56ce326662d214a94378acd15efc2ca8d714cd68"
+    },
+    {
+      "id": "A4-HEX-SUBJECT",
+      "workPackage": "WP-SV-02",
+      "test": "TestAuditRoundRecoveryAndWorkPackageEvidence",
+      "testEvidencePath": "internal/shadowpilot/audit_round_test.go",
+      "mutation": "A4-HEX-SUBJECT",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/A4-HEX-SUBJECT/test.log",
+      "evidenceDigest": "sha256:b6f28f0a6cfa3532eb6ef92e6177032902f9ba196d0a158eb1e17a7453613d4e"
+    },
+    {
+      "id": "A5-FINDING-ORDER",
+      "workPackage": "WP-SV-02",
+      "test": "TestAuditRoundResultDigestOrdering",
+      "testEvidencePath": "internal/shadowpilot/audit_round_test.go",
+      "mutation": "A5-FINDING-ORDER",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/A5-FINDING-ORDER/test.log",
+      "evidenceDigest": "sha256:9b234816dd85d3f6cac4b752ac988b7c0a7b14a9df6194f7a7bf4dd6a1341751"
+    },
+    {
+      "id": "A6-REAL-ENTRY",
+      "workPackage": "WP-SV-06",
+      "test": "TestAuditRoundRuntimeEvidence",
+      "testEvidencePath": "internal/shadowpilot/audit_round_test.go",
+      "mutation": "A6-REAL-ENTRY",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/A6-REAL-ENTRY/test.log",
+      "evidenceDigest": "sha256:10fe11f1bbae2f2b7ba81a273085f32c775a7d9e2ce9ebc2df8f0d505b658e23"
+    },
+    {
+      "id": "A6-ADAPTER",
+      "workPackage": "WP-SV-06",
+      "test": "TestAuditRoundRuntimeEvidence",
+      "testEvidencePath": "internal/shadowpilot/audit_round_test.go",
+      "mutation": "A6-ADAPTER",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/A6-ADAPTER/test.log",
+      "evidenceDigest": "sha256:265344d34300e028ca892e0f73f235a0a96a4a790c8a016bdd86ff412c314b87"
+    },
+    {
+      "id": "A6-MODE",
+      "workPackage": "WP-SV-06",
+      "test": "TestAuditRoundRuntimeEvidence",
+      "testEvidencePath": "internal/shadowpilot/audit_round_test.go",
+      "mutation": "A6-MODE",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/A6-MODE/test.log",
+      "evidenceDigest": "sha256:c2d51f92c40bc181ff88ab0eece9a711e537c18f9b581dc36492573e67fdd929"
+    },
+    {
+      "id": "A6-MODE-CONSISTENCY",
+      "workPackage": "WP-SV-06",
+      "test": "TestAuditRoundRuntimeEvidence",
+      "testEvidencePath": "internal/shadowpilot/audit_round_test.go",
+      "mutation": "A6-MODE-CONSISTENCY",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/A6-MODE-CONSISTENCY/test.log",
+      "evidenceDigest": "sha256:5009b18d3768a7c93f1ad5d46062b523e6352ec67f629e398eebbbe25c44ce48"
+    },
+    {
+      "id": "A6-CRASH-POINTS",
+      "workPackage": "WP-SV-06",
+      "test": "TestAuditRoundRecoveryAndWorkPackageEvidence",
+      "testEvidencePath": "internal/shadowpilot/audit_round_test.go",
+      "mutation": "A6-CRASH-POINTS",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/A6-CRASH-POINTS/test.log",
+      "evidenceDigest": "sha256:605dc754bb97bc33fc4a9e9990ce2f357f7a56757c90d0f808a4e50c9adf97d7"
+    },
+    {
+      "id": "A6-WP-NAME",
+      "workPackage": "WP-SV-06",
+      "test": "TestAuditRoundRecoveryAndWorkPackageEvidence",
+      "testEvidencePath": "internal/shadowpilot/audit_round_test.go",
+      "mutation": "A6-WP-NAME",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/A6-WP-NAME/test.log",
+      "evidenceDigest": "sha256:c1889e16052973b9dfc7c84861f337eb3d9d36f83d46520392c8fe472b9912f9"
+    },
+    {
+      "id": "A6-WP-SHA",
+      "workPackage": "WP-SV-06",
+      "test": "TestAuditRoundRecoveryAndWorkPackageEvidence",
+      "testEvidencePath": "internal/shadowpilot/audit_round_test.go",
+      "mutation": "A6-WP-SHA",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/A6-WP-SHA/test.log",
+      "evidenceDigest": "sha256:9a51c03b2c9404c9fc3da7fedfb2e8563eacf35f023f911c83a7c6c55f39eede"
+    },
+    {
+      "id": "A6-WP-VALIDATION",
+      "workPackage": "WP-SV-06",
+      "test": "TestAuditRoundRecoveryAndWorkPackageEvidence",
+      "testEvidencePath": "internal/shadowpilot/audit_round_test.go",
+      "mutation": "A6-WP-VALIDATION",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/A6-WP-VALIDATION/test.log",
+      "evidenceDigest": "sha256:c2719572cf1d9c139ad4815e4af5c443796d7791e25c49766f0cab09beb066a8"
+    },
+    {
+      "id": "A6-COORD-VERSION",
+      "workPackage": "WP-SV-06",
+      "test": "TestAuditRoundRecoveryAndWorkPackageEvidence",
+      "testEvidencePath": "internal/shadowpilot/audit_round_test.go",
+      "mutation": "A6-COORD-VERSION",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/A6-COORD-VERSION/test.log",
+      "evidenceDigest": "sha256:84d5deb77f103b34af10503037461ec59eca1ad6a270b7ca6bc1a5a036697b00"
+    },
+    {
+      "id": "A6-CANONICAL-REVISION",
+      "workPackage": "WP-SV-06",
+      "test": "TestAuditRoundRecoveryAndWorkPackageEvidence",
+      "testEvidencePath": "internal/shadowpilot/audit_round_test.go",
+      "mutation": "A6-CANONICAL-REVISION",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/A6-CANONICAL-REVISION/test.log",
+      "evidenceDigest": "sha256:e697a26775a562e027fd6fe53eee034eff6a49e2f8d0120bf08dcde12977c1c0"
+    },
+    {
+      "id": "A8-SAFE-DIVERGENCE",
+      "workPackage": "WP-SV-06",
+      "test": "TestAuditRoundRecommendationHasOneDecisionPath",
+      "testEvidencePath": "internal/shadowpilot/audit_round_test.go",
+      "mutation": "A8-SAFE-DIVERGENCE",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/A8-SAFE-DIVERGENCE/test.log",
+      "evidenceDigest": "sha256:f3af58f1955b9a14098b162a77788f80389f07b0b27571e7f2dd1ccf39abf1ed"
+    },
+    {
+      "id": "A8-DERIVATION-DISAGREEMENT",
+      "workPackage": "WP-SV-06",
+      "test": "TestAuditRoundRecommendationHasOneDecisionPath",
+      "testEvidencePath": "internal/shadowpilot/audit_round_test.go",
+      "mutation": "A8-DERIVATION-DISAGREEMENT",
+      "verdict": "KILLED",
+      "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/A8-DERIVATION-DISAGREEMENT/test.log",
+      "evidenceDigest": "sha256:cc53bfb70f7a4c8aebb0b0e0a94f62c0ec37b901bbe01d6cd4ecb6ee0f48de51"
     }
   ],
   "primaryEvidenceAcceptanceTests": [
@@ -334,26 +666,41 @@
   "mutationMethod": {
     "compilingGoOverlays": true,
     "sourceFilesUnchangedByMutants": true,
-    "testFilter": "TestCorrective",
-    "runnerEvidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutation_check.py",
-    "resultsEvidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/mutants/results.json",
-    "totalsScope": "Only this corrective battery; no historical counts included."
+    "testFilter": "Per-mutant corrective, exact-finding or audit-round target tests",
+    "runnerEvidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit_round_mutations.py",
+    "resultsEvidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-mutants/results.json",
+    "totalsScope": "This combined rerun on the audit-corrected source: prior 27, M-1..M-4 and 26 audit mutants; no double counting historical totals."
   },
   "totals": {
-    "actualTestFunctions": 122,
-    "compiledMutations": 27,
-    "mutationsKilled": 27,
+    "actualTestFunctions": 137,
+    "compiledMutations": 57,
+    "mutationsKilled": 57,
     "equivalentMutations": 0,
     "materialSurvivors": 0,
     "survivors": 0
   },
   "regression": {
-    "totalPassingTests": 122,
+    "totalPassingTests": 137,
     "packageStatus": "PASS",
-    "fullMakeCheck": "PASS",
     "raceStatus": "PASS",
-    "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/final-make-check.log",
-    "evidenceDigest": "sha256:e44e2d070202350a74ce87094e364af2c4dc41848432932dcfadae06dbf3fd2b"
+    "raceEvidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-race.log",
+    "fullMakeCheck": "PASS",
+    "evidencePath": ".scratch/tmp/issue70-shadowpilot-corrective/audit-round-make-check.log",
+    "evidenceDigest": "sha256:b3ba5705f9ee71aa779bf459b09ac2f2dcbd71dee480602e8102fdb06a026acb",
+    "raceEvidenceDigest": "sha256:f09b6129a9d625fe67ac3015a282f5b4dc14f28744981fb8b11e7bb3df146b80"
   },
-  "overallResult": "SCOPED_EVIDENCE_ONLY_REQUIRES_INDEPENDENT_REVIEW_AND_AUDIT"
+  "overallResult": "SCOPED_EVIDENCE_ONLY_REQUIRES_INDEPENDENT_REVIEW_AND_AUDIT",
+  "integrationBaseCommit": "0cb6daa9052fc15715217dfcf244d70311faaa03",
+  "auditRestatement": {
+    "priorSubjectTestFunctions": 125,
+    "priorSummaryTestFunctions": 122,
+    "exactFindingMutantsIncluded": [
+      "M-1",
+      "M-2",
+      "M-3",
+      "M-4"
+    ],
+    "decisionReferenceStatus": "POINTER_ONLY",
+    "decisionReferencePath": "docs/decisions/SHADOW-VALIDATION-PILOT-R1.yaml"
+  }
 }

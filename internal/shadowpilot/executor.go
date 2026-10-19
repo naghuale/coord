@@ -89,6 +89,12 @@ const (
 // reviewerAgentIDs must contain all agent IDs assigned as reviewers on this
 // subject; the executor must not appear in that set.
 func Admit(a ShadowAssignment, actualSubjectSHA string, reviewerAgentIDs []string) AdmissionResult {
+	if err := a.Validate(); err != nil {
+		return AdmissionResult{Outcome: AdmissionRejected, Violation: &StopViolation{Condition: StopAssignmentOrGenerationMismatch, Detail: err.Error()}}
+	}
+	if !sha40(actualSubjectSHA) {
+		return AdmissionResult{Outcome: AdmissionRejected, Violation: &StopViolation{Condition: StopExactSubjectMismatch, Detail: "actual subject must be a hex commit SHA"}}
+	}
 	if !strings.EqualFold(a.SubjectSHA, actualSubjectSHA) {
 		return AdmissionResult{
 			Outcome: AdmissionRejected,
@@ -106,6 +112,14 @@ func Admit(a ShadowAssignment, actualSubjectSHA string, reviewerAgentIDs []strin
 				Condition: StopReviewerEqualsExecutor,
 				Detail:    fmt.Sprintf("executor agent_id %q is also assigned as reviewer", a.AgentID),
 			},
+		}
+	}
+	if len(reviewerAgentIDs) == 0 {
+		return AdmissionResult{Outcome: AdmissionRejected, Violation: &StopViolation{Condition: StopAssignmentOrGenerationMismatch, Detail: "reviewer identities required for admission"}}
+	}
+	for _, reviewer := range reviewerAgentIDs {
+		if strings.TrimSpace(reviewer) == "" {
+			return AdmissionResult{Outcome: AdmissionRejected, Violation: &StopViolation{Condition: StopAssignmentOrGenerationMismatch, Detail: "empty reviewer identity"}}
 		}
 	}
 	return AdmissionResult{Outcome: AdmissionAdmitted}
@@ -147,6 +161,7 @@ func (h ShadowHeartbeat) IsStale(now time.Time, timeout time.Duration) bool {
 // A fenced execution can never transition to COMPLETED.
 type ShadowExecution struct {
 	Assignment     ShadowAssignment  `json:"assignment"`
+	Admission      AdmissionResult   `json:"admission"`
 	State          ExecutorState     `json:"state"`
 	Heartbeats     []ShadowHeartbeat `json:"heartbeats"`
 	Result         *AgentResult      `json:"result,omitempty"`
@@ -156,15 +171,22 @@ type ShadowExecution struct {
 }
 
 // NewShadowExecution creates a shadow execution in ADMITTED state.
-func NewShadowExecution(a ShadowAssignment) (ShadowExecution, error) {
+func NewShadowExecution(a ShadowAssignment, actualSubjectSHA string, reviewerAgentIDs []string) (ShadowExecution, error) {
 	if err := a.Validate(); err != nil {
 		return ShadowExecution{}, err
 	}
-	return ShadowExecution{Assignment: a, State: ExecutorAdmitted}, nil
+	admission := Admit(a, actualSubjectSHA, reviewerAgentIDs)
+	if admission.Outcome != AdmissionAdmitted || admission.Violation != nil {
+		return ShadowExecution{}, fmt.Errorf("shadow execution: admission rejected: %v", admission.Violation)
+	}
+	return ShadowExecution{Assignment: a, Admission: admission, State: ExecutorAdmitted}, nil
 }
 
 // Start transitions the execution from ADMITTED to RUNNING.
 func (e *ShadowExecution) Start(now time.Time) error {
+	if e.Admission.Outcome != AdmissionAdmitted || e.Admission.Violation != nil {
+		return errors.New("shadow execution: valid recorded admission required")
+	}
 	if e.State != ExecutorAdmitted {
 		return fmt.Errorf("shadow execution: Start requires ADMITTED state, got %q", e.State)
 	}
