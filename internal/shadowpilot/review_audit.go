@@ -297,12 +297,17 @@ type ReadinessResult struct {
 	Reason    string          `json:"reason"`
 }
 
-// ComputeReadiness derives the readiness for a given subject SHA from a review
-// and audit result. Both results must be anchored to subjectSHA; superseded
-// results, subject mismatches and independence violations produce NOT_EVALUATED
-// or BLOCKED rather than passing.
+// ComputeReadiness derives readiness from review and audit results using the
+// ShadowAssignment supplied as the third argument. Both results must reference
+// assignment.SubjectSHA and bind ExecutorID and Generation to assignment.AgentID
+// and assignment.Generation, respectively.
 //
-// Precedence: BLOCKED > CHANGES_REQUIRED > NOT_EVALUATED > READY.
+// Checks run in order: missing results produce NOT_EVALUATED; validation,
+// independence or assignment binding failures produce BLOCKED; superseded results
+// or subject mismatches produce NOT_EVALUATED. Audit HasOpenBlockingFindings
+// produces BLOCKED, followed by audit NOT_EVALUATED and BLOCKED verdict checks.
+// Review blocking findings and review/audit CHANGES_REQUIRED verdicts then prevent
+// READY; only the remaining valid, matching results produce READY.
 func ComputeReadiness(review *ShadowReviewResult, audit *ShadowAuditResult, assignment ShadowAssignment) ReadinessResult {
 	if review == nil {
 		return ReadinessResult{ShadowReadinessNotEvaluated, "no review result"}
