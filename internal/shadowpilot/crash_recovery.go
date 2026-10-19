@@ -205,6 +205,11 @@ func asStaleGenError(err error) *StaleGenerationError {
 //     review from a superseded subject);
 //   - audit result subject SHA does not match assignment subject SHA.
 func ValidateCheckpointIntegrity(checkpoint ShadowCheckpoint) error {
+	for i, node := range checkpoint.DiscussionNodes {
+		if err := node.Validate(); err != nil {
+			return fmt.Errorf("checkpoint integrity: discussion node[%d]: %w", i, err)
+		}
+	}
 	if checkpoint.Assignment == nil {
 		if checkpoint.Execution != nil || checkpoint.ReviewResult != nil || checkpoint.AuditResult != nil {
 			return errors.New("checkpoint integrity: assignment missing")

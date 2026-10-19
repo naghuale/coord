@@ -7,6 +7,19 @@ import (
 	"time"
 )
 
+// normalizeAgentID validates the canonical identity used by all role comparisons.
+// Reject aliases at the boundary rather than silently granting them authority.
+func normalizeAgentID(id string) (string, error) {
+	canonical := strings.ToLower(strings.TrimSpace(id))
+	if canonical == "" {
+		return "", errors.New("agent identity required")
+	}
+	if canonical != id {
+		return "", errors.New("agent identity must be lowercase without surrounding whitespace")
+	}
+	return canonical, nil
+}
+
 // ShadowReviewVerdict is the outcome of a shadow review pass.
 type ShadowReviewVerdict string
 
@@ -160,6 +173,11 @@ func (r ShadowReviewResult) Validate() error {
 	if strings.TrimSpace(r.ExecutorID) == "" {
 		return errors.New("shadow review result: executor_id required")
 	}
+	for _, id := range []string{r.ReviewerID, r.ExecutorID} {
+		if _, err := normalizeAgentID(id); err != nil {
+			return fmt.Errorf("shadow review result: %w", err)
+		}
+	}
 	if r.ReviewerID == r.ExecutorID {
 		return &IndependenceViolation{
 			Condition: StopReviewerEqualsExecutor,
@@ -230,6 +248,11 @@ func (r ShadowAuditResult) Validate() error {
 	}
 	if strings.TrimSpace(r.ReviewerID) == "" {
 		return errors.New("shadow audit result: reviewer_id required")
+	}
+	for _, id := range []string{r.AuditorID, r.ExecutorID, r.ReviewerID} {
+		if _, err := normalizeAgentID(id); err != nil {
+			return fmt.Errorf("shadow audit result: %w", err)
+		}
 	}
 	if r.AuditorID == r.ExecutorID {
 		return &IndependenceViolation{

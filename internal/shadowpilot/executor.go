@@ -47,6 +47,9 @@ func (a ShadowAssignment) Validate() error {
 	if strings.TrimSpace(a.AgentID) == "" {
 		return errors.New("shadow assignment: agent_id required")
 	}
+	if _, err := normalizeAgentID(a.AgentID); err != nil {
+		return fmt.Errorf("shadow assignment: %w", err)
+	}
 	if strings.TrimSpace(a.SessionID) == "" {
 		return errors.New("shadow assignment: session_id required")
 	}
@@ -105,21 +108,24 @@ func Admit(a ShadowAssignment, actualSubjectSHA string, reviewerAgentIDs []strin
 			},
 		}
 	}
-	if slices.Contains(reviewerAgentIDs, a.AgentID) {
+	if len(reviewerAgentIDs) == 0 {
+		return AdmissionResult{Outcome: AdmissionRejected, Violation: &StopViolation{Condition: StopAssignmentOrGenerationMismatch, Detail: "reviewer identities required for admission"}}
+	}
+	canonicalReviewers := make([]string, 0, len(reviewerAgentIDs))
+	for _, reviewer := range reviewerAgentIDs {
+		id, err := normalizeAgentID(reviewer)
+		if err != nil {
+			return AdmissionResult{Outcome: AdmissionRejected, Violation: &StopViolation{Condition: StopAssignmentOrGenerationMismatch, Detail: fmt.Sprintf("reviewer identity: %v", err)}}
+		}
+		canonicalReviewers = append(canonicalReviewers, id)
+	}
+	if slices.Contains(canonicalReviewers, a.AgentID) {
 		return AdmissionResult{
 			Outcome: AdmissionRejected,
 			Violation: &StopViolation{
 				Condition: StopReviewerEqualsExecutor,
 				Detail:    fmt.Sprintf("executor agent_id %q is also assigned as reviewer", a.AgentID),
 			},
-		}
-	}
-	if len(reviewerAgentIDs) == 0 {
-		return AdmissionResult{Outcome: AdmissionRejected, Violation: &StopViolation{Condition: StopAssignmentOrGenerationMismatch, Detail: "reviewer identities required for admission"}}
-	}
-	for _, reviewer := range reviewerAgentIDs {
-		if strings.TrimSpace(reviewer) == "" {
-			return AdmissionResult{Outcome: AdmissionRejected, Violation: &StopViolation{Condition: StopAssignmentOrGenerationMismatch, Detail: "empty reviewer identity"}}
 		}
 	}
 	return AdmissionResult{Outcome: AdmissionAdmitted}
