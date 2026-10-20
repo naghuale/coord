@@ -27,7 +27,7 @@ func crashAssignment() shadowpilot.ShadowAssignment {
 
 func crashExecution(state shadowpilot.ExecutorState) *shadowpilot.ShadowExecution {
 	a := crashAssignment()
-	ex, _ := shadowpilot.NewShadowExecution(a)
+	ex, _ := newAdmittedExecution(a)
 	if state == shadowpilot.ExecutorRunning || state == shadowpilot.ExecutorCompleted || state == shadowpilot.ExecutorFenced {
 		_ = ex.Start(crashT0)
 	}
@@ -36,7 +36,7 @@ func crashExecution(state shadowpilot.ExecutorState) *shadowpilot.ShadowExecutio
 
 func completedExecution() *shadowpilot.ShadowExecution {
 	a := crashAssignment()
-	ex, _ := shadowpilot.NewShadowExecution(a)
+	ex, _ := newAdmittedExecution(a)
 	_ = ex.Start(crashT0)
 	r := shadowpilot.AgentResult{
 		Kind:         shadowpilot.AgentResultKind,
@@ -133,7 +133,7 @@ func TestM02RestartDuplicateExecutionIsBlocked(t *testing.T) {
 
 func TestStaleGenerationResultRejectedAfterRestart(t *testing.T) {
 	a := crashAssignment() // generation = 2
-	ex, _ := shadowpilot.NewShadowExecution(a)
+	ex, _ := newAdmittedExecution(a)
 	_ = ex.Start(crashT0)
 	staleResult := shadowpilot.AgentResult{
 		Kind:         shadowpilot.AgentResultKind,
@@ -161,7 +161,7 @@ func TestStaleGenerationResultRejectedAfterRestart(t *testing.T) {
 // Mutation M03: stale generation result accepted — must be rejected.
 func TestM03StaleGenerationResultAcceptedIsRejected(t *testing.T) {
 	a := crashAssignment() // generation = 2
-	ex, _ := shadowpilot.NewShadowExecution(a)
+	ex, _ := newAdmittedExecution(a)
 	_ = ex.Start(crashT0)
 	ex.State = shadowpilot.ExecutorCompleted
 	staleResult := shadowpilot.AgentResult{
@@ -335,9 +335,9 @@ func TestReadinessRecomputesIdenticallyAfterRestart(t *testing.T) {
 		CreatedAt: crashT0.Add(5 * time.Second),
 	}
 	// Pre-crash readiness.
-	r1 := shadowpilot.ComputeReadiness(review, audit, sha1)
+	r1 := shadowpilot.ComputeReadiness(review, audit, crashAssignment())
 	// Post-restart readiness (same inputs).
-	r2 := shadowpilot.ComputeReadiness(review, audit, sha1)
+	r2 := shadowpilot.ComputeReadiness(review, audit, crashAssignment())
 	if r1.Readiness != r2.Readiness {
 		t.Fatalf("readiness must be deterministic: %q != %q", r1.Readiness, r2.Readiness)
 	}
@@ -359,7 +359,7 @@ func TestM07MixedSubjectAuditAfterRestartIsRejected(t *testing.T) {
 		Generation: 2, Verdict: shadowpilot.ShadowAuditPass, Summary: "pass",
 		CreatedAt: crashT0,
 	}
-	result := shadowpilot.ComputeReadiness(review, audit, sha1)
+	result := shadowpilot.ComputeReadiness(review, audit, crashAssignment())
 	if result.Readiness == shadowpilot.ShadowReadinessReady {
 		t.Fatal("M07: mixed-subject review+audit must not produce READY after restart")
 	}
@@ -368,7 +368,7 @@ func TestM07MixedSubjectAuditAfterRestartIsRejected(t *testing.T) {
 func TestPartialStateDoesNotBecomeCurrent(t *testing.T) {
 	a := crashAssignment()
 	// COMPLETED execution without a result — invalid partial state.
-	partialEx, _ := shadowpilot.NewShadowExecution(a)
+	partialEx, _ := newAdmittedExecution(a)
 	_ = partialEx.Start(crashT0)
 	partialEx.State = shadowpilot.ExecutorCompleted // force without result (simulating corruption)
 	// partialEx.Result remains nil
@@ -382,7 +382,7 @@ func TestPartialStateDoesNotBecomeCurrent(t *testing.T) {
 // Mutation M08: partial state becomes current — ValidateCheckpointIntegrity must reject.
 func TestM08PartialStateBecomesCurrentIsRejected(t *testing.T) {
 	a := crashAssignment()
-	partialEx, _ := shadowpilot.NewShadowExecution(a)
+	partialEx, _ := newAdmittedExecution(a)
 	_ = partialEx.Start(crashT0)
 	partialEx.State = shadowpilot.ExecutorCompleted // no result
 

@@ -106,7 +106,7 @@ func TestM02BlockingFindingIgnoredIsRejected(t *testing.T) {
 		CreatedAt: time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC),
 	}}
 	audit := validAuditResult()
-	result := shadowpilot.ComputeReadiness(&review, &audit, sha1)
+	result := shadowpilot.ComputeReadiness(&review, &audit, readinessAssignment(sha1))
 	if result.Readiness == shadowpilot.ShadowReadinessReady {
 		t.Fatal("M02: blocking open finding must prevent READY")
 	}
@@ -206,7 +206,7 @@ func TestCorrectionCreatesNewSubject(t *testing.T) {
 	newAudit := validAuditResult()
 	newAudit.SubjectSHA = sha2
 
-	result := shadowpilot.ComputeReadiness(&newReview, &newAudit, sha2)
+	result := shadowpilot.ComputeReadiness(&newReview, &newAudit, readinessAssignment(sha2))
 	if result.Readiness != shadowpilot.ShadowReadinessReady {
 		t.Fatalf("expected READY for new subject, got %q: %s", result.Readiness, result.Reason)
 	}
@@ -220,7 +220,7 @@ func TestOldReviewDoesNotApplyToNewSubject(t *testing.T) {
 	newAudit.SubjectSHA = sha2 // new subject
 
 	// Target is new subject; old review does not match.
-	result := shadowpilot.ComputeReadiness(&oldReview, &newAudit, sha2)
+	result := shadowpilot.ComputeReadiness(&oldReview, &newAudit, readinessAssignment(sha2))
 	if result.Readiness == shadowpilot.ShadowReadinessReady {
 		t.Fatalf("M05: old review must not apply to new subject, got %q", result.Readiness)
 	}
@@ -233,7 +233,7 @@ func TestM05OldReviewReusedIsRejected(t *testing.T) {
 
 	audit := validAuditResult()
 
-	result := shadowpilot.ComputeReadiness(&oldReview, &audit, sha1)
+	result := shadowpilot.ComputeReadiness(&oldReview, &audit, readinessAssignment(sha1))
 	if result.Readiness == shadowpilot.ShadowReadinessReady {
 		t.Fatal("M05: superseded review result must not produce READY")
 	}
@@ -289,7 +289,7 @@ func TestAuditNotEvaluatedIsNotPass(t *testing.T) {
 	audit := validAuditResult()
 	audit.Verdict = shadowpilot.ShadowAuditNotEvaluated
 
-	result := shadowpilot.ComputeReadiness(&review, &audit, sha1)
+	result := shadowpilot.ComputeReadiness(&review, &audit, readinessAssignment(sha1))
 	if result.Readiness == shadowpilot.ShadowReadinessReady {
 		t.Fatal("expected NOT_EVALUATED, got READY")
 	}
@@ -304,7 +304,7 @@ func TestM07NotEvaluatedTreatedAsPassIsRejected(t *testing.T) {
 	audit := validAuditResult()
 	audit.Verdict = shadowpilot.ShadowAuditNotEvaluated
 
-	result := shadowpilot.ComputeReadiness(&review, &audit, sha1)
+	result := shadowpilot.ComputeReadiness(&review, &audit, readinessAssignment(sha1))
 	if result.Readiness == shadowpilot.ShadowReadinessReady {
 		t.Fatal("M07: NOT_EVALUATED must not be treated as PASS")
 	}
@@ -313,7 +313,7 @@ func TestM07NotEvaluatedTreatedAsPassIsRejected(t *testing.T) {
 func TestAcceptedReviewAndAuditSameSubjectCanBecomeReady(t *testing.T) {
 	review := validReviewResult()
 	audit := validAuditResult()
-	result := shadowpilot.ComputeReadiness(&review, &audit, sha1)
+	result := shadowpilot.ComputeReadiness(&review, &audit, readinessAssignment(sha1))
 	if result.Readiness != shadowpilot.ShadowReadinessReady {
 		t.Fatalf("expected READY, got %q: %s", result.Readiness, result.Reason)
 	}
@@ -327,7 +327,7 @@ func TestM08MixedSubjectReadinessIsRejected(t *testing.T) {
 	audit := validAuditResult()
 	audit.SubjectSHA = sha2 // different subject
 
-	result := shadowpilot.ComputeReadiness(&review, &audit, sha1)
+	result := shadowpilot.ComputeReadiness(&review, &audit, readinessAssignment(sha1))
 	if result.Readiness == shadowpilot.ShadowReadinessReady {
 		t.Fatal("M08: mixed-subject review and audit must not produce READY")
 	}

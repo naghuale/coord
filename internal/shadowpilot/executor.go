@@ -47,6 +47,9 @@ func (a ShadowAssignment) Validate() error {
 	if strings.TrimSpace(a.AgentID) == "" {
 		return errors.New("shadow assignment: agent_id required")
 	}
+	if _, err := normalizeAgentID(a.AgentID); err != nil {
+		return fmt.Errorf("shadow assignment: %w", err)
+	}
 	if strings.TrimSpace(a.SessionID) == "" {
 		return errors.New("shadow assignment: session_id required")
 	}
@@ -89,6 +92,12 @@ const (
 // reviewerAgentIDs must contain all agent IDs assigned as reviewers on this
 // subject; the executor must not appear in that set.
 func Admit(a ShadowAssignment, actualSubjectSHA string, reviewerAgentIDs []string) AdmissionResult {
+	if err := a.Validate(); err != nil {
+		return AdmissionResult{Outcome: AdmissionRejected, Violation: &StopViolation{Condition: StopAssignmentOrGenerationMismatch, Detail: err.Error()}}
+	}
+	if !sha40(actualSubjectSHA) {
+		return AdmissionResult{Outcome: AdmissionRejected, Violation: &StopViolation{Condition: StopExactSubjectMismatch, Detail: "actual subject must be a hex commit SHA"}}
+	}
 	if !strings.EqualFold(a.SubjectSHA, actualSubjectSHA) {
 		return AdmissionResult{
 			Outcome: AdmissionRejected,
@@ -99,7 +108,18 @@ func Admit(a ShadowAssignment, actualSubjectSHA string, reviewerAgentIDs []strin
 			},
 		}
 	}
-	if slices.Contains(reviewerAgentIDs, a.AgentID) {
+	if len(reviewerAgentIDs) == 0 {
+		return AdmissionResult{Outcome: AdmissionRejected, Violation: &StopViolation{Condition: StopAssignmentOrGenerationMismatch, Detail: "reviewer identities required for admission"}}
+	}
+	canonicalReviewers := make([]string, 0, len(reviewerAgentIDs))
+	for _, reviewer := range reviewerAgentIDs {
+		id, err := normalizeAgentID(reviewer)
+		if err != nil {
+			return AdmissionResult{Outcome: AdmissionRejected, Violation: &StopViolation{Condition: StopAssignmentOrGenerationMismatch, Detail: fmt.Sprintf("reviewer identity: %v", err)}}
+		}
+		canonicalReviewers = append(canonicalReviewers, id)
+	}
+	if slices.Contains(canonicalReviewers, a.AgentID) {
 		return AdmissionResult{
 			Outcome: AdmissionRejected,
 			Violation: &StopViolation{
@@ -147,6 +167,7 @@ func (h ShadowHeartbeat) IsStale(now time.Time, timeout time.Duration) bool {
 // A fenced execution can never transition to COMPLETED.
 type ShadowExecution struct {
 	Assignment     ShadowAssignment  `json:"assignment"`
+	Admission      AdmissionResult   `json:"admission"`
 	State          ExecutorState     `json:"state"`
 	Heartbeats     []ShadowHeartbeat `json:"heartbeats"`
 	Result         *AgentResult      `json:"result,omitempty"`
@@ -156,15 +177,22 @@ type ShadowExecution struct {
 }
 
 // NewShadowExecution creates a shadow execution in ADMITTED state.
-func NewShadowExecution(a ShadowAssignment) (ShadowExecution, error) {
+func NewShadowExecution(a ShadowAssignment, actualSubjectSHA string, reviewerAgentIDs []string) (ShadowExecution, error) {
 	if err := a.Validate(); err != nil {
 		return ShadowExecution{}, err
 	}
-	return ShadowExecution{Assignment: a, State: ExecutorAdmitted}, nil
+	admission := Admit(a, actualSubjectSHA, reviewerAgentIDs)
+	if admission.Outcome != AdmissionAdmitted || admission.Violation != nil {
+		return ShadowExecution{}, fmt.Errorf("shadow execution: admission rejected: %v", admission.Violation)
+	}
+	return ShadowExecution{Assignment: a, Admission: admission, State: ExecutorAdmitted}, nil
 }
 
 // Start transitions the execution from ADMITTED to RUNNING.
 func (e *ShadowExecution) Start(now time.Time) error {
+	if e.Admission.Outcome != AdmissionAdmitted || e.Admission.Violation != nil {
+		return errors.New("shadow execution: valid recorded admission required")
+	}
 	if e.State != ExecutorAdmitted {
 		return fmt.Errorf("shadow execution: Start requires ADMITTED state, got %q", e.State)
 	}
@@ -198,7 +226,7 @@ func (e *ShadowExecution) RecordHeartbeat(h ShadowHeartbeat) error {
 }
 
 // Complete transitions the execution to COMPLETED with the given result.
-// The result's generation and subject SHA must match the assignment.
+// All result identity fields must match the assignment before any state change.
 func (e *ShadowExecution) Complete(r AgentResult, now time.Time) error {
 	if e.State == ExecutorFenced {
 		return errors.New("shadow execution: fenced execution cannot be completed")
@@ -218,6 +246,10 @@ func (e *ShadowExecution) Complete(r AgentResult, now time.Time) error {
 	if !strings.EqualFold(r.SubjectSHA, e.Assignment.SubjectSHA) {
 		return fmt.Errorf("shadow execution: result subject_sha %q != assignment %q",
 			r.SubjectSHA, e.Assignment.SubjectSHA)
+	}
+	if r.AssignmentID != e.Assignment.AssignmentID || r.AgentID != e.Assignment.AgentID ||
+		r.SessionID != e.Assignment.SessionID || r.InputDigest != e.Assignment.InputDigest {
+		return errors.New("shadow execution: result assignment, agent, session or input digest does not match assignment")
 	}
 	e.State = ExecutorCompleted
 	e.Result = &r

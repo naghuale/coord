@@ -1,0 +1,115 @@
+decision: SHADOW-VALIDATION-PILOT-R1
+recordKind: source_pointer
+status: historical
+normativeStatus: POINTER_ONLY
+source:
+  kind: completion_report_comment
+  commentId: 6232296694
+  url: https://github.com/naghuale/coord/issues/70#issuecomment-6232296694
+  authorLogin: naghuale
+  updatedAt: '2026-10-17T09:29:00Z'
+  originalDecisionAcceptance: NOT_VERIFIED
+capturedTextDigest: sha256:3512bc707531a7297dce42819972023fc050f59075863b2b32339780407c9190
+note: 'source: completion_report_comment, not original_decision_acceptance; normativeStatus: POINTER_ONLY'
+limitations:
+- This is an exact captured completion-report comment, not the original OWNER decision or its acceptance
+  receipt.
+- No new normative authority or production capability is granted by this record.
+- Historical claims in the captured comment are not current implementation acceptance evidence.
+capturedText: '## Completion Report — Issue #70: Shadow Validation Pilot (SHADOW-VALIDATION-PILOT-R1)
+
+
+  **Integration HEAD:** `9fa76c17e817b10a689c5ee3fc011c4d32f51369`
+
+
+  ### Work Packages
+
+
+  | WP | Description | Commit | PR |
+
+  |----|-------------|--------|----|
+
+  | WP-SV-01/02 | Integration Map + Shadow run model | `0ec52d8` | #71 (MERGED) |
+
+  | WP-SV-03 | Single-agent execution (ShadowExecution FSM) | `5895f7d` | #72 (MERGED) |
+
+  | WP-SV-04 | Review/Audit Graph (ComputeReadiness) | `4ebaeb7` | #72 (MERGED) |
+
+  | WP-SV-05 | Crash/restart recovery model | `ce4c0c2` | #73 (MERGED) |
+
+  | WP-SV-06 | Comparison report and P0-3 admission | `bbd68a9` | #73 (MERGED) |
+
+
+  ### Verification Summary
+
+
+  | Dimension | WP-SV-05 | WP-SV-06 |
+
+  |-----------|----------|----------|
+
+  | Invariants total | 8 | 9 |
+
+  | Invariants covered | 8 | 9 |
+
+  | Focused scenario tests | 12 | 13 |
+
+  | Compiled mutations | 8 | — |
+
+  | Mutations killed | 8/8 | — |
+
+  | Survived mutations | 0 | 0 |
+
+
+  Full regression: **103 tests PASS, 50/50 packages** (purpose: no known regression, not completeness
+  proof). Coverage matrix: `internal/shadowpilot/verification-summary.json`.
+
+
+  ### Shadow Boundary (read-only enforcement verified)
+
+
+  | Constraint | Value |
+
+  |------------|-------|
+
+  | `productionWrites` | 0 |
+
+  | `githubWrites` | 0 |
+
+  | `credentialsUsed` | 0 |
+
+  | `ProductionAuthorityAsserted` | always `false` |
+
+
+  ### Admission Recommendation
+
+
+  `DeriveRecommendation()` produces **`ADMIT_P0_3`** when all gates pass. This signals that Shadow Validation
+  is complete and the exact P0-3 scope may be prepared — it does **not** authorize production writes.
+  A separate OWNER decision on credential boundary, write operations, repository allowlist, rollback,
+  incident procedure, stop conditions, and `PRODUCTION_WRITE` capability permission is required before
+  any production write path is activated.
+
+
+  ### CI
+
+
+  | Run | Result |
+
+  |-----|--------|
+
+  | PR #71 branch | PASS |
+
+  | PR #72 branch | PASS (run 39019435218) |
+
+  | PR #73 branch | PASS (ubuntu + macos, all 9 checks) |
+
+  | main after #73 | PASS (runs 39021075004, 39021074961) |
+
+
+  ### Open Work
+
+
+  - Issues #7, #31, #33, #34 remain blocked pending separate OWNER decisions.
+
+  - P0-3 scope definition requires a new OWNER decision on the credential and write boundary described
+  above.'

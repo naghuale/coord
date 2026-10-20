@@ -80,7 +80,7 @@ func buildReport(t *testing.T) shadowpilot.ShadowValidationReport {
 		cleanRecovery(),
 		true,
 		true,
-		nil,
+		validEvidence(t, "sv-run-01"),
 	)
 	if err != nil {
 		t.Fatalf("NewReport failed: %v", err)
@@ -107,7 +107,7 @@ func TestNewReportUnsafeDivergenceGivesCorrectionRequired(t *testing.T) {
 	cr, _ := shadowpilot.NewComparisonResult("sv-run-02", dims)
 	r, err := shadowpilot.NewReport(
 		"SHADOW-VALIDATION-PILOT-R1", sha1, "0.1.0", 42, reportT0,
-		allWPs(), cleanRuntime(), cr, cleanRecovery(), true, true, nil,
+		allWPs(), cleanRuntime(), cr, cleanRecovery(), true, true, validEvidence(t, cr.ShadowRunID),
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -129,13 +129,21 @@ func TestNewReportNotEvaluatedDimensionGivesRepeat(t *testing.T) {
 	cr, _ := shadowpilot.NewComparisonResult("sv-run-03", dims)
 	r, err := shadowpilot.NewReport(
 		"SHADOW-VALIDATION-PILOT-R1", sha1, "0.1.0", 42, reportT0,
-		allWPs(), cleanRuntime(), cr, cleanRecovery(), true, true, nil,
+		allWPs(), cleanRuntime(), cr, cleanRecovery(), true, true, validEvidence(t, cr.ShadowRunID),
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if r.Recommendation != shadowpilot.RepeatShadowValidation {
-		t.Fatalf("NOT_EVALUATED must give REPEAT_SHADOW_VALIDATION, got %q", r.Recommendation)
+	// The legacy per-dimension REPEAT rule remains; NewReport's aggregate
+	// boundary deliberately applies the stricter non-MATCH -> CORRECTION rule.
+	if got := shadowpilot.DeriveRecommendation(shadowpilot.P03AdmissionGates{
+		AllWPsIntegrated: true, NotEvaluatedBlockingProperties: r.Comparison.NotEvaluated,
+		ReviewAccepted: true, AuditAccepted: true,
+	}); got != shadowpilot.RepeatShadowValidation {
+		t.Fatalf("per-dimension gate must give REPEAT, got %q", got)
+	}
+	if r.Recommendation != shadowpilot.CorrectionRequired {
+		t.Fatalf("non-MATCH report aggregate must give CORRECTION_REQUIRED, got %q", r.Recommendation)
 	}
 }
 
@@ -144,7 +152,7 @@ func TestNewReportNoReviewGivesOwnerDecision(t *testing.T) {
 		"SHADOW-VALIDATION-PILOT-R1", sha1, "0.1.0", 42, reportT0,
 		allWPs(), cleanRuntime(), allMatchComparison(), cleanRecovery(),
 		false, // reviewAccepted = false
-		true, nil,
+		true, validEvidence(t, "sv-run-01"),
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -159,7 +167,7 @@ func TestNewReportPendingWPGivesRepeat(t *testing.T) {
 	wps[5].Status = shadowpilot.WPPending // WP-SV-06 pending
 	r, err := shadowpilot.NewReport(
 		"SHADOW-VALIDATION-PILOT-R1", sha1, "0.1.0", 42, reportT0,
-		wps, cleanRuntime(), allMatchComparison(), cleanRecovery(), true, true, nil,
+		wps, cleanRuntime(), allMatchComparison(), cleanRecovery(), true, true, validEvidence(t, "sv-run-01"),
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -174,7 +182,7 @@ func TestNewReportProductionWritesGivesCorrectionRequired(t *testing.T) {
 	rt.ProductionWrites = 1
 	_, err := shadowpilot.NewReport(
 		"SHADOW-VALIDATION-PILOT-R1", sha1, "0.1.0", 42, reportT0,
-		allWPs(), rt, allMatchComparison(), cleanRecovery(), true, true, nil,
+		allWPs(), rt, allMatchComparison(), cleanRecovery(), true, true, validEvidence(t, "sv-run-01"),
 	)
 	if err == nil {
 		t.Fatal("production writes must fail report validation")
@@ -186,7 +194,7 @@ func TestNewReportDuplicateLaunchGivesCorrectionRequired(t *testing.T) {
 	rec.DuplicateLaunches = 1
 	_, err := shadowpilot.NewReport(
 		"SHADOW-VALIDATION-PILOT-R1", sha1, "0.1.0", 42, reportT0,
-		allWPs(), cleanRuntime(), allMatchComparison(), rec, true, true, nil,
+		allWPs(), cleanRuntime(), allMatchComparison(), rec, true, true, validEvidence(t, "sv-run-01"),
 	)
 	if err == nil {
 		t.Fatal("duplicate launches must fail report validation")
@@ -196,7 +204,7 @@ func TestNewReportDuplicateLaunchGivesCorrectionRequired(t *testing.T) {
 func TestReportValidateRejectsMissingPilotID(t *testing.T) {
 	_, err := shadowpilot.NewReport(
 		"", sha1, "0.1.0", 42, reportT0,
-		allWPs(), cleanRuntime(), allMatchComparison(), cleanRecovery(), true, true, nil,
+		allWPs(), cleanRuntime(), allMatchComparison(), cleanRecovery(), true, true, validEvidence(t, "sv-run-01"),
 	)
 	if err == nil {
 		t.Fatal("empty pilot_id must be rejected")
@@ -206,7 +214,7 @@ func TestReportValidateRejectsMissingPilotID(t *testing.T) {
 func TestReportValidateRejectsShortMainSHA(t *testing.T) {
 	_, err := shadowpilot.NewReport(
 		"SHADOW-VALIDATION-PILOT-R1", "shortsha", "0.1.0", 42, reportT0,
-		allWPs(), cleanRuntime(), allMatchComparison(), cleanRecovery(), true, true, nil,
+		allWPs(), cleanRuntime(), allMatchComparison(), cleanRecovery(), true, true, validEvidence(t, "sv-run-01"),
 	)
 	if err == nil {
 		t.Fatal("short main_sha must be rejected")
@@ -257,7 +265,7 @@ func TestReportValidateRejectsZeroProducedAt(t *testing.T) {
 	_, err := shadowpilot.NewReport(
 		"SHADOW-VALIDATION-PILOT-R1", sha1, "0.1.0", 42,
 		time.Time{}, // zero time
-		allWPs(), cleanRuntime(), allMatchComparison(), cleanRecovery(), true, true, nil,
+		allWPs(), cleanRuntime(), allMatchComparison(), cleanRecovery(), true, true, validEvidence(t, "sv-run-01"),
 	)
 	if err == nil {
 		t.Fatal("zero produced_at must be rejected")

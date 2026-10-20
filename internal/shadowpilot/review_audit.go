@@ -7,6 +7,19 @@ import (
 	"time"
 )
 
+// normalizeAgentID validates the canonical identity used by all role comparisons.
+// Reject aliases at the boundary rather than silently granting them authority.
+func normalizeAgentID(id string) (string, error) {
+	canonical := strings.ToLower(strings.TrimSpace(id))
+	if canonical == "" {
+		return "", errors.New("agent identity required")
+	}
+	if canonical != id {
+		return "", errors.New("agent identity must be lowercase without surrounding whitespace")
+	}
+	return canonical, nil
+}
+
 // ShadowReviewVerdict is the outcome of a shadow review pass.
 type ShadowReviewVerdict string
 
@@ -160,6 +173,11 @@ func (r ShadowReviewResult) Validate() error {
 	if strings.TrimSpace(r.ExecutorID) == "" {
 		return errors.New("shadow review result: executor_id required")
 	}
+	for _, id := range []string{r.ReviewerID, r.ExecutorID} {
+		if _, err := normalizeAgentID(id); err != nil {
+			return fmt.Errorf("shadow review result: %w", err)
+		}
+	}
 	if r.ReviewerID == r.ExecutorID {
 		return &IndependenceViolation{
 			Condition: StopReviewerEqualsExecutor,
@@ -231,6 +249,11 @@ func (r ShadowAuditResult) Validate() error {
 	if strings.TrimSpace(r.ReviewerID) == "" {
 		return errors.New("shadow audit result: reviewer_id required")
 	}
+	for _, id := range []string{r.AuditorID, r.ExecutorID, r.ReviewerID} {
+		if _, err := normalizeAgentID(id); err != nil {
+			return fmt.Errorf("shadow audit result: %w", err)
+		}
+	}
 	if r.AuditorID == r.ExecutorID {
 		return &IndependenceViolation{
 			Condition: StopAuditorEqualsExecutor,
@@ -270,6 +293,16 @@ func (r ShadowAuditResult) Validate() error {
 	return nil
 }
 
+// HasOpenBlockingFindings reports unresolved audit findings independently of verdict.
+func (r ShadowAuditResult) HasOpenBlockingFindings() bool {
+	for _, f := range r.Findings {
+		if f.Severity == FindingBlocking && f.Status == FindingOpen {
+			return true
+		}
+	}
+	return false
+}
+
 // ShadowReadiness is the deterministic readiness computed from a review and
 // audit result pair anchored to the same exact subject SHA.
 type ShadowReadiness string
@@ -287,18 +320,40 @@ type ReadinessResult struct {
 	Reason    string          `json:"reason"`
 }
 
-// ComputeReadiness derives the readiness for a given subject SHA from a review
-// and audit result. Both results must be anchored to subjectSHA; superseded
-// results, subject mismatches and independence violations produce NOT_EVALUATED
-// or BLOCKED rather than passing.
+// ComputeReadiness derives readiness from review and audit results using the
+// ShadowAssignment supplied as the third argument. Both results must reference
+// assignment.SubjectSHA and bind ExecutorID and Generation to assignment.AgentID
+// and assignment.Generation, respectively.
 //
-// Precedence: BLOCKED > CHANGES_REQUIRED > NOT_EVALUATED > READY.
-func ComputeReadiness(review *ShadowReviewResult, audit *ShadowAuditResult, subjectSHA string) ReadinessResult {
+// Checks run in order: missing results produce NOT_EVALUATED; validation,
+// independence or assignment binding failures produce BLOCKED; superseded results
+// or subject mismatches produce NOT_EVALUATED. Audit HasOpenBlockingFindings
+// produces BLOCKED, followed by audit NOT_EVALUATED and BLOCKED verdict checks.
+// Review blocking findings and review/audit CHANGES_REQUIRED verdicts then prevent
+// READY; only the remaining valid, matching results produce READY.
+func ComputeReadiness(review *ShadowReviewResult, audit *ShadowAuditResult, assignment ShadowAssignment) ReadinessResult {
 	if review == nil {
 		return ReadinessResult{ShadowReadinessNotEvaluated, "no review result"}
 	}
 	if audit == nil {
 		return ReadinessResult{ShadowReadinessNotEvaluated, "no audit result"}
+	}
+	if err := review.Validate(); err != nil {
+		return ReadinessResult{ShadowReadinessBlocked, err.Error()}
+	}
+	if err := audit.Validate(); err != nil {
+		return ReadinessResult{ShadowReadinessBlocked, err.Error()}
+	}
+	if err := assignment.Validate(); err != nil {
+		return ReadinessResult{ShadowReadinessBlocked, err.Error()}
+	}
+	if review.ExecutorID != assignment.AgentID || audit.ExecutorID != assignment.AgentID ||
+		review.Generation != assignment.Generation || audit.Generation != assignment.Generation {
+		return ReadinessResult{ShadowReadinessBlocked, "review/audit executor or generation does not match assignment"}
+	}
+	subjectSHA := assignment.SubjectSHA
+	if review.ExecutorID != audit.ExecutorID || review.ReviewerID != audit.ReviewerID || review.Generation != audit.Generation {
+		return ReadinessResult{ShadowReadinessBlocked, "review and audit role/generation bindings differ"}
 	}
 
 	// Superseded results cannot contribute to readiness.
@@ -323,6 +378,9 @@ func ComputeReadiness(review *ShadowReviewResult, audit *ShadowAuditResult, subj
 			"review and audit reference different subject SHAs"}
 	}
 
+	if audit.HasOpenBlockingFindings() {
+		return ReadinessResult{ShadowReadinessBlocked, "audit has open blocking finding(s)"}
+	}
 	// NOT_EVALUATED verdict is never treated as PASS.
 	if audit.Verdict == ShadowAuditNotEvaluated {
 		return ReadinessResult{ShadowReadinessNotEvaluated, "audit verdict is NOT_EVALUATED"}
