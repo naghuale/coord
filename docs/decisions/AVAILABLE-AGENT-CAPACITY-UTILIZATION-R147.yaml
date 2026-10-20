@@ -1,10 +1,18 @@
 decision: R147
 class: R
-status: proposed
+status: accepted
 title: "Capability-aware scheduling of non-conflicting agent work (AVAILABLE-AGENT-CAPACITY-UTILIZATION-R1)"
-issue: null  # to be created
+issue: null
 
 decisionDate: "2026-10-20"
+acceptanceDate: "2026-10-20"
+
+ownerDecision:
+  decisionId: R147
+  ownerMessage: "Принимаю R147."
+  disposition: ACCEPTED
+  recordedBy: "Claude Sonnet 4.6 (coordinator session)"
+  recordedAt: "2026-10-20"
 
 authority: AGENTS.md
 
@@ -185,7 +193,9 @@ mutation:
     expectedResult: KILLED
     killedBy: "conflict-bypass test (not yet implemented)"
 
-normativeStatus: POINTER_ONLY
-originalDecisionAcceptance: NOT_YET_ACCEPTED
+normativeStatus: AUTHORITATIVE
+originalDecisionAcceptance: ACCEPTED_2026-10-20
 proposedBy: "Claude Sonnet 4.6 (coordinator session, Issue #70 delivery cycle)"
 proposedDate: "2026-10-20"
+acceptedBy: "OWNER (naghuale)"
+acceptedDate: "2026-10-20"
