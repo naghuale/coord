@@ -618,6 +618,54 @@ CREATED → DISPATCHED → DELIVERED → ACKNOWLEDGED → IN_PROGRESS → RESULT
 - Одна модель, разные сессии → `SESSION_SEPARATED`
 - Нельзя писать `AGENT_INDEPENDENT` для сессий одной модели
 
+### Двухагентный fallback TD-R2 (TWO-AGENT-TD-R2-FALLBACK-R1)
+
+Применяется когда доступно ровно два типа агентов, один из которых уже является Executor subject.
+
+**Обязательные требования:**
+
+- Executor MUST NOT выполнять Review или Audit собственного subject, даже в новой сессии той же модели.
+- Remaining agent выполняет Review.
+- Для Audit по возможности используется **отдельная сессия** remaining agent.
+- Точная привязка к subject (exact SHA) обязательна.
+- Сниженная независимость Reviewer/Auditor раскрывается в completion report.
+- Adversarial probes и mutant kills обязательны.
+
+**Отчётность:**
+
+```yaml
+verificationMode: LIMITED_POOL_TWO_AGENT
+executorReviewerIndependence: AGENT_INDEPENDENT
+executorAuditorIndependence: AGENT_INDEPENDENT
+reviewerAuditorIndependence: SESSION_SEPARATED  # если Reviewer и Auditor — одна модель
+```
+
+**Запрещено:**
+
+- Executor проверяет собственную реализацию
+- Две сессии одной модели называются двумя независимыми агентами
+- Молчаливое заявление о полной TD-R2 независимости при двух агентах
+- Создание бесконечных сессий одного агента ради видимости gate
+
+**Предпочтительное распределение при двух агентах:**
+
+```yaml
+executor: AgentA
+reviewer: AgentB
+auditor:
+  agent: AgentB
+  separateSessionRequired: true
+```
+
+Если третий агент доступен (canonical identity подтверждена), использовать:
+
+```yaml
+executor: AgentA
+reviewer: AgentB
+auditor: AgentC
+verificationMode: FULL_POOL_THREE_AGENT
+```
+
 ### Запрет ложной развилки OWNER
 
 Координатор MUST NOT формировать вопрос OWNER в виде выбора между вариантами,
