@@ -149,7 +149,7 @@ func parseShadowOptions(args []string, stderr io.Writer) (shadowOptions, error) 
 	f.StringVar(&o.Session, "executor-session", "", "exact executor session ID")
 	f.StringVar(&o.ReviewerAgent, "reviewer-agent", "", "assigned reviewer identity for executor admission; no review acceptance implied")
 	f.StringVar(&o.Output, "output", ".scratch/tmp/wp-sv-07-live-run", "new project-local scratch directory")
-	f.StringVar(&o.Server, "telepathy-server", os.Getenv("COORD_SHADOW_TELEPATHY_SERVER"), "verified Telepathy 0.8.0 MCP server")
+	f.StringVar(&o.Server, "telepathy-server", os.Getenv("COORD_SHADOW_TELEPATHY_SERVER"), "verified Telepathy 0.8.0 or 0.9.0 MCP server")
 	f.StringVar(&o.TelepathyHome, "telepathy-home", os.Getenv("TELEPATHY_HOME"), "deliberately selected existing Telepathy home")
 	f.StringVar(&o.ReplyTo, "reply-to", "", "sender Telepathy address for correlated replies")
 	f.DurationVar(&o.Timeout, "timeout", 5*time.Minute, "dispatch/result deadline")
@@ -456,6 +456,6 @@ func shadowProvenance(root string, d shadowDispatch, r shadowResult, start, end 
 	if err != nil {
 		return "", err
 	}
-	raw, err := json.Marshal(map[string]any{"coorddCommit": strings.TrimSpace(string(commit)), "binaryDigest": digestBytes(binary), "commandDigest": digestBytes(argv), "candidateSHA": d.SubjectSHA, "baselineSHA": d.BaselineSHA, "inputDigest": d.InputDigest, "adapterKind": "telepathy", "mcpClientVersion": "telepathy0.8.0/protocol2024-11-05", "dispatchID": d.DispatchID, "agentID": r.Result.AgentID, "sessionID": r.Result.SessionID, "resultDigest": r.ResultDigest, "startedAt": start, "endedAt": end, "runtime": runtime, "artifactDigests": digests})
+	raw, err := json.Marshal(map[string]any{"coorddCommit": strings.TrimSpace(string(commit)), "binaryDigest": digestBytes(binary), "commandDigest": digestBytes(argv), "candidateSHA": d.SubjectSHA, "baselineSHA": d.BaselineSHA, "inputDigest": d.InputDigest, "adapterKind": "telepathy", "mcpClientVersion": "telepathy>=0.8.0/protocol2024-11-05", "dispatchID": d.DispatchID, "agentID": r.Result.AgentID, "sessionID": r.Result.SessionID, "resultDigest": r.ResultDigest, "startedAt": start, "endedAt": end, "runtime": runtime, "artifactDigests": digests})
 	return string(raw), err
 }

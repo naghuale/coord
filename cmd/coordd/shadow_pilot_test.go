@@ -286,23 +286,36 @@ func TestShadowLiveModeRejectsNilFakeAndNilMCP(t *testing.T) {
 func TestShadowDecoderHandlesShadowRefusal(t *testing.T) {
 	// An agent refusal must surface the agent's own field/reason, not "unknown field 'kind'".
 	for _, tc := range []struct {
-		raw       string
-		wantField string
+		raw        string
+		wantField  string
+		wantReason string
 	}{
-		{`{"kind":"ShadowRefusal","field":"sessionID","reason":"session_id mismatch"}`, "sessionID"},
-		{`{"kind":"ShadowRefusal","field":"assignment","reason":"bad input"}`, "assignment"},
+		{`{"kind":"ShadowRefusal","field":"sessionID","reason":"session_id mismatch"}`, "sessionID", "session_id mismatch"},
+		{`{"kind":"ShadowRefusal","field":"assignment","reason":"bad input"}`, "assignment", "bad input"},
 	} {
+		tc := tc
 		_, err := decodeShadowResult(tc.raw)
 		if err == nil {
 			t.Fatalf("ShadowRefusal %q accepted", tc.raw)
 		}
-		if !strings.Contains(err.Error(), tc.wantField) {
-			t.Fatalf("ShadowRefusal %q: want field %q in error, got %v", tc.raw, tc.wantField, err)
+		var ref *ShadowRefusal
+		if !errors.As(err, &ref) {
+			t.Fatalf("ShadowRefusal %q: want *ShadowRefusal, got %T: %v", tc.raw, err, err)
+		}
+		if ref.Field != tc.wantField {
+			t.Fatalf("ShadowRefusal %q: field=%q want %q", tc.raw, ref.Field, tc.wantField)
+		}
+		if !strings.Contains(ref.Reason, tc.wantReason) {
+			t.Fatalf("ShadowRefusal %q: reason=%q want %q", tc.raw, ref.Reason, tc.wantReason)
 		}
 	}
 	// Refusal without field must fail clearly, not panic.
 	if _, err := decodeShadowResult(`{"kind":"ShadowRefusal"}`); err == nil {
 		t.Fatal("ShadowRefusal without field accepted")
+	}
+	// Unknown kind is not a ShadowRefusal; strict decoder must reject unknown fields.
+	if _, err := decodeShadowResult(`{"kind":"UnknownKind","field":"x"}`); err == nil {
+		t.Fatal("unknown kind with extra field accepted")
 	}
 }
 
