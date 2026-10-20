@@ -1,5 +1,22 @@
 # История изменений
 
+## 2026-10-20 — coordd read-only shadow pilot entrypoint (WP-SV-07, Refs #70)
+
+- Added exact `shadow-pilot run` CLI mode, isolated from daemon/store/lock startup.
+  Typed Telepathy MCP envelopes bind all assignment identities before completion;
+  nil/fake adapters, mutable subjects, malformed results and identity mismatches
+  fail closed. The existing version-pinned MCP client remains unchanged.
+  (`TestShadowEveryIdentityBindingHasTypedRefusal`,
+  `TestShadowLiveModeRejectsNilFakeAndNilMCP`)
+- Added observed startup/dispatch evidence, sealed artifact manifests and integrity
+  digests, ten explicit comparison dimensions and a validated pilot report whose
+  admission remains `NOT_EVALUATED`. No production authority is granted.
+  (`TestShadowMissingDimensionsAndUnsealedEvidenceCannotReachReport`,
+  `TestShadowRuntimeBreachesPreventEvidenceSealing`)
+- Added CLI, stdio MCP protocol-fixture, refusal and authority-boundary tests.
+  Independent Review/Audit and actual c03 live-run acceptance remain pending.
+  (`TestShadowCLIUsesExistingMCPClientEndToEnd`)
+
 ## 2026-10-18 — Coordinator: execute authorized ready work
 
 - Added OWNER-requested `COORDINATOR-ACT-ON-READY-WORK-R1` to `AGENTS.md`:

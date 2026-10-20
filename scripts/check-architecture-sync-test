@@ -159,6 +159,7 @@ def run_case(name, mutate, expected):
         for p in ["docs/ADR-0001-CANONICAL-COORDINATION-MODEL.md", "docs/ADR-0004-RUNTIME-AND-DAEMON-MODEL.md", "docs/TASK-MODEL.md", "docs/rfc/RFC-0001-LOCAL-PROJECT-OPERATIONS.md"]:
             path = repo / p; path.parent.mkdir(parents=True, exist_ok=True); path.write_text("fixture")
         arch_anchors = '\n'.join([
+            '<!-- shadow-pilot-live-entrypoint -->',
             '<!-- canonical-persistence -->',
             '<!-- canonical-agent-command-boundary -->',
             '<!-- agent-session -->',
@@ -172,6 +173,7 @@ def run_case(name, mutate, expected):
             '<!-- run-recovery-command -->',
         ]) + '\n'
         tgt_anchors = '\n'.join([
+            '<!-- shadow-pilot-live-entrypoint -->',
             '<!-- canonical-persistence -->',
             '<!-- canonical-command-boundary -->',
             '<!-- agent-session -->',

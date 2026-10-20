@@ -344,3 +344,35 @@ components:
     documents:
       currentAnchor: run-recovery-command
       targetAnchor: run-recovery-command
+
+  - id: shadow-pilot-live-entrypoint
+    title: Read-only coordd shadow pilot entrypoint
+    status: partial
+    normativeSources:
+      - AGENTS.md
+    implemented:
+      - exact coordd shadow-pilot run branch returns before daemon startup
+      - typed Telepathy adapter wraps existing version-pinned MCP client
+      - assignment and result correlation precedes completion and sealed evidence
+      - observed local startup counters reject store, daemon locks and external mutations
+      - all ten model dimensions and explicit unsupported-axis NOT_EVALUATED records
+      - pilot report cannot issue P0-3 admission
+    missing:
+      - independently accepted live c03 round trip
+      - independent implementation Review and TD-R2 Audit acceptance
+      - live process crash and restart campaign
+    evidence:
+      symbols:
+        - runShadowPilot
+        - telepathyShadowAgentAdapter
+        - startupProbe
+      tests:
+        - TestShadowCLIUsesExistingMCPClientEndToEnd
+        - TestShadowRuntimeBreachesPreventEvidenceSealing
+        - TestShadowEveryIdentityBindingHasTypedRefusal
+        - TestShadowMissingDimensionsAndUnsealedEvidenceCannotReachReport
+      issues:
+        - 70
+    documents:
+      currentAnchor: shadow-pilot-live-entrypoint
+      targetAnchor: shadow-pilot-live-entrypoint

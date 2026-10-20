@@ -39,6 +39,22 @@ func mainRun(args []string, factory transportFactory) int {
 }
 
 func mainRunWithWriter(args []string, factory transportFactory, stderr io.Writer) int {
+	return mainRunWithShadowDeps(args, factory, stderr, nil)
+}
+
+func mainRunWithShadowDeps(args []string, factory transportFactory, stderr io.Writer, shadow *shadowDeps) int {
+	if len(args) > 0 && args[0] == "shadow-pilot" {
+		root, err := os.Getwd()
+		if err != nil {
+			_, _ = fmt.Fprintln(stderr, err)
+			return 2
+		}
+		if shadow == nil {
+			shadow = &shadowDeps{Root: root, Now: time.Now, Probe: &startupProbe{}, OpenAdapter: openShadowTelepathy}
+		}
+		shadow.Probe.EntryPointEntered()
+		return shadowPilotCLI(args, stderr, *shadow)
+	}
 	if len(args) != 2 || args[0] != "-config" || args[1] == "" {
 		writeStartupFailure(stderr, "config", "usage: coordd -config <path>", "unset", "not acquired", "not acquired")
 		return 2
@@ -130,6 +146,7 @@ func runWithWriterFactories(ctx context.Context, cfg coorddconfig.Config, factor
 		return &startupFailure{section: "runtime", ownership: "not acquired", namespaceLock: "not acquired", exitCode: 1, err: fmt.Errorf("acquire state namespace: %w", err)}
 	}
 	defer func() { err = errors.Join(err, releaseNamespace()) }()
+	observeDaemonStartup(ctx, false)
 
 	legacyPath := filepath.Join(cfg.StateDir, "runs.json")
 	releaseLegacy, err := (checkpoint.File{Path: legacyPath}).Lock()
@@ -140,6 +157,7 @@ func runWithWriterFactories(ctx context.Context, cfg coorddconfig.Config, factor
 		return &startupFailure{section: "runtime", ownership: "released", namespaceLock: "released", exitCode: 1, err: fmt.Errorf("acquire legacy compatibility lock: %w", err)}
 	}
 	defer func() { err = errors.Join(err, releaseLegacy()) }()
+	observeDaemonStartup(ctx, false)
 
 	legacyRuns, legacyErr := (checkpoint.File{Path: legacyPath}).Load()
 	if legacyErr != nil {
@@ -158,6 +176,7 @@ func runWithWriterFactories(ctx context.Context, cfg coorddconfig.Config, factor
 	if err != nil {
 		return runDiagnostic(ctx, cfg, stderr, "canonical state is not ready: "+err.Error())
 	}
+	observeDaemonStartup(ctx, true)
 	registry, err := openRoles(filepath.Join(cfg.StateDir, "roles.json"))
 	if err != nil {
 		return &startupFailure{section: "runtime", ownership: "released", namespaceLock: "released", exitCode: 1, err: errors.Join(fmt.Errorf("open role registry: %w", err), canonical.Close())}

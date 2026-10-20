@@ -1,5 +1,70 @@
 # Как устроено приложение
 
+<!-- shadow-pilot-live-entrypoint -->
+## Read-only shadow pilot в coordd (WP-SV-07, #70)
+
+Точная команда `coordd shadow-pilot run` выполняет отдельный путь с возвратом
+process exit code до daemon startup. Он не получает factories canonical store,
+role registry или daemon host. Неизвестные подкоманды, daemon-флаги и смешанные
+режимы отклоняются. Startup probes наблюдают успешные открытия store, получение
+двух daemon locks, выбор адаптера и завершённый dispatch; shadow-отчёт требует
+нулевых store/lock счётчиков и одного успешного dispatch. Счётчики относятся к
+локальному coordd; они не доказывают поведение произвольного удалённого процесса.
+
+`telepathyShadowAgentAdapter` оборачивает существующий MCP `telepathy.Process`;
+`internal/shadowpilot` остаётся transport-neutral. Live-конструктор запускает
+проверенный Telepathy 0.8.0 client/server contract. Другая версия сервера даёт
+отказ; совместимость с установленными более новыми плагинами не предполагается.
+Tools `send_message` и `read_messages` передают типизированные JSON envelopes.
+Reply address берётся из MCP `list_peers`; optional `--reply-to` проверяется
+против фактического sender. Свободный текст не является результатом. Корреляция связывает domain, dispatch,
+run, assignment, canonical AgentID, SessionID, generation, candidate/baseline SHA
+и input digest до `ShadowExecution.Complete`. Digest результата проверяется.
+Это read-only payload binding, не новый authentication или production command
+boundary; текст MCP сам по себе не является криптографическим peer attestation.
+
+Fixture требует immutable SHA, существующий локальный commit object и запрет
+всех внешних записей. SHA baseline совпадает с candidate для первого пилота.
+`--reviewer-agent` задаёт назначенную identity для admission executor, но не
+утверждает, что Review выполнен. Этот запуск не принимает себя, не выдаёт
+`ADMIT_P0_3` и не обладает authority на production writes.
+
+Десять существующих model dimensions сохраняются в `COMPARISON.json`.
+Неподтверждённые independence, rationale, readiness и live crash deduplication
+сохраняются как `NOT_EVALUATED` с причиной. Проверка finding identity сравнивает
+ID инвариантов fixture и результата; она не выдаётся за независимую оценку
+правильности rationale. Completed-checkpoint JSON replay проверяет model
+`RESUME_GRAPH`, но не заменяет live process restart. `REPORT.json` содержит
+валидированный model report и отдельный итог pilot `NOT_EVALUATED`. Поле
+`canonical_revision: 1` model report обозначает только локальный shadow snapshot,
+не прочитанную production canonical revision. Независимые Review/Audit остаются
+внешними gates; их acceptance не производится этим run.
+
+Artifacts пишутся однократно в новую директорию под project `.scratch/tmp`;
+существующий output и symlink ancestors отклоняются. JSON-кодировка YAML-файлов
+сохраняет один digest preimage. Provenance связывает HEAD, digest текущего binary
+и command invocation, subjects/input/result, adapter/client version, identities,
+timestamps, startup counters и digests pre-seal artifacts. `Seal` и `Verify`
+предшествуют построению и Validate report. Чтобы избежать циклических хэшей,
+bundle связывает pre-seal artifacts; `INTEGRITY.sha256` дополнительно связывает
+manifest и report, но не себя. Ошибка binding оставляет refusal без completed
+result, sealed bundle или report.
+
+Пример запуска после отдельной проверки доступного server и responder:
+
+```sh
+coordd shadow-pilot run --input testdata/shadow-validation/input.yaml \
+  --adapter telepathy --executor-agent codex --executor-session workspace-c03 \
+  --reviewer-agent opencode \
+  --telepathy-server /absolute/path/to/verified-0.8.0/server.mjs \
+  --telepathy-home /absolute/path/to/selected/telepathy-home \
+  --output .scratch/tmp/wp-sv-07-live-run
+```
+
+Transport receipt означает dispatch, а не принятие или завершение задания.
+Отсутствие коррелированного результата завершается отказом по deadline.
+Unit/MCP protocol tests не являются evidence реального c03 live run.
+
 ## Completion candidates и GitHub observations
 
 Кандидаты завершения проходят проверку по canonical Task, Run, exact subject, Action Map, workflow catalog, completion policy и watchdog до canonical commit. Публикация следует после commit; отклонённый кандидат не создаёт canonical event или external action.
