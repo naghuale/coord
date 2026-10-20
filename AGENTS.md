@@ -569,6 +569,55 @@ ADMISSION_READY:
 
 Если `executableNow: false`, карта не считается завершённой для live milestone.
 
+### Agent assignment handshake (AGENT-ASSIGNMENT-HANDSHAKE-R1 + DISPATCH-STATUS-TRUTH-R1)
+
+**DISPATCH-STATUS-TRUTH-R1**: Coordinator сообщает только доказанный статус, никогда не предполагаемый.
+
+| Доказано | Статус |
+|---|---|
+| transport delivery | `DELIVERED_AWAITING_ACK` |
+| ACK от exact target session | `ACKNOWLEDGED` |
+| workStarted от exact target session | `IN_PROGRESS` |
+| formal result получен | `RESULT_DELIVERED` |
+
+Ответ другой сессии не переводит assignment в следующее состояние.
+
+**AGENT-ASSIGNMENT-HANDSHAKE-R1**: Каждое назначение обязано содержать:
+
+- `assignmentId` — уникальный ID
+- `target.agentType` + `target.sessionAlias` + `target.sessionId` — exact target
+- `role` — Reviewer / Auditor / Executor / …
+- `subject` — immutable (full Git commit SHA, tree SHA или digest)
+- `requiredDecision` — допустимые ответы
+- `acknowledgementRequired: true`
+
+Transport delivery ≠ assignment acceptance.
+
+**ACK format** (получатель отвечает первым сообщением):
+
+```
+ACK assignment=<assignmentId>
+subject=<full SHA>
+role=<role>
+session=<exact sessionId>
+decision=ACCEPTED|BLOCKED|REJECTED|SUBJECT_MISMATCH|ROLE_CONFLICT
+```
+
+**State transitions** (только в этом порядке):
+
+```
+CREATED → DISPATCHED → DELIVERED → ACKNOWLEDGED → IN_PROGRESS → RESULT_DELIVERED → RESULT_VALIDATED → COMPLETE
+```
+
+Запрещено: `DELIVERED → IN_PROGRESS` без ACK; result от другой сессии → `RESULT_VALIDATED`; advisory message → formal result.
+
+**Session replacement**: если target не отвечает — максимум 1 повтор ACK_REQUEST, затем `SUPERSEDED` + новый `assignmentId` с той же `subject`. Поздний result от superseded assignment: `LATE_RESULT_FROM_SUPERSEDED_ASSIGNMENT`, не применяется к workflow.
+
+**Independence recording**:
+- Разные модели → `AGENT_INDEPENDENT`
+- Одна модель, разные сессии → `SESSION_SEPARATED`
+- Нельзя писать `AGENT_INDEPENDENT` для сессий одной модели
+
 ### Запрет ложной развилки OWNER
 
 Координатор MUST NOT формировать вопрос OWNER в виде выбора между вариантами,
