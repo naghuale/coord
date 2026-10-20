@@ -491,6 +491,30 @@ coordinatorAction:
 Таблица локальных workflow-переходов приведена в
 [`COORDINATOR-STATE-MACHINE.md`](docs/operations/COORDINATOR-STATE-MACHINE.md#ready-work-dispatch).
 
+### Новая сессия — не новый агент (SESSION-COUNT-IS-NOT-AGENT-COUNT-R1)
+
+Правило:
+
+- Новая сессия той же модели является изолированным контекстом, не новым независимым агентом.
+- Несколько сессий OpenCode считаются одним агентом с несколькими изолированными контекстами.
+- Межсессионная верификация маркируется `SESSION_SEPARATED`, не `AGENT_INDEPENDENT`.
+- Создание дополнительной сессии не создаёт автоматически новый gate.
+- Дополнительная сессия того же агента является advisory, если только не указано явно до dispatch.
+
+`dispatchRule`: если у subject уже есть один Reviewer-сеанс и один Auditor-сеанс
+с привязкой к exact subject, дополнительная сессия того же агента получает
+статус `RESERVED`. Исключения: назначенная сессия недоступна, Reviewer и Auditor
+материально расходятся или нужен точечный tie-break probe.
+
+`oe9ResultPolicy` для текущего subject (Issue #70, Shadow Validation):
+
+```yaml
+oe9ResultPolicy:
+  classification: ADVISORY_CROSS_SESSION_PROBE
+  blocksMergeByDefault: false
+  requiredForAcceptance: false
+```
+
 ### Запрет ложной развилки OWNER
 
 Координатор MUST NOT формировать вопрос OWNER в виде выбора между вариантами,
