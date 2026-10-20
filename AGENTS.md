@@ -515,6 +515,157 @@ oe9ResultPolicy:
   requiredForAcceptance: false
 ```
 
+### Operational Reachability Gate (OPERATIONAL-REACHABILITY-GATE-R1)
+
+Правило:
+
+Milestone не может объявляться LIVE, PILOT или PRODUCTION_READY до тех пор, пока
+не доказана операционная достижимость через реальный entry point и concrete non-nil
+adapter.
+
+`appliesWhen`:
+- milestone claims LIVE, PILOT или PRODUCTION_READY
+- milestone требует real adapter или external agent dispatch
+
+`requiredEvidence` (все пункты обязательны):
+- точная user-visible или daemon команда с exact CLI shape
+- точный symbol в source, обрабатывающий команду
+- concrete non-nil adapter construction (не nil/noop/fake в live mode)
+- end-to-end dispatch correlation (dispatchID ↔ resultID)
+- real result callback path
+- `RuntimeEvidence` поля, производимые из runtime-наблюдений, а не из констант
+- один smoke run с собранным бинарником
+
+`prohibitions`:
+- library-level tests alone не устанавливают live readiness
+- наличие config не доказывает использование adapter
+- boolean literal `true` не является runtime evidence
+- прямой вызов internal package нельзя подставить вместо обязательного entry point
+
+`readinessLevels` — нельзя пропускать уровни:
+
+```yaml
+MODEL_READY:
+  requires: [domain model, validators, package tests]
+
+INTEGRATION_READY:
+  requires: [CLI or daemon entry point, concrete adapter, correlation path, integration tests]
+
+LIVE_PILOT_READY:
+  requires: [real agent dispatch, sealed live evidence, zero unauthorized writes, validated report]
+
+ADMISSION_READY:
+  requires: [all pilot criteria, independent Review/Audit evidence, no required NOT_EVALUATED dimensions]
+```
+
+`verticalSliceRequirement`:
+Каждая Integration Map должна указывать:
+- `entrypoint`: точная команда
+- `handler`: точный symbol
+- `adapter`: точный concrete type
+- `downstreamCall`: точный method
+- `resultPath`: точный callback/decoder
+- `executableNow`: true|false
+
+Если `executableNow: false`, карта не считается завершённой для live milestone.
+
+### Agent assignment handshake (AGENT-ASSIGNMENT-HANDSHAKE-R1 + DISPATCH-STATUS-TRUTH-R1)
+
+**DISPATCH-STATUS-TRUTH-R1**: Coordinator сообщает только доказанный статус, никогда не предполагаемый.
+
+| Доказано | Статус |
+|---|---|
+| transport delivery | `DELIVERED_AWAITING_ACK` |
+| ACK от exact target session | `ACKNOWLEDGED` |
+| workStarted от exact target session | `IN_PROGRESS` |
+| formal result получен | `RESULT_DELIVERED` |
+
+Ответ другой сессии не переводит assignment в следующее состояние.
+
+**AGENT-ASSIGNMENT-HANDSHAKE-R1**: Каждое назначение обязано содержать:
+
+- `assignmentId` — уникальный ID
+- `target.agentType` + `target.sessionAlias` + `target.sessionId` — exact target
+- `role` — Reviewer / Auditor / Executor / …
+- `subject` — immutable (full Git commit SHA, tree SHA или digest)
+- `requiredDecision` — допустимые ответы
+- `acknowledgementRequired: true`
+
+Transport delivery ≠ assignment acceptance.
+
+**ACK format** (получатель отвечает первым сообщением):
+
+```
+ACK assignment=<assignmentId>
+subject=<full SHA>
+role=<role>
+session=<exact sessionId>
+decision=ACCEPTED|BLOCKED|REJECTED|SUBJECT_MISMATCH|ROLE_CONFLICT
+```
+
+**State transitions** (только в этом порядке):
+
+```
+CREATED → DISPATCHED → DELIVERED → ACKNOWLEDGED → IN_PROGRESS → RESULT_DELIVERED → RESULT_VALIDATED → COMPLETE
+```
+
+Запрещено: `DELIVERED → IN_PROGRESS` без ACK; result от другой сессии → `RESULT_VALIDATED`; advisory message → formal result.
+
+**Session replacement**: если target не отвечает — максимум 1 повтор ACK_REQUEST, затем `SUPERSEDED` + новый `assignmentId` с той же `subject`. Поздний result от superseded assignment: `LATE_RESULT_FROM_SUPERSEDED_ASSIGNMENT`, не применяется к workflow.
+
+**Independence recording**:
+- Разные модели → `AGENT_INDEPENDENT`
+- Одна модель, разные сессии → `SESSION_SEPARATED`
+- Нельзя писать `AGENT_INDEPENDENT` для сессий одной модели
+
+### Двухагентный fallback TD-R2 (TWO-AGENT-TD-R2-FALLBACK-R1)
+
+Применяется когда доступно ровно два типа агентов, один из которых уже является Executor subject.
+
+**Обязательные требования:**
+
+- Executor MUST NOT выполнять Review или Audit собственного subject, даже в новой сессии той же модели.
+- Remaining agent выполняет Review.
+- Для Audit по возможности используется **отдельная сессия** remaining agent.
+- Точная привязка к subject (exact SHA) обязательна.
+- Сниженная независимость Reviewer/Auditor раскрывается в completion report.
+- Adversarial probes и mutant kills обязательны.
+
+**Отчётность:**
+
+```yaml
+verificationMode: LIMITED_POOL_TWO_AGENT
+executorReviewerIndependence: AGENT_INDEPENDENT
+executorAuditorIndependence: AGENT_INDEPENDENT
+reviewerAuditorIndependence: SESSION_SEPARATED  # если Reviewer и Auditor — одна модель
+```
+
+**Запрещено:**
+
+- Executor проверяет собственную реализацию
+- Две сессии одной модели называются двумя независимыми агентами
+- Молчаливое заявление о полной TD-R2 независимости при двух агентах
+- Создание бесконечных сессий одного агента ради видимости gate
+
+**Предпочтительное распределение при двух агентах:**
+
+```yaml
+executor: AgentA
+reviewer: AgentB
+auditor:
+  agent: AgentB
+  separateSessionRequired: true
+```
+
+Если третий агент доступен (canonical identity подтверждена), использовать:
+
+```yaml
+executor: AgentA
+reviewer: AgentB
+auditor: AgentC
+verificationMode: FULL_POOL_THREE_AGENT
+```
+
 ### Запрет ложной развилки OWNER
 
 Координатор MUST NOT формировать вопрос OWNER в виде выбора между вариантами,
