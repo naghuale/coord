@@ -1,5 +1,17 @@
 # Целевая архитектура Coord
 
+<!-- shadow-pilot-live-entrypoint -->
+## Shadow pilot live entrypoint
+
+WP-SV-07 добавляет изолированный read-only `coordd shadow-pilot run` до canonical
+store и daemon locks. Typed Telepathy MCP adapter связывает exact assignment и
+result; startup observations, полные comparison dimensions и sealed evidence
+записываются в scratch artifacts. Этот путь не расширяет production write
+authority. Unsupported axes и общий pilot admission остаются `NOT_EVALUATED`.
+Протокольные tests не заменяют live c03 dispatch, независимый Review и TD-R2
+Audit; acceptance и live crash/restart остаются открытыми. Детали наблюдаемых
+границ и версионного Telepathy contract: ARCHITECTURE.md, раздел WP-SV-07.
+
 ## Coordinator completion и GitHub observation slice
 
 Принятый wiring добавляет typed completion candidate boundary в существующий coordinator loop. Проверка использует canonical records и exact subject; запись предшествует публикации. Отдельный coordinator, store, retry engine или writer не добавляется.
