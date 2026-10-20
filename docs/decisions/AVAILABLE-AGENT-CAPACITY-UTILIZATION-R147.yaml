@@ -1,0 +1,191 @@
+decision: R147
+class: R
+status: proposed
+title: "Capability-aware scheduling of non-conflicting agent work (AVAILABLE-AGENT-CAPACITY-UTILIZATION-R1)"
+issue: null  # to be created
+
+decisionDate: "2026-10-20"
+
+authority: AGENTS.md
+
+dependsOn:
+  - AGENT-ASSIGNMENT-HANDSHAKE-R1   # typed assignment lifecycle
+  - DISPATCH-STATUS-TRUTH-R1        # state machine: DELIVERED != ADMITTED != RUNNING
+  - SESSION-COUNT-IS-NOT-AGENT-COUNT-R1  # new session ≠ independent agent
+  - R146                             # Coordinator must not passively wait
+
+context: >
+  During the WP-SV-07 delivery cycle the Coordinator correctly identified that
+  Codex (c03) was available while o14 performed an audit, and that a
+  non-mutating preparation task existed that would accelerate the critical path
+  after AUDIT_ACCEPTED. However, the Coordinator could not dispatch this task
+  autonomously: it lacked a formalized rule that obligates dispatch of safe
+  critical-path work to an available agent without asking OWNER.
+
+  Five deficiencies were identified:
+
+  1. No durable Agent Registry — agent state (AVAILABLE/BUSY), capabilities,
+     exclusions, and subject-authorship history are held only in context.
+
+  2. No parallel-safety classification — assignments lack a machine-readable
+     property (e.g. SUBJECT_NON_MUTATING) that proves they do not conflict with
+     an active immutable subject or reserved verification role.
+
+  3. No "available agent must not idle" scheduler policy — AGENTS.md has
+     dispatch rules and ACK rules but no rule that obligates the Coordinator to
+     find and dispatch safe work when an agent is AVAILABLE and a gate is
+     IN_PROGRESS.
+
+  4. No catalog of pre-approved preparatory assignment types — the Coordinator
+     must invent what to do in parallel each time rather than selecting from
+     a known-safe set.
+
+  5. No conflict evaluator — no formal check that proves an assignment does not
+     mutate the audited subject, touch the Git index, duplicate an active
+     assignment, compromise independence, or use a reserved role.
+
+  The result is that the Coordinator either leaves a capable agent idle or asks
+  OWNER to choose the next task for it, which violates R107 and
+  COORDINATOR-ACT-ON-READY-WORK-R1.
+
+selectedOption: >
+  Establish R147: AVAILABLE-AGENT-CAPACITY-UTILIZATION-R1.
+
+  When at least one agent session is AVAILABLE and at least one project gate is
+  IN_PROGRESS, the Coordinator MUST:
+
+  (1) Enumerate ready non-blocked work items from the Operations Ledger and
+      work queue.
+
+  (2) Exclude any item that:
+      - requires an OWNER decision (class R);
+      - mutates or accesses the audited immutable subject;
+      - touches the Git index of a branch under active gate;
+      - compromises Review/Audit independence for a current or future subject;
+      - duplicates an active assignment on the same subject and role;
+      - reserves a role without a concrete assignment.
+
+  (3) Rank the remaining items by critical-path acceleration:
+      1 — unblocks current active gate
+      2 — prepares immediate post-gate transition
+      3 — resolves an existing blocker
+      4 — closes a documented non-blocking follow-up
+      5 — general backlog
+
+  (4) Dispatch the highest-ranked item to the AVAILABLE agent:
+      - construct a typed assignment envelope per AGENT-ASSIGNMENT-HANDSHAKE-R1;
+      - require ACK;
+      - record actual state per DISPATCH-STATUS-TRUTH-R1.
+
+  (5) If no safe work exists:
+      - record NO_SAFE_PARALLEL_WORK;
+      - keep agent AVAILABLE;
+      - do not invent an assignment.
+
+  Implementation requires three components:
+
+  a. Agent Registry — durable per-session record of state, capabilities,
+     active assignments, and subject-authorship history.
+
+  b. Assignment Conflict Evaluator — checks: authority, subject immutability,
+     Git index overlap, role conflict, independence reservation, duplicate
+     assignment, dependency completion, active gate compatibility.
+
+  c. Scheduler — applies trigger → enumerate → exclude → rank → dispatch
+     → ACK → record.
+
+  Until these components are implemented in code, this rule applies normatively:
+  the Coordinator MUST apply the same logic manually and MUST NOT ask OWNER
+  which task to give an available agent when a safe critical-path item exists.
+
+securityImpact: >
+  This rule does not lower any trust boundary. Dispatch authority is scoped to
+  work that is already approved (ownerRequired: false) and that provably does not
+  mutate an active immutable subject or compromise verification independence.
+  A conflict evaluator failure (false-safe claim) would produce an unauthorized
+  subject mutation or an independence violation — both of which are caught by
+  existing fail-closed gates (AUDIT_ACCEPTED requires immutable subject; TD-R2
+  requires independent verifier). The Conflict Evaluator itself is TD-R2 class
+  and requires independent Review and Audit.
+
+effects:
+  - Coordinator MUST dispatch safe critical-path work to AVAILABLE agents
+    without asking OWNER
+  - Coordinator MUST NOT leave an agent idle when NO_SAFE_PARALLEL_WORK is false
+  - Agent Registry becomes a required operational artifact (durable, not in-context)
+  - Every assignment envelope MUST carry a parallelSafety classification
+  - Conflict evaluation is mandatory before dispatch; result recorded in assignment
+  - NO_SAFE_PARALLEL_WORK is a valid and respected outcome (no invented work)
+  - Scheduler ranking is fixed; Coordinator MUST NOT reorder by preference
+
+excludedEffects:
+  - This rule does not grant dispatch authority for work requiring OWNER
+  - This rule does not alter the Review/Audit independence model
+  - This rule does not change the AgentSession identity or trust model
+  - Production process launch capability is not assumed
+  - The specific implementation technology (Registry schema, Scheduler algorithm)
+    is a TD decision deferred to the implementation work package
+  - R142 class boundaries are unchanged
+
+proposedWorkPackage:
+  id: COORD-AUTONOMOUS-CAPACITY-SCHEDULER
+  title: "Capability-aware scheduling of non-conflicting agent work"
+  class: TD-R2
+  dependsOn:
+    - AGENT-ASSIGNMENT-HANDSHAKE-R1
+    - DISPATCH-STATUS-TRUTH-R1
+    - SESSION-COUNT-IS-NOT-AGENT-COUNT-R1
+    - R146
+  components:
+    - Agent Registry (per-session: state, capabilities, exclusions, authorship)
+    - Assignment Conflict Evaluator (8 checks)
+    - Capability-aware Scheduler (trigger → enumerate → exclude → rank → dispatch)
+  requiredVerification:
+    - Independent Review (TD-R2)
+    - Independent Audit (TD-R2)
+    - Negative tests: conflict evaluator must reject subject mutation
+    - Mutation coverage: scheduler bypass, false-safe conflict result
+
+normativeRuleText: |
+  ### Обязательное использование свободной агентской мощности
+  (AVAILABLE-AGENT-CAPACITY-UTILIZATION-R1)
+
+  Если хотя бы одна агентская сессия находится в состоянии AVAILABLE
+  и хотя бы один проектный gate — IN_PROGRESS, Coordinator MUST:
+
+  1. Перечислить готовые незаблокированные work items.
+  2. Исключить работу, требующую OWNER, мутирующую audited subject,
+     затрагивающую Git index активной ветки, компрометирующую независимость
+     проверки или дублирующую активное задание.
+  3. Ранжировать по ускорению критического пути.
+  4. Отправить задание высшего ранга доступному агенту с типизированным
+     envelope, требованием ACK и фиксацией фактического состояния.
+  5. При отсутствии безопасной работы записать NO_SAFE_PARALLEL_WORK
+     и не изобретать задание.
+
+  Coordinator MUST NOT спрашивать OWNER, что дать свободному агенту,
+  если безопасная работа, ускоряющая активный критический путь, существует.
+
+mutation:
+  removeCapacityUtilizationObligation:
+    description: Remove "Coordinator MUST dispatch" from rule text
+    expectedResult: KILLED
+    killedBy: "scheduler behavior test (not yet implemented)"
+  permitIdleAgentWithSafeWork:
+    description: Allow Coordinator to leave an AVAILABLE agent idle when
+      safe critical-path work exists
+    expectedResult: KILLED
+    killedBy: "idle-with-ready-work test (not yet implemented)"
+  allowInventedAssignments:
+    description: Remove NO_SAFE_PARALLEL_WORK path; always invent an assignment
+    expectedResult: KILLED
+    killedBy: "fabricated-assignment rejection test (not yet implemented)"
+  bypassConflictEvaluator:
+    description: Dispatch without conflict evaluation
+    expectedResult: KILLED
+    killedBy: "conflict-bypass test (not yet implemented)"
+
+normativeStatus: POINTER_ONLY
+originalDecisionAcceptance: NOT_YET_ACCEPTED
+proposedBy: "Claude Sonnet 4.6 (coordinator session, Issue #70 delivery cycle)"
+proposedDate: "2026-10-20"
