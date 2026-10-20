@@ -33,6 +33,9 @@ func TestMCPHelper(t *testing.T) {
 			if os.Getenv("COORD_MCP_BAD_VERSION") == "1" {
 				version = "9"
 			}
+			if os.Getenv("COORD_MCP_VERSION_090") == "1" {
+				version = "0.9.0"
+			}
 			result = map[string]any{"protocolVersion": "2024-11-05", "serverInfo": map[string]any{"name": "telepathy", "version": version}}
 		} else {
 			if os.Getenv("COORD_MCP_HANG") == "1" {
@@ -54,36 +57,43 @@ func TestMCPHelper(t *testing.T) {
 	os.Exit(0)
 }
 func TestRPCChecksVersionAndToolFailure(t *testing.T) {
-	for _, bad := range []bool{false, true} {
-		env := append(os.Environ(), "COORD_MCP_HELPER=1")
-		if bad {
-			env = append(env, "COORD_MCP_BAD_VERSION=1")
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		p, err := Start(ctx, []string{os.Args[0], "-test.run=^TestMCPHelper$"}, t.TempDir(), env)
-		if bad {
-			cancel()
-			if err == nil {
-				_ = p.Close()
-				t.Fatal("version mismatch accepted")
+	for _, tc := range []struct {
+		name    string
+		envVars []string
+		wantErr bool
+	}{
+		{name: "v0.8.0 accepted", envVars: nil, wantErr: false},
+		{name: "v0.9.0 accepted", envVars: []string{"COORD_MCP_VERSION_090=1"}, wantErr: false},
+		{name: "bad version rejected", envVars: []string{"COORD_MCP_BAD_VERSION=1"}, wantErr: true},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			env := append(os.Environ(), "COORD_MCP_HELPER=1")
+			env = append(env, tc.envVars...)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			p, err := Start(ctx, []string{os.Args[0], "-test.run=^TestMCPHelper$"}, t.TempDir(), env)
+			if tc.wantErr {
+				if err == nil {
+					_ = p.Close()
+					t.Fatal("version mismatch accepted")
+				}
+				return
 			}
-			continue
-		}
-		if err != nil {
-			cancel()
-			t.Fatal(err)
-		}
-		_, err = p.Call(ctx, "send_message", map[string]any{})
-		if err == nil || !strings.Contains(err.Error(), "Rate limit") {
-			t.Fatalf("isError hidden: %v", err)
-		}
-		if err = p.Close(); err != nil {
-			t.Fatal(err)
-		}
-		if err = p.Close(); err != nil {
-			t.Fatal(err)
-		}
-		cancel()
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = p.Call(ctx, "send_message", map[string]any{})
+			if err == nil || !strings.Contains(err.Error(), "Rate limit") {
+				t.Fatalf("isError hidden: %v", err)
+			}
+			if err = p.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err = p.Close(); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 func TestRPCCancellationReapsProcess(t *testing.T) {

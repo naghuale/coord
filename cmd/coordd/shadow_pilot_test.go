@@ -283,6 +283,29 @@ func TestShadowLiveModeRejectsNilFakeAndNilMCP(t *testing.T) {
 	}
 }
 
+func TestShadowDecoderHandlesShadowRefusal(t *testing.T) {
+	// An agent refusal must surface the agent's own field/reason, not "unknown field 'kind'".
+	for _, tc := range []struct {
+		raw       string
+		wantField string
+	}{
+		{`{"kind":"ShadowRefusal","field":"sessionID","reason":"session_id mismatch"}`, "sessionID"},
+		{`{"kind":"ShadowRefusal","field":"assignment","reason":"bad input"}`, "assignment"},
+	} {
+		_, err := decodeShadowResult(tc.raw)
+		if err == nil {
+			t.Fatalf("ShadowRefusal %q accepted", tc.raw)
+		}
+		if !strings.Contains(err.Error(), tc.wantField) {
+			t.Fatalf("ShadowRefusal %q: want field %q in error, got %v", tc.raw, tc.wantField, err)
+		}
+	}
+	// Refusal without field must fail clearly, not panic.
+	if _, err := decodeShadowResult(`{"kind":"ShadowRefusal"}`); err == nil {
+		t.Fatal("ShadowRefusal without field accepted")
+	}
+}
+
 func TestShadowStrictDecoderRejectsFreeTextAndExtraFields(t *testing.T) {
 	for _, raw := range []string{"all good", `{"unknown":"ignored"}`, `{} {}`} {
 		if _, err := decodeShadowResult(raw); err == nil {

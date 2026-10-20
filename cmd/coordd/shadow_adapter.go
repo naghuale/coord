@@ -91,6 +91,18 @@ func (a *telepathyShadowAgentAdapter) Dispatch(ctx context.Context, dispatch sha
 }
 
 func decodeShadowResult(raw string) (shadowResult, error) {
+	// Detect an explicit agent refusal before strict schema decode so coordd
+	// reports the agent's own field/reason rather than "unknown field 'kind'".
+	var envelope struct {
+		Kind string `json:"kind"`
+	}
+	if json.Unmarshal([]byte(raw), &envelope) == nil && envelope.Kind == "ShadowRefusal" {
+		var ref ShadowRefusal
+		if json.Unmarshal([]byte(raw), &ref) == nil && ref.Field != "" {
+			return shadowResult{}, refuse(ref.Field, "agent refused: "+ref.Reason)
+		}
+		return shadowResult{}, refuse("result_schema", "agent sent ShadowRefusal without field")
+	}
 	var result shadowResult
 	dec := json.NewDecoder(strings.NewReader(raw))
 	dec.DisallowUnknownFields()
