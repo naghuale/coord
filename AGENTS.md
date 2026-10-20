@@ -515,6 +515,60 @@ oe9ResultPolicy:
   requiredForAcceptance: false
 ```
 
+### Operational Reachability Gate (OPERATIONAL-REACHABILITY-GATE-R1)
+
+Правило:
+
+Milestone не может объявляться LIVE, PILOT или PRODUCTION_READY до тех пор, пока
+не доказана операционная достижимость через реальный entry point и concrete non-nil
+adapter.
+
+`appliesWhen`:
+- milestone claims LIVE, PILOT или PRODUCTION_READY
+- milestone требует real adapter или external agent dispatch
+
+`requiredEvidence` (все пункты обязательны):
+- точная user-visible или daemon команда с exact CLI shape
+- точный symbol в source, обрабатывающий команду
+- concrete non-nil adapter construction (не nil/noop/fake в live mode)
+- end-to-end dispatch correlation (dispatchID ↔ resultID)
+- real result callback path
+- `RuntimeEvidence` поля, производимые из runtime-наблюдений, а не из констант
+- один smoke run с собранным бинарником
+
+`prohibitions`:
+- library-level tests alone не устанавливают live readiness
+- наличие config не доказывает использование adapter
+- boolean literal `true` не является runtime evidence
+- прямой вызов internal package нельзя подставить вместо обязательного entry point
+
+`readinessLevels` — нельзя пропускать уровни:
+
+```yaml
+MODEL_READY:
+  requires: [domain model, validators, package tests]
+
+INTEGRATION_READY:
+  requires: [CLI or daemon entry point, concrete adapter, correlation path, integration tests]
+
+LIVE_PILOT_READY:
+  requires: [real agent dispatch, sealed live evidence, zero unauthorized writes, validated report]
+
+ADMISSION_READY:
+  requires: [all pilot criteria, independent Review/Audit evidence, no required NOT_EVALUATED dimensions]
+```
+
+`verticalSliceRequirement`:
+Каждая Integration Map должна указывать:
+- `entrypoint`: точная команда
+- `handler`: точный symbol
+- `adapter`: точный concrete type
+- `downstreamCall`: точный method
+- `resultPath`: точный callback/decoder
+- `executableNow`: true|false
+
+Если `executableNow: false`, карта не считается завершённой для live milestone.
+
 ### Запрет ложной развилки OWNER
 
 Координатор MUST NOT формировать вопрос OWNER в виде выбора между вариантами,
