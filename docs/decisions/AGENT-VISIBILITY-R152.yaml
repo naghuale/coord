@@ -44,9 +44,13 @@ principles:
   - the four properties are recorded as separate fields, never as one status
   - an ACK is not durable work; a host restart after ACK voids the in-flight assignment
   - session existence and state are proven by reproducible evidence, not by narrative
+  - a restarted host SHALL NOT be assumed to preserve in-flight assignments;
+    continuation requires a durable checkpoint or a fresh assignment ACK
 
 evidence:
   minimumAgentEvidence:
+    - assignmentId the evidence is bound to
+    - sessionId
     - telepathy address and ref
     - agent type and model
     - transport status and last message time
@@ -107,8 +111,11 @@ normativeRuleText: |
   отдельными полями; Coordinator MUST NOT называть сессию управляемой или
   восстанавливаемой только по ответам транспорта.
 
-  Для каждого Review/Audit assignment и каждого live pilot записываются:
-  адрес и ref, тип агента и модель, статус транспорта и время последнего
+  Перезапущенный хост MUST NOT считаться сохранившим незавершённые
+  assignments; продолжение требует durable checkpoint или нового ACK.
+
+  Для каждого Review/Audit assignment и каждого live pilot записываются,
+  с привязкой к assignmentId: sessionId, адрес и ref, тип агента и модель, статус транспорта и время последнего
   сообщения, PID, PPID, TTY и время запуска процесса-хоста, рабочий каталог.
   Проверка воспроизводима: PID из presence.json, затем `ps -o
   pid,ppid,tty,lstart,command -p <PID>`.
