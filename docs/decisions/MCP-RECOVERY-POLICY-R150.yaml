@@ -1,16 +1,18 @@
 decision: R150
 class: R
-status: proposed
+status: accepted
 title: "Evidence-first recovery of MCP integrations and version drift control (MCP-RECOVERY-POLICY-R1)"
 issue: null
 
 decisionDate: "2026-10-21"
-acceptanceDate: null
+acceptanceDate: "2026-10-21"
 
 ownerDecision:
   decisionId: R150
-  ownerMessage: null
-  disposition: PENDING
+  ownerMessage: "принимаю r150"
+  disposition: ACCEPTED
+  recordedBy: "Claude Opus 5.5 (coordinator session)"
+  recordedAt: "2026-10-21"
 
 authority: AGENTS.md
 
@@ -105,7 +107,8 @@ agentPoolBoundary:
       prohibitedRoles: [Executor, Reviewer, Auditor]
 
 defectPatterns:
-  onAcceptance: add to docs/DEFECT_PATTERNS.md
+  onAcceptance: add to docs/DEFECT_PATTERNS.md and docs/operations/DEFECT-PATTERNS.yaml
+  assignedIds: {CONFIGURATION_DRIFT: DP-006, ASSUMPTION_DRIVEN_REPAIR: DP-007}
   patterns:
     - CONFIGURATION_DRIFT
     - ASSUMPTION_DRIVEN_REPAIR
@@ -180,6 +183,9 @@ mutation:
     expectedResult: KILLED
     killedBy: "auditor eligibility test (not yet implemented)"
 
-normativeStatus: PROPOSED
+normativeStatus: AUTHORITATIVE
+originalDecisionAcceptance: ACCEPTED_2026-10-21
+acceptedBy: "OWNER (naghuale)"
+acceptedDate: "2026-10-21"
 proposedBy: "Claude Opus 5.5 (coordinator session, Issue #70 delivery cycle)"
 proposedDate: "2026-10-21"
