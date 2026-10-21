@@ -1,0 +1,136 @@
+decision: R152
+class: R
+status: proposed
+title: "Transport liveness is not operator manageability (AGENT-VISIBILITY-R1)"
+issue: null
+
+decisionDate: "2026-10-21"
+acceptanceDate: null
+
+ownerDecision:
+  decisionId: R152
+  ownerMessage: null
+  disposition: PENDING
+
+authority: AGENTS.md
+
+dependsOn:
+  - R146   # no passive waiting; reconcile session state
+  - R148   # auditor unavailability timeline
+  - R149   # recovery must not depend on the failed component
+  - DISPATCH-STATUS-TRUTH-R1
+
+context: >
+  Issue #70, 2026-10-21. Every agent session used in the WP-SV-07 delta
+  verification runs headless: all five OpenCode sessions (o14, oe4, o2c, oaf,
+  ob5) are hosted by one `opencode serve --service` process (PID 30903,
+  PPID 1 = launchd, TTY none); Codex c03 is a `codex app-server` daemon
+  (PID 11814, TTY none, running since 2026-10-16). The operator sees no TUI for
+  any of them. Auditor o14 sent ACK at 02:14:50Z; the hosting OpenCode service
+  started at 03:04:24Z, i.e. it restarted after the ACK and the in-flight audit
+  was lost. Transport replies ("ALIVE") from oe4/o2c proved liveness only.
+  Invisible operation is an architectural mode, not a failure of one session.
+
+definitions:
+  TRANSPORT_ALIVE: The session answers through its transport (Telepathy, MCP, coordd).
+  OPERATOR_VISIBLE: The operator can observe the session (TUI, terminal, log, or attach view).
+  OPERATOR_REACHABLE: An attach path to the live session is known and was demonstrated.
+  OPERATOR_CONTROLLABLE: A stop/restart/diagnose path for the hosting process is known.
+  INVISIBLE_SESSION: TRANSPORT_ALIVE true and OPERATOR_VISIBLE not demonstrated.
+  HOST_RESTARTED: The hosting process start time is later than the session's last acknowledged assignment.
+
+principles:
+  - TRANSPORT_ALIVE does not imply VISIBLE, REACHABLE or CONTROLLABLE
+  - the four properties are recorded as separate fields, never as one status
+  - an ACK is not durable work; a host restart after ACK voids the in-flight assignment
+  - session existence and state are proven by reproducible evidence, not by narrative
+
+evidence:
+  minimumAgentEvidence:
+    - telepathy address and ref
+    - agent type and model
+    - transport status and last message time
+    - PID and PPID of the hosting process
+    - TTY of the hosting process
+    - hosting process start time
+    - working directory
+  reproducibleCheck: >
+    PID from ~/.telepathy/peers/<ref>/presence.json, then
+    `ps -o pid,ppid,tty,lstart,command -p <PID>`. TTY none with a
+    service-manager parent indicates a headless session.
+  recordedFor:
+    - every Review and Audit assignment at ACK and at result
+    - every live pilot run
+
+rules:
+  hostRestartDetection: >
+    If the hosting process start time is later than the ACK of an active
+    assignment, the assignment is recorded as AUDITOR_UNAVAILABLE (or the role
+    equivalent) with cause HOST_RESTARTED immediately, without waiting for R148
+    stall timeouts; the R148 fallback path starts from that moment.
+  assignmentPreference: >
+    For new Review or Audit assignments, an OPERATOR_VISIBLE session is
+    preferred over an INVISIBLE_SESSION of equal eligibility. An invisible
+    session MAY be assigned when no visible eligible session is available;
+    its invisibility is disclosed in the result.
+  longRunning: >
+    Assignments expected to exceed the R148 stall timeout require
+    OPERATOR_VISIBLE and OPERATOR_CONTROLLABLE, or a durable checkpoint that
+    survives host restart.
+  noManagedClaim: >
+    The coordinator MUST NOT describe a session as managed, recoverable or
+    controllable on the basis of transport replies alone.
+  existingWork: >
+    An invisible session MAY finish already assigned work; its result is
+    accepted on the same rules, with evidence recorded.
+
+securityImpact: >
+  No trust boundary is lowered. The rule adds evidence about process identity
+  and lifecycle and earlier detection of lost assignments. It does not change
+  eligibility or independence; visibility is a preference and an operational
+  requirement for long-running work, not a substitute for independence.
+
+proposedWorkPackage:
+  id: F-AGENT-OBSERVABILITY
+  class: TD
+  deliverables:
+    - "agent info: print minimumAgentEvidence for a telepathy ref"
+    - host-restart detection against active assignments
+    - documented attach/stop path per runtime (OpenCode service, Codex app-server, Claude Code)
+  relatedTo: R149 COORD-SELF-HOSTING-RECOVERY-INVENTORY
+
+normativeRuleText: |
+  ### Живость транспорта не равна управляемости (AGENT-VISIBILITY-R1, R152)
+
+  Ответ сессии через транспорт доказывает только TRANSPORT_ALIVE. Видимость
+  оператору, путь подключения и путь остановки/перезапуска фиксируются
+  отдельными полями; Coordinator MUST NOT называть сессию управляемой или
+  восстанавливаемой только по ответам транспорта.
+
+  Для каждого Review/Audit assignment и каждого live pilot записываются:
+  адрес и ref, тип агента и модель, статус транспорта и время последнего
+  сообщения, PID, PPID, TTY и время запуска процесса-хоста, рабочий каталог.
+  Проверка воспроизводима: PID из presence.json, затем `ps -o
+  pid,ppid,tty,lstart,command -p <PID>`.
+
+  Если процесс-хост запущен позже ACK активного assignment, assignment сразу
+  считается потерянным (причина HOST_RESTARTED), и путь fallback по R148
+  начинается с этого момента. Для новых Review/Audit видимая оператору сессия
+  предпочтительнее невидимой при равной допустимости; невидимая допускается
+  при отсутствии видимой с раскрытием в результате. Долгие assignments
+  требуют видимости и управляемости либо checkpoint, переживающего
+  перезапуск хоста.
+
+mutation:
+  transportOnlyManagedClaim:
+    description: Mark session controllable from transport replies alone
+    expectedResult: KILLED
+    killedBy: "agent state fields test (not yet implemented)"
+  ignoreHostRestart:
+    description: Keep an assignment active after the host restarted post-ACK
+    expectedResult: KILLED
+    killedBy: "host restart detection test (not yet implemented)"
+
+normativeStatus: PROPOSED
+proposedBy: "Claude Opus 5.5 (coordinator session, Issue #70 delivery cycle)"
+proposedDate: "2026-10-21"
