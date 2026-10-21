@@ -1,16 +1,18 @@
 decision: R148
 class: R
-status: proposed
+status: accepted
 title: "Auditor unavailability and recovery path (AUDITOR-UNAVAILABLE-R1)"
 issue: null
 
 decisionDate: "2026-10-21"
-acceptanceDate: null
+acceptanceDate: "2026-10-21"
 
 ownerDecision:
   decisionId: R148
-  ownerMessage: null
-  disposition: PENDING
+  ownerMessage: "принимаю оба"
+  disposition: ACCEPTED
+  recordedBy: "Claude Opus 5.5 (coordinator session)"
+  recordedAt: "2026-10-21"
   ownerTimeoutCorrection: >
     OWNER скорректировал пороги (2026-10-21): t+1h AUDITOR_STALLED,
     t+3h FALLBACK_AUDITOR_ALLOWED, t+5h OWNER_ESCALATION_REQUIRED.
@@ -255,6 +257,9 @@ mutation:
     expectedResult: KILLED
     killedBy: "limited pilot gate test (not yet implemented)"
 
-normativeStatus: PROPOSED
+normativeStatus: AUTHORITATIVE
+originalDecisionAcceptance: ACCEPTED_2026-10-21
+acceptedBy: "OWNER (naghuale)"
+acceptedDate: "2026-10-21"
 proposedBy: "Claude Opus 5.5 (coordinator session, Issue #70 delivery cycle)"
 proposedDate: "2026-10-21"

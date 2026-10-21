@@ -1021,6 +1021,58 @@ pending admission и выбирает независимую работу. Пр�
 в коде правило применяется нормативно вручную. Полная реализация —
 отдельный TD-R2 work package (COORD-AUTONOMOUS-CAPACITY-SCHEDULER).
 
+### Недоступность аудитора (AUDITOR-UNAVAILABLE-R1, R148)
+
+Каждое audit assignment при dispatch получает класс: `operational` (live pilot,
+runtime breakage, self-hosting defect, governance blocker, release blocker —
+с доказательством) или `standard` (всё остальное). Повысить класс после
+dispatch нельзя; это делается только новым assignment. Аудитор может оспорить
+класс при ACK; до решения OWNER действует `standard`.
+
+| Класс | нет ACK | молчание после ACK | fallback | эскалация OWNER |
+|---|---|---|---|---|
+| operational | 30 мин | 1 ч | 3 ч | 5 ч |
+| standard | 2 ч | 4 ч | 24 ч | 72 ч |
+
+Сроки отсчитываются от последнего сообщения аудитора. При молчании
+Coordinator фиксирует `AUDITOR_STALLED`, отправляет запрос статуса и продолжает
+независимую работу. По истечении срока fallback Coordinator без вопроса OWNER
+назначает fallback-аудитора строго на тот же exact subject SHA; если на ветке
+появились новые коммиты, создаётся новое audit assignment, а прежнее
+закрывается как `SUPERSEDED`. По истечении срока эскалации без принятого аудита
+Coordinator эскалирует OWNER с Decision Trace.
+
+Fallback-аудитор MUST NOT быть исполнителем subject (в любой сессии и модели
+этого агента) и MUST NOT быть Reviewer этого subject. Другая модель
+агента-исполнителя не является fallback-аудитором.
+
+Назначение аудитора и доставка результата могут идти вне coordd и вне
+отказавшего транспорта (сессия, открытая человеком; файловый пакет в
+`${COORD_PROJECT_ROOT}/.scratch/tmp`; уведомление оператора). Требования к
+допуску аудитора, exact SHA, доказательствам, типизированному результату и
+записи в Operations Ledger при этом не меняются.
+
+Coordinator audit (мутанты, runtime-анализ, contract review) разрешён всегда,
+но MUST NOT выдавать `AUDIT_ACCEPTED`/`AUDIT_REJECTED` и не открывает gate.
+Limited shadow-only pilot до `AUDIT_ACCEPTED` допускается только явным
+решением OWNER при эскалации. Норма:
+`docs/decisions/AUDITOR-UNAVAILABLE-R148.yaml`.
+
+### Независимость восстановления coord от самого coord (SELF-HOSTING-INVARIANT-R1, R149)
+
+Ни один путь восстановления coord не может зависеть исключительно от coord.
+Каждый критический процесс (dispatch, review/audit, evidence, recovery сессий
+и run, запуск daemon, fencing, canonical store, operational reachability) MUST
+иметь задокументированный внешний путь, выполнимый без работающего coordd. На
+внешнем пути действуют те же требования governance; доказательства остаются
+допустимыми только при тех же правилах (exact SHA, типизированный результат,
+запись в Operations Ledger). Внешний путь SHOULD NOT зависеть от отказавшего
+компонента. Сейчас требуется инвентаризация; до выдачи coordd
+production-полномочий (P0-3) внешний путь каждого критического процесса MUST
+быть проверен. Реализация — TD-R2 work package
+COORD-SELF-HOSTING-RECOVERY-INVENTORY. Норма:
+`docs/decisions/SELF-HOSTING-INVARIANT-R149.yaml`.
+
 ### Запрет подтверждения детерминированного перехода
 
 Если следующий переход однозначно следует из:

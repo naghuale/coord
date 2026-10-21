@@ -1,16 +1,18 @@
 decision: R149
 class: R
-status: proposed
+status: accepted
 title: "No coord recovery path depends exclusively on coord (SELF-HOSTING-INVARIANT-R1)"
 issue: null
 
 decisionDate: "2026-10-21"
-acceptanceDate: null
+acceptanceDate: "2026-10-21"
 
 ownerDecision:
   decisionId: R149
-  ownerMessage: null
-  disposition: PENDING
+  ownerMessage: "принимаю оба"
+  disposition: ACCEPTED
+  recordedBy: "Claude Opus 5.5 (coordinator session)"
+  recordedAt: "2026-10-21"
 
 authority: AGENTS.md
 
@@ -99,6 +101,9 @@ mutation:
     expectedResult: KILLED
     killedBy: "external evidence admission test (not yet implemented)"
 
-normativeStatus: PROPOSED
+normativeStatus: AUTHORITATIVE
+originalDecisionAcceptance: ACCEPTED_2026-10-21
+acceptedBy: "OWNER (naghuale)"
+acceptedDate: "2026-10-21"
 proposedBy: "Claude Opus 5.5 (coordinator session, Issue #70 delivery cycle)"
 proposedDate: "2026-10-21"
