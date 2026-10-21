@@ -1,7 +1,7 @@
 decision: R153
 class: R
 status: proposed
-revision: 2
+revision: 3
 title: "Agent runtime registry and per-session admission verification (AGENT-REGISTRY-R1)"
 issue: null
 
@@ -52,6 +52,14 @@ reviewHistory:
     result: CHANGES_REQUIRED
     findings: "R-1 P1, R-2 P1, R-3 P1, R-4 P2 blocking; R-5 P2, R-6 P2 non-blocking"
     resolvedIn: 2
+  - revision: 2
+    commit: fcdddc8
+    assignmentId: review-r153-c8d-a2
+    reviewer: "codex:workspace-c8d (gpt-6.1-sol, coordinator-verified)"
+    result: CHANGES_REQUIRED
+    priorFindings: "R-1, R-3, R-4, R-6 RESOLVED; R-2, R-5 PARTIAL"
+    findings: "R-7 P2, R-8 P2 blocking; R-9 P3 non-blocking"
+    resolvedIn: 3
 
 context: >
   Issue #70, subject e72d7eef364e5fa35a799c3f18a315b72e3c4511. The audit chain
@@ -130,10 +138,19 @@ admissionBases:
       - all POOL checks except pool membership
   OWNER_EXCEPTION:
     source: "explicit OWNER decision for one assignment (e.g. R148 ownerEscalation)"
+    # R-8: an exception waives only what it names
+    record:
+      underlyingEligibilityBasis: "POOL | TEMPORARY_ADMISSION_R151 | NONE (OWNER assigns a runtime directly, naming the norm it relies on)"
+      ownerDecisionText: required
+      waivedRequirements: "exact list; each item names the requirement and the norm it comes from"
     checks:
-      - the OWNER decision text and scope recorded
-      - all R148 exclusions still apply; an OWNER exception never admits the subject executor
-      - model provenance per AGR-003 unless the OWNER decision explicitly covers UNVERIFIED provenance
+      - every requirement of the underlying basis that is not in waivedRequirements stays mandatory
+      - with basis NONE, all POOL participation checks and the R151 safeguards (freshSession, modelProvenance, noParticipation, sameRules) apply unless listed in waivedRequirements
+      - all R148 exclusions apply; an OWNER exception never admits the subject executor
+      - MISMATCH model provenance is never waivable
+    neverGranted:
+      - a role or pool membership beyond this one assignment
+      - automatic replacement (AGR-007)
 
 rules:
   - id: AGR-001
@@ -160,7 +177,11 @@ rules:
       session from independent evidence bound to that session and to the
       assignment interval (ACK to result).
     coverage:
+      # R-9
+      atAdmission: "actual model of the session so far and its known history verified; a registry-listed source able to cover the coming interval is available (else UNVERIFIED)"
+      atResult: "complete coverage of the finished interval ACK..result is required for acceptance"
       required: "every model call of the session between ACK and result"
+      perTurnEvidence: "acceptable only if it covers every model call, including switches within a turn"
       sufficientEvidence: "per-call or per-turn model records from a registry-listed source, bound to session id and covering the whole interval"
       insufficientEvidence:
         - samples at ACK and result only, without interval coverage
@@ -171,7 +192,7 @@ rules:
     disposition:
       VERIFIED: "all served families mapped and allowed -> passes this constraint"
       MISMATCH: "any served family disallowed or of the executor family -> AUDIT_INELIGIBLE / REVIEW_INELIGIBLE; the result is not accepted"
-      UNVERIFIED: "coverage incomplete or any family UNKNOWN -> no admission / result not accepted (fail-closed); only an explicit OWNER decision naming the gap may admit, and it is then recorded as OWNER_EXCEPTION"
+      UNVERIFIED: "coverage incomplete or any family UNKNOWN -> no admission / result not accepted (fail-closed); only an explicit OWNER decision naming this gap may waive it, recorded as OWNER_EXCEPTION with the gap in waivedRequirements; every other requirement stays mandatory"
   - id: AGR-004
     title: Self-reported data is not trusted on its own
     requirement: >
@@ -204,10 +225,14 @@ rules:
       newBasisChecksRepeated: true
       noPolicyOverride: true     # no OWNER override or other policy exception was in force
     escalationClock:
-      # R-5
-      anchor: "time of the first loss in the incident (or the R148 fallback start), recorded once in the incident journal"
-      rule: "new assignmentIds and ACKs do not reset the R148 fallback or OWNER escalation deadlines"
-      afterDeadline: "replacement without OWNER is not allowed once the R148 escalation deadline has passed"
+      # R-5, R-7: R153 introduces no new anchor and does not change R148 formulas
+      deadlines: >
+        fallbackAllowedAt and ownerEscalationAt are computed once, by the
+        accepted norm that applies (R148 auditClasses with referencePoint =
+        time of the last auditor message, ACK or progress; for HOST_RESTARTED
+        the R152 route), and recorded in the incident journal.
+      rule: "replacements, new assignmentIds and new ACKs never recompute, shift or reset the recorded deadlines"
+      afterDeadline: "replacement without OWNER is not allowed once the recorded ownerEscalationAt has passed"
     oldAssignmentPolicy:
       R146: "unaccepted assignment is superseded"
       R148: "a late result of the lost admitted auditor on the same SHA stays valid as defined in R148"
@@ -235,7 +260,8 @@ verification:
     - ACK fields matched against independent sources (AGR-004)
     - model provenance disposition at admission and at result (AGR-003), with registryVersion
     - R152 process evidence (PID/PPID/TTY/start) recorded separately from conversation-state inspection
-    - for replacements, lost session basis, loss evidence and escalation clock anchor (AGR-006)
+    - for replacements, lost session basis, loss evidence and the recorded fallbackAllowedAt / ownerEscalationAt (AGR-006)
+    - for OWNER_EXCEPTION, underlyingEligibilityBasis and waivedRequirements, and that every non-waived requirement passed
   stateInspection:
     appliesTo: "inspection of a runtime's internal conversation state; R152 process evidence is collected separately and is not a reason to read conversation state"
     purposeLimited: true      # admission and eligibility verification only
@@ -291,16 +317,25 @@ normativeRuleText: |
   весь интервал. Самоотчёт, конфигурация по умолчанию и данные процесса этого не
   доказывают. Итог: VERIFIED — ограничение пройдено; MISMATCH — сессия
   недопустима, результат не принимается; UNVERIFIED (неполное покрытие или
-  неизвестное семейство) — допуска нет, результат не принимается; снять это
-  может только прямое решение OWNER, оформляемое как исключение. Классификацию
-  семейств меняет только решение класса R.
+  неизвестное семейство) — допуска нет, результат не принимается; снять именно
+  этот пробел может только прямое решение OWNER, оформляемое как исключение.
+  При допуске проверяется фактическая модель и наличие источника, способного
+  покрыть интервал; при приёмке результата требуется полное покрытие
+  завершённого интервала. Классификацию семейств меняет только решение класса R.
+
+  Прямое исключение OWNER снимает только явно перечисленные требования; все
+  остальные требования исходного основания (или, без основания, проверки пула и
+  меры защиты R151) остаются обязательными. Запрет исполнителя и MISMATCH
+  исключением не снимаются; исключение не даёт роли и не переносится на замену.
 
   Потерянную сессию с основанием «пул» или «R151» можно заменить без нового
   решения OWNER: тот же subject, SHA и роль, новый assignmentId, все проверки
-  основания повторяются заново. Сроки fallback и эскалации R148 отсчитываются от
-  первой потери и при замене не сбрасываются; после срока эскалации замена без
-  OWNER запрещена. Замена сессии, допущенной прямым исключением OWNER, требует
-  нового решения OWNER.
+  основания повторяются заново. Сроки fallback и эскалации вычисляются один раз
+  по применимой норме (R148 — от последнего сообщения аудитора, ACK или progress;
+  при перезапуске хоста — по R152), записываются в журнал инцидента и при замене
+  не пересчитываются; после записанного срока эскалации замена без OWNER
+  запрещена. Замена сессии, допущенной прямым исключением OWNER, требует нового
+  решения OWNER.
 
   Проверка внутреннего состояния рантайма — только чтение и только поля, нужные
   для допуска (время старта, модель, упоминания subject); в доказательства
@@ -358,6 +393,18 @@ decisionScenarios:
   - id: S-16
     case: "evidence stores conversation content to prove the model"
     expected: "rejected (stateInspection)"
+  - id: S-17
+    case: "operational audit: last ACK 00:00, stall detected 01:00, replacement auditor ACKs 02:30"
+    expected: "fallbackAllowedAt 03:00 and ownerEscalationAt 05:00 as recorded by R148; not 04:00/06:00 or later; no replacement without OWNER after 05:00"
+  - id: S-18
+    case: "OWNER waives only UNVERIFIED provenance; candidate had prior design or working-context exposure to the subject"
+    expected: "not admitted: noParticipation was not waived (R-8)"
+  - id: S-19
+    case: "OWNER waives only UNVERIFIED provenance; all other checks of the underlying basis pass"
+    expected: "admitted as OWNER_EXCEPTION with disclosure; not auto-replaceable (AGR-007)"
+  - id: S-20
+    case: "admission with allowed model and an available full-coverage source; at result a mid-turn switch is not covered by per-turn records"
+    expected: "UNVERIFIED at result -> result not accepted (R-9)"
 
 normativeStatus: PROPOSED
 proposedBy: "Claude Opus 5.5 (coordinator session, Issue #70 delivery cycle)"
