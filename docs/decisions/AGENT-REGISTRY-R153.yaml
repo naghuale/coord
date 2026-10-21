@@ -1,17 +1,21 @@
 decision: R153
 class: R
-status: proposed
+status: accepted
 revision: 4
 title: "Agent runtime registry and per-session admission verification (AGENT-REGISTRY-R1)"
 issue: null
 
 decisionDate: "2026-10-21"
-acceptanceDate: null
+acceptanceDate: "2026-10-21"
 
 ownerDecision:
   decisionId: R153
-  ownerMessage: null
-  disposition: PENDING
+  ownerMessage: "Принимаю R153"
+  disposition: ACCEPTED
+  recordedBy: "Claude Opus 5.5 (coordinator session)"
+  recordedAt: "2026-10-21"
+  acceptedRevision: "4 (9198fe7, REVIEW_ACCEPTED review-r153-c8d-a4)"
+  acceptanceOfPolicyDoesNotImplyImplementation: true
   interimOwnerChoices:
     - topic: "replacement of an auditor admitted under R151 (review finding R-4)"
       ownerMessage: >
@@ -37,7 +41,7 @@ dependsOn:
 prerequisites:
   - R151 ACCEPTED   # satisfied 2026-10-21 (55fa234)
   - R152 ACCEPTED   # satisfied 2026-10-21 (55fa234)
-  - independent review of the current revision without blocking findings
+  - independent review of the current revision without blocking findings   # satisfied: review-r153-c8d-a4 REVIEW_ACCEPTED on 9198fe7
 
 conflictOfInterest: >
   Drafted by the Issue #70 executor/coordinator during its own audit incident;
@@ -415,7 +419,11 @@ decisionScenarios:
     case: "admission with allowed model and an available full-coverage source; at result a mid-turn switch is not covered by per-turn records"
     expected: "UNVERIFIED at result -> result not accepted (R-9)"
 
-normativeStatus: PROPOSED
+normativeStatus: AUTHORITATIVE
+originalDecisionAcceptance: ACCEPTED_2026-10-21
+acceptedBy: "OWNER (naghuale)"
+acceptedDate: "2026-10-21"
+implementationStatus: NOT_IMPLEMENTED   # registry file, runbook and AGENT-REGISTRY-VERIFICATION-WP are separate follow-up work
 proposedBy: "Claude Opus 5.5 (coordinator session, Issue #70 delivery cycle)"
 proposedDate: "2026-10-21"
 revisedDate: "2026-10-21"
