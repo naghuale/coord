@@ -126,6 +126,32 @@ fallbackSelection:
     Completion report records fallback use, auditor identity, independence
     level and elapsed times.
 
+externalControlPlane:
+  allowed: true
+  purpose:
+    - auditor assignment
+    - audit result delivery
+    - audit recovery
+  invariants:
+    - same auditor eligibility (fallbackSelection) applies
+    - same exact SHA (subjectBinding) applies
+    - same evidence requirements apply
+    - same typed result format (BEGIN/END_COORD_AUDIT_RESULT) applies
+    - Operations Ledger recording remains mandatory
+  note: changing the delivery mechanism does not change governance requirements
+  independence: >
+    The external control plane SHOULD NOT depend on the failed transport.
+    If Telepathy is the failed channel, the result is delivered by a
+    file-based package in the project-local .scratch plus operator notification.
+  examples:
+    - human-opened Codex or OpenCode session outside coordd
+    - file-based result package under {COORD_PROJECT_ROOT}/.scratch/tmp
+    - repository artifact on the auditor ops branch
+    - manual operator notification
+  scopeLimit: >
+    Applies to audit only. The general requirement that no coord process may
+    depend exclusively on coord for its own recovery is R149.
+
 coordinatorAudit:
   allowed: [mutation testing, runtime analysis, contract review, evidence collection]
   forbidden: [emit AUDIT_ACCEPTED, emit AUDIT_REJECTED, open or close the audit gate]
