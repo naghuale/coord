@@ -1,7 +1,7 @@
 decision: R153
 class: R
 status: proposed
-revision: 3
+revision: 4
 title: "Agent runtime registry and per-session admission verification (AGENT-REGISTRY-R1)"
 issue: null
 
@@ -60,6 +60,14 @@ reviewHistory:
     priorFindings: "R-1, R-3, R-4, R-6 RESOLVED; R-2, R-5 PARTIAL"
     findings: "R-7 P2, R-8 P2 blocking; R-9 P3 non-blocking"
     resolvedIn: 3
+  - revision: 3
+    commit: a70e8e2
+    assignmentId: review-r153-c8d-a3
+    reviewer: "codex:workspace-c8d (gpt-6.1-sol, coordinator-verified)"
+    result: REVIEW_ACCEPTED
+    priorFindings: "R-1..R-9 RESOLVED"
+    findings: "R-10 P3, R-11 P3 non-blocking (editorial)"
+    resolvedIn: 4
 
 context: >
   Issue #70, subject e72d7eef364e5fa35a799c3f18a315b72e3c4511. The audit chain
@@ -326,7 +334,8 @@ normativeRuleText: |
   Прямое исключение OWNER снимает только явно перечисленные требования; все
   остальные требования исходного основания (или, без основания, проверки пула и
   меры защиты R151) остаются обязательными. Запрет исполнителя и MISMATCH
-  исключением не снимаются; исключение не даёт роли и не переносится на замену.
+  исключением не снимаются; исключение не даёт роли за пределами данного
+  assignment, не расширяет пул и не переносится на замену.
 
   Потерянную сессию с основанием «пул» или «R151» можно заменить без нового
   решения OWNER: тот же subject, SHA и роль, новый assignmentId, все проверки
@@ -394,8 +403,8 @@ decisionScenarios:
     case: "evidence stores conversation content to prove the model"
     expected: "rejected (stateInspection)"
   - id: S-17
-    case: "operational audit: last ACK 00:00, stall detected 01:00, replacement auditor ACKs 02:30"
-    expected: "fallbackAllowedAt 03:00 and ownerEscalationAt 05:00 as recorded by R148; not 04:00/06:00 or later; no replacement without OWNER after 05:00"
+    case: "operational audit: last ACK 00:00, stall detected 01:00, fallback attempted 02:30, replacement auditor ACKs 03:30"
+    expected: "fallbackAllowedAt 03:00 and ownerEscalationAt 05:00 as recorded by R148; the 02:30 attempt is rejected; the 03:30 replacement is allowed and leaves 05:00 unchanged (not 04:00/06:00 or later); no replacement without OWNER after 05:00"
   - id: S-18
     case: "OWNER waives only UNVERIFIED provenance; candidate had prior design or working-context exposure to the subject"
     expected: "not admitted: noParticipation was not waived (R-8)"
