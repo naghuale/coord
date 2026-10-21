@@ -1,0 +1,240 @@
+decision: R153
+class: R
+status: proposed
+title: "Agent runtime registry and per-session admission verification (AGENT-REGISTRY-R1)"
+issue: null
+
+decisionDate: "2026-10-21"
+acceptanceDate: null
+
+ownerDecision:
+  decisionId: R153
+  ownerMessage: null
+  disposition: PENDING
+
+authority: AGENTS.md
+
+amends: []   # adds no roles and widens no pool; see limits
+
+dependsOn:
+  - R148   # fallback timeline, OWNER escalation, same-SHA binding
+  - R150   # agent pool boundary; non-pool runtimes are tools by default
+  - R151   # temporary admission of a non-pool runtime (proposed)
+  - R152   # visibility levels, HOST_RESTARTED voids in-flight work (proposed)
+  - SESSION-COUNT-IS-NOT-AGENT-COUNT-R1
+
+prerequisites:
+  # R153 uses concepts of R151 and consequences of R152; it MUST NOT be
+  # accepted before both are ACCEPTED. Acceptance order: R151, R152, then a
+  # revision of R153 with lessons from the h6a admission, then R153.
+  - R151 ACCEPTED
+  - R152 ACCEPTED
+
+conflictOfInterest: >
+  Drafted by the Issue #70 executor/coordinator during its own audit incident;
+  AGR-006 widens coordinator authority. Before OWNER decision, an independent
+  pool agent review or an explicit OWNER review of AGR-006 is required.
+
+context: >
+  Issue #70, subject e72d7eef364e5fa35a799c3f18a315b72e3c4511. The audit chain
+  o14 -> oe4 -> hc0 -> h6a lost three sessions to host restarts and
+  unreachability. Each loss was handled per session ID, although the
+  properties that matter for admission (runtime, model family, participation
+  in the subject) belong to the runtime and to verifiable evidence, not to a
+  session ID. The same cycle showed two traps: (1) runtime and model are
+  different things - Hermes config named longcat while session h6a ran
+  ornith/ornith-1.5-122b:free; (2) self-reports are not reliable - h6a
+  reported sessionStart 17:17:04Z (host boot time), while its runtime state
+  showed 17:22:44Z.
+
+selectedOption: >
+  A registry records the expected properties of each agent runtime and its
+  allowed model families. It grants no roles. Each new session proves its
+  actual properties by ACK plus independent coordinator verification.
+  Membership in an allowed class survives restarts; assignments do not.
+  Any admission beyond the existing pool rules still requires an OWNER
+  decision.
+
+registryModel:
+  separation:
+    agentRuntime: "container that runs a model (Claude Code, Codex, OpenCode, Hermes)"
+    modelFamily: "family of the model actually serving the session (claude, gpt, deepseek, ornith, longcat, ...)"
+    poolRoles: "roles granted by class R decisions only (R150 and successors), never by the registry"
+    ownerExceptions: "per-assignment admissions (R148 ownerEscalation, R151); never written back into the registry"
+  recordFields:
+    - agentRuntime
+    - runtimeVersionEvidence   # how the version is observed (process, binary, plugin cache)
+    - allowedModelFamilies     # families the runtime may serve; actual family checked per session
+    - poolMembership           # reference to the R decision, or NONE
+    - transportCapabilities    # e.g. Telepathy listener present / read_messages only
+    - verificationSources      # where the coordinator checks model and history independently
+    - registryVersion
+  location: "docs/registry/AGENT-REGISTRY.yaml (to be created on acceptance)"
+
+rules:
+  - id: AGR-001
+    title: Registry defines expectations, not roles
+    requirement: >
+      The registry states expected runtime properties and allowed model
+      families. Roles come only from pool decisions (R150). A non-pool
+      runtime in the registry stays a tool.
+  - id: AGR-002
+    title: Session restart is not assignment continuation
+    requirement: >
+      A new session inherits the runtime's registry record, but not
+      assignments, ACKs, leases or unfinished work (R152 HOST_RESTARTED).
+  - id: AGR-003
+    title: Actual model is verified per session
+    requirement: >
+      The session reports its exact model id at ACK; the coordinator confirms
+      it from an independent source listed in verificationSources. The actual
+      model family, not the runtime name or its default config, decides
+      independence from the executor. Routing providers can switch the model
+      mid-session, so evidence is required at more than one point.
+    runtimeModelEvidence:
+      atAdmission: required
+      duringExecution: preferred
+      atResultSubmission: required   # every model that served the session between ACK and result
+    consequence: >
+      A model outside the allowed families observed at any point between ACK
+      and result makes the result AUDIT_INELIGIBLE.
+  - id: AGR-003A
+    title: Model family classification authority
+    requirement: >
+      Model families and their independence from the executor are listed in
+      the registry and change only by a class R decision. A model id that
+      does not map to a listed family, or whose provenance is unknown, is not
+      independent by default.
+  - id: AGR-004
+    title: Self-reported data is not trusted on its own
+    requirement: >
+      Session start, model and prior history in an ACK are claims. Admission
+      uses independently verified values (process start PID/PPID/TTY, runtime
+      session state, model usage records). Discrepancies are recorded and
+      disclosed; a discrepancy on model family or prior subject exposure
+      makes the session AUDIT_INELIGIBLE.
+  - id: AGR-005
+    title: External source of truth for subject exposure
+    requirement: >
+      Prior exposure to a subject is determined from records outside the
+      session: assignment ledger (Operations Ledger), incident journals,
+      admission log, review and audit history. The session's own statement
+      is supporting evidence only.
+  - id: AGR-006
+    title: Replacement within the existing pool without escalation
+    requirement: >
+      When an admitted pool session is lost, the coordinator MAY dispatch a
+      new assignment (new assignmentId, same SHA) to a fresh session of a
+      pool runtime with matching required properties, without OWNER
+      escalation, within R148 timelines, only when ALL conditions hold.
+    replacementAllowed:
+      sameSubject: true
+      sameSHA: true
+      sameRole: true
+      samePool: true
+      noTemporaryAdmission: true   # neither the lost nor the new session was admitted by exception
+      noPolicyOverride: true       # no OWNER override or other policy exception was in force
+    examples:
+      allowed: ["o14 -> oe4 (OpenCode, pool)", "oe4 -> o2c (OpenCode, pool)"]
+      notAllowed: ["hc0 -> h6a (Hermes, OWNER exception; required R148-ESC-01-R1)"]
+  - id: AGR-007
+    title: Exceptions are not replaced automatically
+    requirement: >
+      When the lost session was admitted by an OWNER exception (R148
+      ownerEscalation or R151), a replacement session requires a new or
+      explicitly renewed OWNER decision. The registry never turns an
+      exception into a class rule.
+
+verification:
+  coordinatorChecks:
+    - ACK fields present and matched against verificationSources
+    - session start later than assignment issue (R151 freshSession)
+    - no record of the session or its runtime instance in prior assignment, review or audit history of the subject
+    - for replacements, the lost session's admission basis (pool vs exception) recorded
+  improvesOn: >
+    R151 notes the coordinator cannot inspect a non-pool runtime's internal
+    history. Where the registry lists a readable source (for Hermes:
+    ~/.hermes/state.db sessions, messages, session_model_usage, read-only),
+    the coordinator MUST use it and record the result.
+  stateInspection:
+    purposeLimited: true      # admission and independence verification only
+    readOnly: true
+    fieldsAllowed:
+      - sessionStart
+      - modelIdentity          # including per-call model usage records
+      - subjectReferences      # whether the subject, its SHA or its assignment appear before admission
+    prohibited:
+      - reading or copying conversation content beyond what is needed to establish the allowed fields
+      - storing runtime state contents in evidence; record only the derived values and the query used
+    note: >
+      Runtime state formats are internal and may change between releases;
+      a failed or ambiguous inspection is recorded as UNVERIFIED, not as a pass.
+
+limits:
+  - grants no roles and does not extend the agent pool
+  - does not replace R148 escalation for non-pool or exception admissions
+  - registry entries change only by a class R decision
+  - not accepted before R151 and R152 (see prerequisites)
+
+securityImpact: >
+  Moves admission from session identity and self-report to verified
+  properties and external records. Prevents silent widening of the pool by
+  keeping roles and OWNER exceptions outside the registry. Residual risk:
+  runtimes without a readable state source still rely on declaration plus
+  process evidence, disclosed per use.
+
+normativeRuleText: |
+  ### Реестр агентских рантаймов и проверка сессий (AGENT-REGISTRY-R1, R153)
+
+  Реестр определяет ожидаемые свойства агентских рантаймов и допустимые
+  семейства моделей; ролей он не выдаёт. Рантайм (Claude Code, Codex,
+  OpenCode, Hermes) и семейство модели учитываются раздельно; независимость
+  от исполнителя определяется фактической моделью сессии. Каждая новая
+  сессия подтверждает модель, время запуска и отсутствие прежней работы с
+  subject через ACK, а координатор проверяет эти данные по независимым
+  источникам; самоотчёт сам по себе не является доказательством. Источник
+  истины о работе с subject — внешние записи (Operations Ledger, журналы
+  инцидентов и допусков, история review и audit). Принадлежность к
+  допустимому классу сохраняется при перезапуске, назначения, ACK и
+  незавершённая работа — нет. Замена потерянной сессии пула допустима без
+  эскалации в сроки R148 только при совпадении subject, SHA, роли и пула и
+  без временного допуска или иного исключения; замена сессии, допущенной по
+  исключению OWNER, требует нового решения OWNER. Модель подтверждается при
+  допуске и при сдаче результата; классификацию семейств меняет только
+  решение класса R. Проверка состояния рантайма — только чтение и только
+  поля, нужные для допуска. Любое расширение пула — только отдельным
+  решением класса R.
+
+mutation:
+  roleFromRegistry:
+    description: Grant Auditor role to a non-pool runtime because it is listed in the registry
+    expectedResult: KILLED
+    killedBy: "role source test (not yet implemented)"
+  runtimeAsModelFamily:
+    description: Judge independence by runtime name or default config instead of the verified session model
+    expectedResult: KILLED
+    killedBy: "model provenance test (not yet implemented)"
+  trustSelfReport:
+    description: Admit a session on ACK fields without independent verification
+    expectedResult: KILLED
+    killedBy: "ACK verification test (not yet implemented)"
+  modelSwitchAfterAck:
+    description: Accept a result when a non-allowed model served the session after ACK
+    expectedResult: KILLED
+    killedBy: "result-time model evidence test (not yet implemented)"
+  replaceAcrossPool:
+    description: Auto-replace an auditor with a session of a different pool, role or SHA
+    expectedResult: KILLED
+    killedBy: "replacement conditions test (not yet implemented)"
+  autoReplaceException:
+    description: Replace an OWNER-exception auditor with a new session without OWNER decision
+    expectedResult: KILLED
+    killedBy: "exception replacement test (not yet implemented)"
+  inheritAssignment:
+    description: Let a restarted session continue the voided assignment or reuse its ACK
+    expectedResult: KILLED
+    killedBy: "host restart invalidation test (R152, not yet implemented)"
+
+normativeStatus: PROPOSED
+proposedBy: "Claude Opus 5.5 (coordinator session, Issue #70 delivery cycle)"
+proposedDate: "2026-10-21"
