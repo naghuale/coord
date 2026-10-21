@@ -14,7 +14,8 @@ ownerDecision:
   ownerTimeoutCorrection: >
     OWNER скорректировал пороги (2026-10-21): t+1h AUDITOR_STALLED,
     t+3h FALLBACK_AUDITOR_ALLOWED, t+5h OWNER_ESCALATION_REQUIRED.
-    Исходное предложение (4h/24h/72h) признано слишком долгим.
+    Затем OWNER ввёл два класса аудита: сокращённые пороги применяются к
+    operational, исходные 4h/24h/72h — к standard.
 
 authority: AGENTS.md
 
@@ -52,12 +53,33 @@ definitions:
   FALLBACK_AUDITOR: >
     Participant eligible under fallbackSelection below.
 
-timeouts:
+auditClasses:
   referencePoint: "time of last auditor message (ACK or progress)"
-  ackTimeout: 30m          # ASSIGNED without ACK -> AUDIT_ASSIGNMENT_EXPIRED
-  stallTimeout: 1h         # ACK, then silence -> AUDITOR_STALLED
-  fallbackTimeout: 3h      # -> FALLBACK_AUDITOR_ALLOWED
-  ownerEscalation: 5h      # no accepted audit, fallback unavailable -> OWNER_ESCALATION_REQUIRED
+  operational:
+    appliesTo:
+      - live pilot or live shadow run blocked on this audit
+      - runtime breakage of coord or its transport adapter
+      - self-hosting defect (coord cannot manage its own delivery)
+      - governance blocker of the active Issue
+      - release blocker
+    ackTimeout: 30m
+    stallTimeout: 1h
+    fallbackTimeout: 3h
+    ownerEscalation: 5h
+  standard:
+    appliesTo: [all other audits]
+    ackTimeout: 2h
+    stallTimeout: 4h
+    fallbackTimeout: 24h
+    ownerEscalation: 72h
+  classification:
+    - auditClass MUST be recorded in the audit assignment at dispatch time,
+      with the appliesTo criterion and evidence reference
+    - auditClass MUST NOT be raised to operational after dispatch;
+      re-classification requires a new audit assignment
+    - if no operational criterion is evidenced, the class is standard
+    - auditor MAY reject the class at ACK; disagreement goes to OWNER,
+      standard timeouts apply until resolved
 
 stateMachine:
   ASSIGNED: [AUDIT_IN_PROGRESS, AUDIT_ASSIGNMENT_EXPIRED]
@@ -81,6 +103,13 @@ transitionActions:
   OWNER_ESCALATION_REQUIRED:
     - publish Decision Trace with evidence package and elapsed times
     - "ownerOptions: continue waiting | assign specific auditor | approve limited shadow-only pilot | freeze work"
+
+subjectBinding:
+  - fallback audit MUST target the exact SHA of the original audit assignment
+  - if new commits appear on the subject branch after the original assignment,
+    the fallback is NOT a continuation; a new audit assignment on the new SHA
+    is created, and the original assignment is closed as SUPERSEDED with reason
+  - an audit result for a different SHA never satisfies the gate of this subject
 
 fallbackSelection:
   mustNot:
@@ -136,6 +165,12 @@ excludedEffects:
 
 applicationToCurrentSubject:
   subject: e72d7eef364e5fa35a799c3f18a315b72e3c4511
+  auditClass: operational
+  classBasis: "live shadow pilot blocked (dispatch-c4bfc4f1e534f69b3bca187caeb2c764), runtime result-ingestion failure"
+  classRecordingCaveat: >
+    The o14 assignment predates R148 and did not carry auditClass. If R148 is
+    accepted, OWNER acceptance confirms operational for this assignment;
+    otherwise standard applies.
   lastAuditorMessage: "2026-10-21T02:14:50Z"
   computedIfAccepted:
     AUDITOR_STALLED: "2026-10-21T03:14:50Z"
@@ -146,12 +181,22 @@ applicationToCurrentSubject:
 normativeRuleText: |
   ### Недоступность аудитора (AUDITOR-UNAVAILABLE-R1, R148)
 
-  Если назначенный аудитор не прислал ACK за 30 минут или после ACK молчит
-  1 час, Coordinator фиксирует AUDITOR_STALLED, отправляет запрос статуса и
-  продолжает независимую работу. Через 3 часа без результата Coordinator
-  без вопроса OWNER назначает fallback-аудитора на тот же exact subject SHA.
-  Через 5 часов без принятого аудита и без доступного fallback Coordinator
-  эскалирует OWNER с Decision Trace.
+  Каждое audit assignment при dispatch получает класс: operational (live pilot,
+  runtime breakage, self-hosting defect, governance blocker, release blocker —
+  с доказательством) или standard (всё остальное). Повысить класс после
+  dispatch нельзя; это делается только новым assignment.
+
+  | Класс | нет ACK | молчание после ACK | fallback | эскалация OWNER |
+  |---|---|---|---|---|
+  | operational | 30 мин | 1 ч | 3 ч | 5 ч |
+  | standard | 2 ч | 4 ч | 24 ч | 72 ч |
+
+  При молчании Coordinator фиксирует AUDITOR_STALLED, отправляет запрос
+  статуса и продолжает независимую работу. По истечении срока fallback
+  Coordinator без вопроса OWNER назначает fallback-аудитора строго на тот же
+  exact subject SHA; если на ветке появились новые коммиты, создаётся новое
+  audit assignment, а прежнее закрывается как SUPERSEDED. По истечении срока
+  эскалации без принятого аудита Coordinator эскалирует OWNER с Decision Trace.
 
   Fallback-аудитор MUST NOT быть исполнителем subject (в любой сессии и модели
   этого агента) и MUST NOT быть Reviewer этого subject. Другая модель агента-
@@ -171,6 +216,14 @@ mutation:
     description: Remove ownerEscalation timeout
     expectedResult: KILLED
     killedBy: "stall timeline test (not yet implemented)"
+  raiseClassAfterDispatch:
+    description: Allow auditClass to change from standard to operational after dispatch
+    expectedResult: KILLED
+    killedBy: "class immutability test (not yet implemented)"
+  fallbackOnNewerSha:
+    description: Accept fallback audit result for a SHA other than the original assignment
+    expectedResult: KILLED
+    killedBy: "subject binding test (not yet implemented)"
   autoLimitedPilot:
     description: Admit limited pilot without OWNER decision
     expectedResult: KILLED
