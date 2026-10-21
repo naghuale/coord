@@ -1,16 +1,18 @@
 decision: R151
 class: R
-status: proposed
+status: accepted
 title: "Temporary admission of a non-pool agent runtime to the Auditor role (TEMPORARY-AUDITOR-ADMISSION-R1)"
 issue: null
 
 decisionDate: "2026-10-21"
-acceptanceDate: null
+acceptanceDate: "2026-10-21"
 
 ownerDecision:
   decisionId: R151
-  ownerMessage: null
-  disposition: PENDING
+  ownerMessage: "принимаю R151 и R152"
+  disposition: ACCEPTED
+  recordedBy: "Claude Opus 5.5 (coordinator session)"
+  recordedAt: "2026-10-21"
 
 authority: AGENTS.md
 
@@ -126,6 +128,9 @@ mutation:
     expectedResult: KILLED
     killedBy: "role scope test (not yet implemented)"
 
-normativeStatus: PROPOSED
+normativeStatus: AUTHORITATIVE
+originalDecisionAcceptance: ACCEPTED_2026-10-21
+acceptedBy: "OWNER (naghuale)"
+acceptedDate: "2026-10-21"
 proposedBy: "Claude Opus 5.5 (coordinator session, Issue #70 delivery cycle)"
 proposedDate: "2026-10-21"
