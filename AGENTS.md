@@ -1017,9 +1017,18 @@ pending admission и выбирает независимую работу. Пр�
 - Резервировать несколько сессий без конкретных assignments.
 - Создавать спекулятивную работу только для занятости агента.
 
+R147 также требует (effects решения):
+
+- Agent Registry — обязательный операционный артефакт, хранимый durable, а не
+  в контексте Coordinator;
+- каждый assignment envelope MUST содержать классификацию `parallelSafety`;
+- conflict evaluation обязательна до dispatch, её результат записывается в
+  assignment.
+
 До реализации Capability Registry, Assignment Conflict Evaluator и Scheduler
-в коде правило применяется нормативно вручную. Полная реализация —
-отдельный TD-R2 work package (COORD-AUTONOMOUS-CAPACITY-SCHEDULER).
+в коде правило, включая эти записи, применяется нормативно вручную. Полная
+реализация — отдельный TD-R2 work package (COORD-AUTONOMOUS-CAPACITY-SCHEDULER).
+Норма: `docs/decisions/AVAILABLE-AGENT-CAPACITY-UTILIZATION-R147.yaml`.
 
 ### Недоступность аудитора (AUDITOR-UNAVAILABLE-R1, R148)
 
