@@ -106,7 +106,7 @@ func Start(ctx context.Context, command []string, dir string, environment []stri
 	if err = json.Unmarshal(init, &info); err != nil {
 		return nil, errors.Join(err, p.Close())
 	}
-	if info.ServerInfo.Name != "telepathy" || info.ServerInfo.Version != "0.8.0" || info.ProtocolVersion != "2024-11-05" {
+	if info.ServerInfo.Name != "telepathy" || (info.ServerInfo.Version != "0.8.0" && info.ServerInfo.Version != "0.9.0") || info.ProtocolVersion != "2024-11-05" {
 		return nil, errors.Join(fmt.Errorf("unsupported MCP server %s %s / %s", info.ServerInfo.Name, info.ServerInfo.Version, info.ProtocolVersion), p.Close())
 	}
 	if err = p.write(initContext, map[string]any{"jsonrpc": "2.0", "method": "notifications/initialized"}); err != nil {
