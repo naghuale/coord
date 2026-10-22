@@ -1,5 +1,23 @@
 # История изменений
 
+## 2026-10-22 — coordd shadow pilot: Telepathy 0.9.0 and explicit refusals (Refs #70)
+
+- The shared Telepathy MCP client (`telepathy.Start`) now accepts server versions
+  `0.8.0` and `0.9.0`; the `telepathy` name and MCP protocol `2024-11-05` checks
+  are unchanged. This supersedes "the existing version-pinned MCP client remains
+  unchanged" in the 2026-10-20 entry. (`TestRPCChecksVersionAndToolFailure`)
+- `decodeShadowResult` reports an explicit agent `ShadowRefusal` with the agent's
+  own field and reason instead of `unknown field "kind"`; a refusal without a field
+  and any other input still fail closed through the strict decoder.
+  (`TestShadowDecoderHandlesShadowRefusal`)
+- `--telepathy-server` help and provenance client-version metadata reflect the
+  accepted versions. (не проверено)
+- Found by live shadow pilot v1; merged in PR #85 (`e9f3dbe`) after independent
+  Review and Audit (`AUDIT_ACCEPTED` on `e72d7ee`). Live pilot v2 and P0-3
+  admission evaluation remain pending. Known test gaps (mutants on protocol
+  check, refusal classification, exact version match) are tracked separately.
+  (документация)
+
 ## 2026-10-20 — coordd read-only shadow pilot entrypoint (WP-SV-07, Refs #70)
 
 - Added exact `shadow-pilot run` CLI mode, isolated from daemon/store/lock startup.
