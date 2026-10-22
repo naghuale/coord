@@ -1,0 +1,265 @@
+decision: R148
+class: R
+status: accepted
+title: "Auditor unavailability and recovery path (AUDITOR-UNAVAILABLE-R1)"
+issue: null
+
+decisionDate: "2026-10-21"
+acceptanceDate: "2026-10-21"
+
+ownerDecision:
+  decisionId: R148
+  ownerMessage: "принимаю оба"
+  disposition: ACCEPTED
+  recordedBy: "Claude Opus 5.5 (coordinator session)"
+  recordedAt: "2026-10-21"
+  ownerTimeoutCorrection: >
+    OWNER скорректировал пороги (2026-10-21): t+1h AUDITOR_STALLED,
+    t+3h FALLBACK_AUDITOR_ALLOWED, t+5h OWNER_ESCALATION_REQUIRED.
+    Затем OWNER ввёл два класса аудита: сокращённые пороги применяются к
+    operational, исходные 4h/24h/72h — к standard.
+
+authority: AGENTS.md
+
+dependsOn:
+  - TWO-AGENT-TD-R2-FALLBACK-R1        # executor never audits own subject
+  - SESSION-COUNT-IS-NOT-AGENT-COUNT-R1 # new session ≠ independent agent
+  - DISPATCH-STATUS-TRUTH-R1            # DELIVERED != ADMITTED != COMPLETED
+  - R146                                # no passive waiting
+  - R147                                # use available capacity
+
+context: >
+  Issue #70, WP-SV-07 live shadow pilot. Delta f167843..e72d7ee (Claude-authored)
+  received REVIEW_ACCEPTED from Codex c03. Auditor OpenCode o14 sent ACK at
+  2026-10-21T02:14:50Z, then went silent while its platform reported
+  "Upstream request failed: Endpoint is unavailable". Existing norms define how
+  to audit and who may audit, but not what to do when the assigned auditor is
+  unavailable. Without a defined route the project blocks indefinitely on one
+  channel; with an ad-hoc route the coordinator is tempted to self-audit.
+
+selectedOption: >
+  Establish R148: a fail-closed recovery path with bounded timeouts.
+  Independent audit remains the only way to open the audit gate; the route
+  only changes who may provide it and when OWNER is engaged.
+
+definitions:
+  AUDITOR_UNAVAILABLE: >
+    Assigned auditor cannot continue or cannot deliver a result through any
+    available channel (delivery retries exhausted, endpoint unavailable,
+    session terminated, unreachable after status request).
+  AUDITOR_STALLED: >
+    ACK received, but no result and no evidence update for the stall window.
+  EVIDENCE_COMPLETE: >
+    Exact subject SHA, REVIEW_ACCEPTED, coordinator make check result,
+    mutation results where required, audit package, reproducible instructions.
+  FALLBACK_AUDITOR: >
+    Participant eligible under fallbackSelection below.
+
+auditClasses:
+  referencePoint: "time of last auditor message (ACK or progress)"
+  operational:
+    appliesTo:
+      - live pilot or live shadow run blocked on this audit
+      - runtime breakage of coord or its transport adapter
+      - self-hosting defect (coord cannot manage its own delivery)
+      - governance blocker of the active Issue
+      - release blocker
+    ackTimeout: 30m
+    stallTimeout: 1h
+    fallbackTimeout: 3h
+    ownerEscalation: 5h
+  standard:
+    appliesTo: [all other audits]
+    ackTimeout: 2h
+    stallTimeout: 4h
+    fallbackTimeout: 24h
+    ownerEscalation: 72h
+  classification:
+    - auditClass MUST be recorded in the audit assignment at dispatch time,
+      with the appliesTo criterion and evidence reference
+    - auditClass MUST NOT be raised to operational after dispatch;
+      re-classification requires a new audit assignment
+    - if no operational criterion is evidenced, the class is standard
+    - auditor MAY reject the class at ACK; disagreement goes to OWNER,
+      standard timeouts apply until resolved
+
+stateMachine:
+  ASSIGNED: [AUDIT_IN_PROGRESS, AUDIT_ASSIGNMENT_EXPIRED]
+  AUDIT_IN_PROGRESS: [AUDIT_ACCEPTED, AUDIT_CHANGES_REQUIRED, AUDITOR_STALLED, AUDITOR_UNAVAILABLE]
+  AUDITOR_STALLED: [AUDIT_IN_PROGRESS, FALLBACK_AUDITOR_ALLOWED]
+  AUDITOR_UNAVAILABLE: [FALLBACK_AUDITOR_ALLOWED, OWNER_ESCALATION_REQUIRED]
+  AUDIT_ASSIGNMENT_EXPIRED: [FALLBACK_AUDIT_ASSIGNED]
+  FALLBACK_AUDITOR_ALLOWED: [FALLBACK_AUDIT_ASSIGNED, OWNER_ESCALATION_REQUIRED]
+  FALLBACK_AUDIT_ASSIGNED: [AUDIT_ACCEPTED, AUDIT_CHANGES_REQUIRED, OWNER_ESCALATION_REQUIRED]
+
+transitionActions:
+  AUDITOR_STALLED:
+    - send status request to the auditor
+    - record incident with last-message timestamp and channel evidence
+    - continue independent work (R146, R147)
+  FALLBACK_AUDITOR_ALLOWED:
+    - preserve original assignment and any partial audit output
+    - select fallback auditor per fallbackSelection
+    - dispatch typed assignment on the same exact subject SHA
+    - original auditor's late result remains valid if it arrives first
+  OWNER_ESCALATION_REQUIRED:
+    - publish Decision Trace with evidence package and elapsed times
+    - "ownerOptions: continue waiting | assign specific auditor | approve limited shadow-only pilot | freeze work"
+
+subjectBinding:
+  - fallback audit MUST target the exact SHA of the original audit assignment
+  - if new commits appear on the subject branch after the original assignment,
+    the fallback is NOT a continuation; a new audit assignment on the new SHA
+    is created, and the original assignment is closed as SUPERSEDED with reason
+  - an audit result for a different SHA never satisfies the gate of this subject
+
+fallbackSelection:
+  mustNot:
+    - be the executor of the subject, in any session or model of that agent
+      (TWO-AGENT-TD-R2-FALLBACK-R1 prevails)
+    - have issued REVIEW_ACCEPTED for the same subject
+  preferenceOrder:
+    - different agent implementation
+    - new session of a non-executor agent (disclose SESSION_SEPARATED)
+  notSufficient:
+    - a different model of the executor agent (e.g. Claude Opus auditing a
+      Claude-authored subject) is NOT a fallback auditor
+  disclosure: >
+    Completion report records fallback use, auditor identity, independence
+    level and elapsed times.
+
+externalControlPlane:
+  allowed: true
+  purpose:
+    - auditor assignment
+    - audit result delivery
+    - audit recovery
+  invariants:
+    - same auditor eligibility (fallbackSelection) applies
+    - same exact SHA (subjectBinding) applies
+    - same evidence requirements apply
+    - same typed result format (BEGIN/END_COORD_AUDIT_RESULT) applies
+    - Operations Ledger recording remains mandatory
+  note: changing the delivery mechanism does not change governance requirements
+  independence: >
+    The external control plane SHOULD NOT depend on the failed transport.
+    If Telepathy is the failed channel, the result is delivered by a
+    file-based package in the project-local .scratch plus operator notification.
+  examples:
+    - human-opened Codex or OpenCode session outside coordd
+    - file-based result package under {COORD_PROJECT_ROOT}/.scratch/tmp
+    - repository artifact on the auditor ops branch
+    - manual operator notification
+  scopeLimit: >
+    Applies to audit only. The general requirement that no coord process may
+    depend exclusively on coord for its own recovery is R149.
+
+coordinatorAudit:
+  allowed: [mutation testing, runtime analysis, contract review, evidence collection]
+  forbidden: [emit AUDIT_ACCEPTED, emit AUDIT_REJECTED, open or close the audit gate]
+  invariant: coordinator-generated evidence MAY support an audit and SHALL NOT substitute it
+
+limitedPilotAdmission:
+  status: REQUIRES_EXPLICIT_OWNER_APPROVAL
+  note: >
+    Running a shadow-only pilot before AUDIT_ACCEPTED relaxes the current gate
+    order and is therefore only available as an ownerOption at
+    OWNER_ESCALATION_REQUIRED, never automatically.
+  conditionsIfApproved:
+    - REVIEW_ACCEPTED present
+    - EVIDENCE_COMPLETE true
+    - coordinator audit complete with residual risks documented
+    - read-only shadow execution, no production/GitHub/credential writes
+  prohibited:
+    - merge to main or release branch
+    - production mutation or automatic promotion
+    - recording AUDIT_ACCEPTED without an eligible auditor
+
+securityImpact: >
+  No trust boundary is lowered. The audit gate still requires an eligible
+  independent auditor; R148 adds bounded timeouts and an eligible-auditor
+  substitution path. The only relaxation (limited pilot) is OWNER-gated.
+
+effects:
+  - AUDITOR_STALLED / AUDITOR_UNAVAILABLE recorded explicitly with timestamps
+  - Fallback auditor may be assigned without OWNER after fallbackTimeout
+  - OWNER is engaged after ownerEscalation, not earlier and not never
+  - Coordinator never self-issues audit results on any subject it authored
+
+excludedEffects:
+  - Review independence rules unchanged
+  - TD-R2 requirements (negative tests, mutations) unchanged
+  - R142 boundaries unchanged
+
+applicationToCurrentSubject:
+  subject: e72d7eef364e5fa35a799c3f18a315b72e3c4511
+  auditClass: operational
+  classBasis: "live shadow pilot blocked (dispatch-c4bfc4f1e534f69b3bca187caeb2c764), runtime result-ingestion failure"
+  classRecordingCaveat: >
+    The o14 assignment predates R148 and did not carry auditClass. If R148 is
+    accepted, OWNER acceptance confirms operational for this assignment;
+    otherwise standard applies.
+  lastAuditorMessage: "2026-10-21T02:14:50Z"
+  computedIfAccepted:
+    AUDITOR_STALLED: "2026-10-21T03:14:50Z"
+    FALLBACK_AUDITOR_ALLOWED: "2026-10-21T05:14:50Z"
+    OWNER_ESCALATION_REQUIRED: "2026-10-21T07:14:50Z"
+  eligibleFallback: "new Codex session other than c03, or new OpenCode session; never Claude"
+
+normativeRuleText: |
+  ### Недоступность аудитора (AUDITOR-UNAVAILABLE-R1, R148)
+
+  Каждое audit assignment при dispatch получает класс: operational (live pilot,
+  runtime breakage, self-hosting defect, governance blocker, release blocker —
+  с доказательством) или standard (всё остальное). Повысить класс после
+  dispatch нельзя; это делается только новым assignment.
+
+  | Класс | нет ACK | молчание после ACK | fallback | эскалация OWNER |
+  |---|---|---|---|---|
+  | operational | 30 мин | 1 ч | 3 ч | 5 ч |
+  | standard | 2 ч | 4 ч | 24 ч | 72 ч |
+
+  При молчании Coordinator фиксирует AUDITOR_STALLED, отправляет запрос
+  статуса и продолжает независимую работу. По истечении срока fallback
+  Coordinator без вопроса OWNER назначает fallback-аудитора строго на тот же
+  exact subject SHA; если на ветке появились новые коммиты, создаётся новое
+  audit assignment, а прежнее закрывается как SUPERSEDED. По истечении срока
+  эскалации без принятого аудита Coordinator эскалирует OWNER с Decision Trace.
+
+  Fallback-аудитор MUST NOT быть исполнителем subject (в любой сессии и модели
+  этого агента) и MUST NOT быть Reviewer этого subject. Другая модель агента-
+  исполнителя не является fallback-аудитором.
+
+  Coordinator audit (мутанты, runtime-анализ, contract review) разрешён всегда,
+  но MUST NOT выдавать AUDIT_ACCEPTED/AUDIT_REJECTED и не открывает gate.
+  Limited shadow-only pilot до AUDIT_ACCEPTED допускается только явным решением
+  OWNER при эскалации.
+
+mutation:
+  coordinatorSelfAudit:
+    description: Allow coordinator-authored subject to be audited by any Claude session
+    expectedResult: KILLED
+    killedBy: "fallback eligibility test (not yet implemented)"
+  infiniteWait:
+    description: Remove ownerEscalation timeout
+    expectedResult: KILLED
+    killedBy: "stall timeline test (not yet implemented)"
+  raiseClassAfterDispatch:
+    description: Allow auditClass to change from standard to operational after dispatch
+    expectedResult: KILLED
+    killedBy: "class immutability test (not yet implemented)"
+  fallbackOnNewerSha:
+    description: Accept fallback audit result for a SHA other than the original assignment
+    expectedResult: KILLED
+    killedBy: "subject binding test (not yet implemented)"
+  autoLimitedPilot:
+    description: Admit limited pilot without OWNER decision
+    expectedResult: KILLED
+    killedBy: "limited pilot gate test (not yet implemented)"
+
+normativeStatus: AUTHORITATIVE
+originalDecisionAcceptance: ACCEPTED_2026-10-21
+acceptedBy: "OWNER (naghuale)"
+acceptedDate: "2026-10-21"
+proposedBy: "Claude Opus 5.5 (coordinator session, Issue #70 delivery cycle)"
+proposedDate: "2026-10-21"

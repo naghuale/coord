@@ -1,0 +1,429 @@
+decision: R153
+class: R
+status: accepted
+revision: 4
+title: "Agent runtime registry and per-session admission verification (AGENT-REGISTRY-R1)"
+issue: null
+
+decisionDate: "2026-10-21"
+acceptanceDate: "2026-10-21"
+
+ownerDecision:
+  decisionId: R153
+  ownerMessage: "Принимаю R153"
+  disposition: ACCEPTED
+  recordedBy: "Claude Opus 5.5 (coordinator session)"
+  recordedAt: "2026-10-21"
+  acceptedRevision: "4 (9198fe7, REVIEW_ACCEPTED review-r153-c8d-a4)"
+  acceptanceOfPolicyDoesNotImplyImplementation: true
+  interimOwnerChoices:
+    - topic: "replacement of an auditor admitted under R151 (review finding R-4)"
+      ownerMessage: >
+        "Выбираю вариант A. Замена временно допущенного аудитора допустима
+        без нового owner-решения, если заново подтверждены все условия R151.
+        Новое owner-решение требуется только для прямых owner-исключений, а не
+        для обычного механизма R151."
+      recordedAt: "2026-10-21"
+      note: "a choice of option for the draft; it does not accept R153"
+
+authority: AGENTS.md
+
+amends: []   # adds no roles, widens no pool, keeps R151 unchanged (option A)
+
+dependsOn:
+  - R146   # replacement of a session that did not accept an assignment; repeat review cycle
+  - R148   # executor and subject-reviewer exclusions, fallback timeline, OWNER escalation, same-SHA binding
+  - R150   # agent pool boundary; non-pool runtimes are tools by default
+  - R151   # rule-based temporary admission of a non-pool auditor
+  - R152   # visibility evidence; HOST_RESTARTED voids in-flight work
+  - SESSION-COUNT-IS-NOT-AGENT-COUNT-R1
+
+prerequisites:
+  - R151 ACCEPTED   # satisfied 2026-10-21 (55fa234)
+  - R152 ACCEPTED   # satisfied 2026-10-21 (55fa234)
+  - independent review of the current revision without blocking findings   # satisfied: review-r153-c8d-a4 REVIEW_ACCEPTED on 9198fe7
+
+conflictOfInterest: >
+  Drafted by the Issue #70 executor/coordinator during its own audit incident;
+  AGR-006 restates coordinator authority. Independent pool review is required
+  before OWNER decision.
+
+reviewHistory:
+  - revision: 1
+    commit: 7edd3b8
+    assignmentId: review-r153-c8d-a1
+    reviewer: "codex:workspace-c8d (gpt-6.1-sol, coordinator-verified)"
+    result: CHANGES_REQUIRED
+    findings: "R-1 P1, R-2 P1, R-3 P1, R-4 P2 blocking; R-5 P2, R-6 P2 non-blocking"
+    resolvedIn: 2
+  - revision: 2
+    commit: fcdddc8
+    assignmentId: review-r153-c8d-a2
+    reviewer: "codex:workspace-c8d (gpt-6.1-sol, coordinator-verified)"
+    result: CHANGES_REQUIRED
+    priorFindings: "R-1, R-3, R-4, R-6 RESOLVED; R-2, R-5 PARTIAL"
+    findings: "R-7 P2, R-8 P2 blocking; R-9 P3 non-blocking"
+    resolvedIn: 3
+  - revision: 3
+    commit: a70e8e2
+    assignmentId: review-r153-c8d-a3
+    reviewer: "codex:workspace-c8d (gpt-6.1-sol, coordinator-verified)"
+    result: REVIEW_ACCEPTED
+    priorFindings: "R-1..R-9 RESOLVED"
+    findings: "R-10 P3, R-11 P3 non-blocking (editorial)"
+    resolvedIn: 4
+
+context: >
+  Issue #70, subject e72d7eef364e5fa35a799c3f18a315b72e3c4511. The audit chain
+  o14 -> oe4 -> hc0 -> h6a lost three sessions to host restarts and
+  unreachability. Each loss was handled per session ID, although the
+  properties that matter for admission belong to the agent and to verifiable
+  evidence. The same cycle showed two traps: (1) runtime and model are
+  different things - Hermes config named longcat while session h6a ran
+  ornith/ornith-1.5-122b:free; (2) self-reports are not reliable - h6a
+  reported sessionStart 17:17:04Z (host boot time), while its runtime state
+  showed 17:22:44Z.
+
+selectedOption: >
+  A registry records the expected properties of each agent runtime and the
+  mapping of model ids to model families. It grants no roles and never makes
+  an agent eligible: eligibility stays with R148/R150/R151, and model
+  provenance is an additional fail-closed constraint. Each assignment is
+  admitted on one of three explicit bases (pool, R151 temporary admission,
+  explicit OWNER exception), each with its own checks. Membership in an
+  allowed class survives restarts; assignments, ACKs and escalation clocks do
+  not restart with a new session.
+
+identityModel:
+  # R-3: distinct layers; none of them substitutes for another
+  agentId: "stable agent identity used by R148 exclusions (executor, subject reviewer) across all its sessions and models"
+  runtimeProduct: "Claude Code, Codex, OpenCode, Hermes"
+  hostProcess: "OS process hosting one or more sessions (PID/PPID/TTY/start, R152); may be shared, e.g. one OpenCode service"
+  session: "one conversation context within a runtime; has its own start time and history"
+  modelFamily: "family of every model that served the session, derived via the registry mapping"
+  rule: >
+    A host process is never treated as conversation history: sessions sharing
+    a host are judged separately. A model or session change never changes the
+    agentId.
+
+registryModel:
+  separation:
+    poolRoles: "granted by class R decisions only (R150 and successors), never by the registry"
+    temporaryAdmissions: "per-assignment admissions under R151; never written back into the registry"
+    ownerExceptions: "per-assignment OWNER decisions (e.g. R148 ownerEscalation); never written back into the registry"
+  recordFields:
+    - agentRuntime
+    - runtimeVersionEvidence      # how the runtime version is observed (process, binary, plugin cache)
+    - poolMembership              # reference to the R decision, or NONE
+    - transportCapabilities       # e.g. Telepathy listener present / read_messages only
+    - modelEvidenceCapability     # FULL_PER_CALL | PER_TURN | DECLARATION_ONLY, with source and runtime version it was checked against
+    - verificationSources         # readable sources for model and session evidence; details live in the runbook
+  modelFamilyMapping:
+    # R-6: classification contract
+    fields: [modelIdPattern, providerQualifiers, family, independentOfExecutorFamilies, provenance]
+    rules:
+      - provider prefixes and suffixes (e.g. ":free") are qualifiers, not proof of the serving backend
+      - an id resolves only through an exact mapping entry; no guessing by name similarity
+      - a router alias whose serving family is not disclosed maps to UNKNOWN
+      - UNKNOWN family is never independent
+      - applying an existing entry is an observation; adding or changing an entry requires a class R decision
+  versioning:
+    registryVersion: required
+    binding: "admission and result record the registryVersion used; a registry change during an assignment does not apply to it unless it makes the session ineligible"
+  location: "docs/registry/AGENT-REGISTRY.yaml (to be created on acceptance)"
+
+admissionBases:
+  # R-3, R-4: each assignment records exactly one basis
+  POOL:
+    source: "R150 pool membership"
+    checks:
+      - agentId not excluded by R148 for the subject (executor in any session or model; subject reviewer where R148 excludes it)
+      - no conflicting participation in the subject per AGR-005 (implementation, design; review if the role is Auditor)
+      - model provenance per AGR-003
+    notRequired:
+      - session started after the assignment
+      - absence of earlier assignments of the same role on the same subject (repeat review cycles under R146/AGENTS are allowed)
+  TEMPORARY_ADMISSION_R151:
+    source: "accepted R151"
+    checks:
+      - all R151 admissionConditions, including freshSession (started after the assignment, no prior history under any model)
+      - all POOL checks except pool membership
+  OWNER_EXCEPTION:
+    source: "explicit OWNER decision for one assignment (e.g. R148 ownerEscalation)"
+    # R-8: an exception waives only what it names
+    record:
+      underlyingEligibilityBasis: "POOL | TEMPORARY_ADMISSION_R151 | NONE (OWNER assigns a runtime directly, naming the norm it relies on)"
+      ownerDecisionText: required
+      waivedRequirements: "exact list; each item names the requirement and the norm it comes from"
+    checks:
+      - every requirement of the underlying basis that is not in waivedRequirements stays mandatory
+      - with basis NONE, all POOL participation checks and the R151 safeguards (freshSession, modelProvenance, noParticipation, sameRules) apply unless listed in waivedRequirements
+      - all R148 exclusions apply; an OWNER exception never admits the subject executor
+      - MISMATCH model provenance is never waivable
+    neverGranted:
+      - a role or pool membership beyond this one assignment
+      - automatic replacement (AGR-007)
+
+rules:
+  - id: AGR-001
+    title: Registry defines expectations, not roles or eligibility
+    requirement: >
+      The registry states runtime properties and the model family mapping.
+      Roles come only from pool decisions (R150). A non-pool runtime in the
+      registry stays a tool. Being listed never makes an agent eligible.
+  - id: AGR-002
+    title: Session restart is not assignment continuation
+    requirement: >
+      A new session inherits the runtime's registry record, but not
+      assignments, ACKs, leases or unfinished work (R152 HOST_RESTARTED).
+      Continuation requires a durable checkpoint or a fresh ACK under R152.
+  - id: AGR-003
+    title: Model provenance is an additional constraint
+    requirement: >
+      Eligibility is the conjunction of (a) agentId and participation
+      eligibility under R148 and the admission basis, and (b) verified model
+      provenance. A model check can only exclude a candidate; it never
+      replaces (a). No runtime or model switch makes the subject executor
+      eligible. The session reports its exact model id at ACK; the
+      coordinator derives the families of every model that served the
+      session from independent evidence bound to that session and to the
+      assignment interval (ACK to result).
+    coverage:
+      # R-9
+      atAdmission: "actual model of the session so far and its known history verified; a registry-listed source able to cover the coming interval is available (else UNVERIFIED)"
+      atResult: "complete coverage of the finished interval ACK..result is required for acceptance"
+      required: "every model call of the session between ACK and result"
+      perTurnEvidence: "acceptable only if it covers every model call, including switches within a turn"
+      sufficientEvidence: "per-call or per-turn model records from a registry-listed source, bound to session id and covering the whole interval"
+      insufficientEvidence:
+        - samples at ACK and result only, without interval coverage
+        - process metadata (PID, TTY, start time)
+        - runtime default configuration
+        - the session's own statement
+        - missing, redacted, rotated or deleted records for any part of the interval
+    disposition:
+      VERIFIED: "all served families mapped and allowed -> passes this constraint"
+      MISMATCH: "any served family disallowed or of the executor family -> AUDIT_INELIGIBLE / REVIEW_INELIGIBLE; the result is not accepted"
+      UNVERIFIED: "coverage incomplete or any family UNKNOWN -> no admission / result not accepted (fail-closed); only an explicit OWNER decision naming this gap may waive it, recorded as OWNER_EXCEPTION with the gap in waivedRequirements; every other requirement stays mandatory"
+  - id: AGR-004
+    title: Self-reported data is not trusted on its own
+    requirement: >
+      Session start, model and prior history in an ACK are claims, checked
+      against independent sources. Discrepancies are recorded and disclosed.
+      A discrepancy on model family follows AGR-003; a discrepancy on prior
+      subject participation makes the session ineligible for the role.
+  - id: AGR-005
+    title: External source of truth for subject participation
+    requirement: >
+      Participation in a subject is determined from records outside the
+      session: Operations Ledger, incident journals, admission log, review
+      and audit history, keyed by agentId and session. The session's own
+      statement is supporting evidence only.
+  - id: AGR-006
+    title: Replacement of a lost session
+    requirement: >
+      When an admitted session is lost (evidence: R146 no ACK, R148
+      AUDITOR_UNAVAILABLE, or R152 HOST_RESTARTED), the coordinator MAY issue
+      a new assignment (new assignmentId, same subject, SHA and role) without
+      a new OWNER decision when the lost session's basis was POOL or
+      TEMPORARY_ADMISSION_R151 and the new session passes every check of its
+      own basis, re-verified from scratch. Nothing is inherited from the lost
+      session's admission.
+    replacementAllowed:
+      sameSubject: true
+      sameSHA: true
+      sameRole: true
+      lostBasisIn: [POOL, TEMPORARY_ADMISSION_R151]
+      newBasisChecksRepeated: true
+      noPolicyOverride: true     # no OWNER override or other policy exception was in force
+    escalationClock:
+      # R-5, R-7: R153 introduces no new anchor and does not change R148 formulas
+      deadlines: >
+        fallbackAllowedAt and ownerEscalationAt are computed once, by the
+        accepted norm that applies (R148 auditClasses with referencePoint =
+        time of the last auditor message, ACK or progress; for HOST_RESTARTED
+        the R152 route), and recorded in the incident journal.
+      rule: "replacements, new assignmentIds and new ACKs never recompute, shift or reset the recorded deadlines"
+      afterDeadline: "replacement without OWNER is not allowed once the recorded ownerEscalationAt has passed"
+    oldAssignmentPolicy:
+      R146: "unaccepted assignment is superseded"
+      R148: "a late result of the lost admitted auditor on the same SHA stays valid as defined in R148"
+      R152: "an assignment of a restarted host is void; no late continuation without checkpoint or fresh ACK"
+    examples:
+      allowed:
+        - "o14 -> oe4 (OpenCode, POOL)"
+        - "oe4 -> o2c (OpenCode, POOL)"
+        - "R151 auditor lost -> new R151 auditor with all R151 conditions re-verified (OWNER choice, option A)"
+      notAllowed:
+        - "hc0 -> h6a without OWNER (hc0 basis was OWNER_EXCEPTION R148-ESC-01; R148-ESC-01-R1 was required and given)"
+        - "any replacement after the R148 escalation deadline"
+  - id: AGR-007
+    title: OWNER exceptions are not replaced automatically
+    requirement: >
+      When the lost session's basis was OWNER_EXCEPTION, a replacement
+      requires a new or explicitly renewed OWNER decision. An admission under
+      the accepted R151 rule is not an OWNER exception (OWNER option A). The
+      registry never turns an exception into a class rule.
+
+verification:
+  coordinatorChecks:
+    - admission basis recorded (POOL | TEMPORARY_ADMISSION_R151 | OWNER_EXCEPTION)
+    - checks of that basis (admissionBases) performed and recorded
+    - ACK fields matched against independent sources (AGR-004)
+    - model provenance disposition at admission and at result (AGR-003), with registryVersion
+    - R152 process evidence (PID/PPID/TTY/start) recorded separately from conversation-state inspection
+    - for replacements, lost session basis, loss evidence and the recorded fallbackAllowedAt / ownerEscalationAt (AGR-006)
+    - for OWNER_EXCEPTION, underlyingEligibilityBasis and waivedRequirements, and that every non-waived requirement passed
+  stateInspection:
+    appliesTo: "inspection of a runtime's internal conversation state; R152 process evidence is collected separately and is not a reason to read conversation state"
+    purposeLimited: true      # admission and eligibility verification only
+    readOnly: true
+    fieldsAllowed:
+      - sessionStart
+      - modelIdentity          # per-call or per-turn model records
+      - subjectReferences      # whether the subject, its SHA or its assignment appear before admission
+    prohibited:
+      - reading or copying conversation content beyond what is needed to establish the allowed fields
+      - storing transcripts, credentials or raw rows in evidence; record only derived values and a sanitized description of the query
+    unavailableSource: "a runtime without a registry-listed source yields UNVERIFIED for that field; never guess"
+  runbook: >
+    Runtime-specific sources and queries (e.g. Hermes state.db, Codex session
+    rollouts), adapters and schema-compatibility checks belong in a versioned
+    runbook and a separate implementation work package
+    (AGENT-REGISTRY-VERIFICATION-WP), not in this decision.
+
+limits:
+  - grants no roles and does not extend the agent pool
+  - does not weaken any R148 exclusion; model provenance only narrows eligibility
+  - does not amend R151 (OWNER option A)
+  - does not replace R148 escalation for OWNER exceptions or after the escalation deadline
+  - registry entries and family mapping change only by a class R decision
+
+securityImpact: >
+  Moves admission from session identity and self-report to verified
+  properties and external records, while keeping R148 agent exclusions as the
+  primary independence test. Unverifiable model provenance fails closed.
+  Roles, temporary admissions and OWNER exceptions stay outside the registry,
+  so the pool cannot widen silently. Residual risk: runtimes that expose only
+  DECLARATION_ONLY model evidence cannot pass AGR-003 without an explicit
+  OWNER exception.
+
+normativeRuleText: |
+  ### Реестр агентских рантаймов и проверка сессий (AGENT-REGISTRY-R1, R153)
+
+  Реестр описывает свойства агентских рантаймов и соответствие идентификаторов
+  моделей их семействам; ролей он не выдаёт и сам по себе агента допустимым не
+  делает. Допустимость определяется R148, R150 и R151; проверка модели — только
+  дополнительное ограничение: она может исключить кандидата, но не заменяет
+  запреты R148. Исполнитель subject недопустим в любой сессии и на любой модели.
+
+  Каждое назначение имеет ровно одно основание допуска: пул (R150), временный
+  допуск по R151 или прямое исключение OWNER. Требование свежей сессии без
+  прежней истории действует только для R151; для сессий пула проверяется
+  отсутствие конфликтующего участия в subject по внешним записям, а повторные
+  циклы review тем же ревьюером допустимы. Процесс-хост не считается историей
+  сессии.
+
+  Координатор устанавливает семейства всех моделей, обслуживавших сессию от ACK
+  до результата, по независимым записям, привязанным к сессии и покрывающим
+  весь интервал. Самоотчёт, конфигурация по умолчанию и данные процесса этого не
+  доказывают. Итог: VERIFIED — ограничение пройдено; MISMATCH — сессия
+  недопустима, результат не принимается; UNVERIFIED (неполное покрытие или
+  неизвестное семейство) — допуска нет, результат не принимается; снять именно
+  этот пробел может только прямое решение OWNER, оформляемое как исключение.
+  При допуске проверяется фактическая модель и наличие источника, способного
+  покрыть интервал; при приёмке результата требуется полное покрытие
+  завершённого интервала. Классификацию семейств меняет только решение класса R.
+
+  Прямое исключение OWNER снимает только явно перечисленные требования; все
+  остальные требования исходного основания (или, без основания, проверки пула и
+  меры защиты R151) остаются обязательными. Запрет исполнителя и MISMATCH
+  исключением не снимаются; исключение не даёт роли за пределами данного
+  assignment, не расширяет пул и не переносится на замену.
+
+  Потерянную сессию с основанием «пул» или «R151» можно заменить без нового
+  решения OWNER: тот же subject, SHA и роль, новый assignmentId, все проверки
+  основания повторяются заново. Сроки fallback и эскалации вычисляются один раз
+  по применимой норме (R148 — от последнего сообщения аудитора, ACK или progress;
+  при перезапуске хоста — по R152), записываются в журнал инцидента и при замене
+  не пересчитываются; после записанного срока эскалации замена без OWNER
+  запрещена. Замена сессии, допущенной прямым исключением OWNER, требует нового
+  решения OWNER.
+
+  Проверка внутреннего состояния рантайма — только чтение и только поля, нужные
+  для допуска (время старта, модель, упоминания subject); в доказательства
+  записываются производные значения, не содержимое. Конкретные источники и
+  запросы ведутся в отдельном runbook.
+
+decisionScenarios:
+  # R-6: expected outcomes of the norm; enforcement is not implemented
+  # (AGENT-REGISTRY-VERIFICATION-WP). These are not mutation kills.
+  - id: S-01
+    case: "registry lists a non-pool runtime; it is offered the Auditor role"
+    expected: "not admitted on the registry alone (AGR-001)"
+  - id: S-02
+    case: "subject executor opens a fresh session of a pool runtime on an allowed non-executor family"
+    expected: "ineligible: R148 executor exclusion (AGR-003 a)"
+  - id: S-03
+    case: "independence judged by runtime name or default config"
+    expected: "rejected; model evidence required (AGR-003)"
+  - id: S-04
+    case: "admitted on ACK fields only"
+    expected: "rejected (AGR-004)"
+  - id: S-05
+    case: "allowed model at ACK and result, unlogged gap in between"
+    expected: "UNVERIFIED -> result not accepted (AGR-003 coverage)"
+  - id: S-06
+    case: "router alias whose serving family is undisclosed"
+    expected: "family UNKNOWN -> UNVERIFIED"
+  - id: S-07
+    case: "model switches to the executor family after ACK"
+    expected: "MISMATCH -> result not accepted"
+  - id: S-08
+    case: "pool session running before the assignment, no conflicting participation"
+    expected: "admissible under POOL (no freshness requirement)"
+  - id: S-09
+    case: "same reviewer on a repeat review cycle of the same subject"
+    expected: "admissible under POOL"
+  - id: S-10
+    case: "two OpenCode sessions share one host process; one participated in the subject"
+    expected: "only that session (and its agentId exclusions) is affected"
+  - id: S-11
+    case: "R151 auditor lost; new candidate re-verified against all R151 conditions"
+    expected: "replacement without OWNER decision (AGR-006, option A)"
+  - id: S-12
+    case: "OWNER-exception auditor lost (hc0)"
+    expected: "new OWNER decision required (AGR-007)"
+  - id: S-13
+    case: "replacement with different SHA, role or subject"
+    expected: "not a replacement; new assignment under normal rules"
+  - id: S-14
+    case: "replacement after the R148 escalation deadline, or treating a new ACK as a new deadline"
+    expected: "rejected; OWNER escalation required (AGR-006 escalationClock)"
+  - id: S-15
+    case: "restarted host continues the voided assignment"
+    expected: "rejected (AGR-002, R152)"
+  - id: S-16
+    case: "evidence stores conversation content to prove the model"
+    expected: "rejected (stateInspection)"
+  - id: S-17
+    case: "operational audit: last ACK 00:00, stall detected 01:00, fallback attempted 02:30, replacement auditor ACKs 03:30"
+    expected: "fallbackAllowedAt 03:00 and ownerEscalationAt 05:00 as recorded by R148; the 02:30 attempt is rejected; the 03:30 replacement is allowed and leaves 05:00 unchanged (not 04:00/06:00 or later); no replacement without OWNER after 05:00"
+  - id: S-18
+    case: "OWNER waives only UNVERIFIED provenance; candidate had prior design or working-context exposure to the subject"
+    expected: "not admitted: noParticipation was not waived (R-8)"
+  - id: S-19
+    case: "OWNER waives only UNVERIFIED provenance; all other checks of the underlying basis pass"
+    expected: "admitted as OWNER_EXCEPTION with disclosure; not auto-replaceable (AGR-007)"
+  - id: S-20
+    case: "admission with allowed model and an available full-coverage source; at result a mid-turn switch is not covered by per-turn records"
+    expected: "UNVERIFIED at result -> result not accepted (R-9)"
+
+normativeStatus: AUTHORITATIVE
+originalDecisionAcceptance: ACCEPTED_2026-10-21
+acceptedBy: "OWNER (naghuale)"
+acceptedDate: "2026-10-21"
+implementationStatus: NOT_IMPLEMENTED   # registry file, runbook and AGENT-REGISTRY-VERIFICATION-WP are separate follow-up work
+proposedBy: "Claude Opus 5.5 (coordinator session, Issue #70 delivery cycle)"
+proposedDate: "2026-10-21"
+revisedDate: "2026-10-21"

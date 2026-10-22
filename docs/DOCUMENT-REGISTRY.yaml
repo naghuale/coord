@@ -4033,6 +4033,254 @@ documents:
       reviewer: required
       auditor: required
       owner: only_for_class_R
+  - id: available-agent-capacity-utilization-r147
+    path: docs/decisions/AVAILABLE-AGENT-CAPACITY-UTILIZATION-R147.yaml
+    class: process
+    status: accepted
+    purpose:
+      - "OWNER class R decision R147: Coordinator dispatches safe, approved, non-conflicting critical-path work to AVAILABLE agents; durable Agent Registry, parallelSafety in every assignment envelope, conflict evaluation recorded before dispatch"
+      - "process contract: accepted, applied manually; Capability Registry, Assignment Conflict Evaluator, Scheduler: NOT_IMPLEMENTED (COORD-AUTONOMOUS-CAPACITY-SCHEDULER)"
+    decisionRef: AVAILABLE-AGENT-CAPACITY-UTILIZATION-R147
+    usedBy:
+      - COORDINATOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - RECOVER_SESSION
+      - ASSIGNMENT_START
+      - OWNER_BOUNDARY_CHECK
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    currentNormativeAuthority: true
+    normativeAuthority: process
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: required
+      owner: only_for_class_R
+  - id: auditor-unavailable-r148
+    path: docs/decisions/AUDITOR-UNAVAILABLE-R148.yaml
+    class: process
+    status: accepted
+    purpose:
+      - "OWNER class R decision R148: auditor unavailability timeline (operational 30m/1h/3h/5h, standard 2h/4h/24h/72h), fallback and OWNER escalation, same-SHA binding, no executor self-audit, external control plane"
+      - "process contract: accepted; automated incident clock enforcement: NOT_IMPLEMENTED"
+    decisionRef: AUDITOR-UNAVAILABLE-R148
+    usedBy:
+      - COORDINATOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - RECOVER_SESSION
+      - ASSIGNMENT_START
+      - OWNER_BOUNDARY_CHECK
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    currentNormativeAuthority: true
+    normativeAuthority: process
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: required
+      owner: only_for_class_R
+  - id: self-hosting-invariant-r149
+    path: docs/decisions/SELF-HOSTING-INVARIANT-R149.yaml
+    class: process
+    status: accepted
+    purpose:
+      - "OWNER class R decision R149: no coord recovery path depends exclusively on coord; external recovery keeps the same governance gates"
+      - "process contract: accepted; grants no new live authority"
+    decisionRef: SELF-HOSTING-INVARIANT-R149
+    usedBy:
+      - COORDINATOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - RECOVER_SESSION
+      - ASSIGNMENT_START
+      - OWNER_BOUNDARY_CHECK
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    currentNormativeAuthority: true
+    normativeAuthority: process
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: required
+      owner: only_for_class_R
+  - id: mcp-recovery-policy-r150
+    path: docs/decisions/MCP-RECOVERY-POLICY-R150.yaml
+    class: process
+    status: accepted
+    purpose:
+      - "OWNER class R decision R150: evidence-first MCP integration recovery, version drift control (DP-006, DP-007), agent pool boundary (Claude, Codex, OpenCode)"
+      - "process contract: accepted; drift inventory and automated checks: NOT_IMPLEMENTED"
+    decisionRef: MCP-RECOVERY-POLICY-R150
+    usedBy:
+      - COORDINATOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - RECOVER_SESSION
+      - ASSIGNMENT_START
+      - OWNER_BOUNDARY_CHECK
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    currentNormativeAuthority: true
+    normativeAuthority: process
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: required
+      owner: only_for_class_R
+  - id: temporary-auditor-admission-r151
+    path: docs/decisions/TEMPORARY-AUDITOR-ADMISSION-R151.yaml
+    class: process
+    status: accepted
+    purpose:
+      - "OWNER class R decision R151: bounded admission of a non-pool agent runtime to one Auditor assignment with full admission conditions; amends R150 pool boundary for that assignment only"
+      - "process contract: accepted"
+    decisionRef: TEMPORARY-AUDITOR-ADMISSION-R151
+    usedBy:
+      - COORDINATOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - RECOVER_SESSION
+      - ASSIGNMENT_START
+      - OWNER_BOUNDARY_CHECK
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    currentNormativeAuthority: true
+    normativeAuthority: process
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: required
+      owner: only_for_class_R
+  - id: agent-visibility-r152
+    path: docs/decisions/AGENT-VISIBILITY-R152.yaml
+    class: process
+    status: accepted
+    purpose:
+      - "OWNER class R decision R152: transport liveness != visible != reachable != controllable; host restart voids in-flight assignments (HOST_RESTARTED)"
+      - "process contract: accepted; automated visibility verification: NOT_IMPLEMENTED"
+    decisionRef: AGENT-VISIBILITY-R152
+    usedBy:
+      - COORDINATOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - RECOVER_SESSION
+      - ASSIGNMENT_START
+      - OWNER_BOUNDARY_CHECK
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    currentNormativeAuthority: true
+    normativeAuthority: process
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: required
+      owner: only_for_class_R
+  - id: agent-registry-r153
+    path: docs/decisions/AGENT-REGISTRY-R153.yaml
+    class: process
+    status: accepted
+    purpose:
+      - "OWNER class R decision R153: agent runtime registry and per-session admission verification; model provenance VERIFIED/MISMATCH/UNVERIFIED, stable AgentID exclusions, scoped OWNER_EXCEPTION"
+      - "process contract: accepted; implementationStatus: NOT_IMPLEMENTED (docs/registry/AGENT-REGISTRY.yaml, runbook and AGENT-REGISTRY-VERIFICATION-WP not created); registering this decision is not the Agent Registry"
+    decisionRef: AGENT-REGISTRY-R153
+    usedBy:
+      - COORDINATOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - RECOVER_SESSION
+      - ASSIGNMENT_START
+      - OWNER_BOUNDARY_CHECK
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    currentNormativeAuthority: true
+    normativeAuthority: process
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: required
+      owner: only_for_class_R
+  - id: host-restart-clock-r154
+    path: docs/decisions/HOST-RESTART-CLOCK-R154.yaml
+    class: process
+    status: accepted
+    purpose:
+      - "OWNER class R decision R154: auditor-unavailability incident clock fixed once at incident open; host restart voids assignments but never resets deadlines; voided assignments are never reanimated"
+      - "process contract: accepted; automated enforcement: NOT_IMPLEMENTED"
+    decisionRef: HOST-RESTART-CLOCK-R154
+    usedBy:
+      - COORDINATOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - RECOVER_SESSION
+      - ASSIGNMENT_START
+      - OWNER_BOUNDARY_CHECK
+    updateWhen:
+      - PROCESS_NORM_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    currentNormativeAuthority: true
+    normativeAuthority: process
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: required
+      owner: only_for_class_R
   - id: external-action-contract-r1
     path: docs/decisions/EXTERNAL-ACTION-CONTRACT-R1.yaml
     class: process

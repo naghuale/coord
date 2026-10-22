@@ -37,3 +37,15 @@ patterns:
     automationStatus: PARTIAL
     owningNorm: AGENTS.md
     selfTestRef: "coord governance check-defect-patterns"
+
+  - patternId: DP-006
+    title: "Versioned dependency drift across consumers"
+    automationStatus: NONE
+    owningNorm: AGENTS.md
+    selfTestRef: "coord governance check-defect-patterns"
+
+  - patternId: DP-007
+    title: "Assumption-driven repair before state capture"
+    automationStatus: NONE
+    owningNorm: AGENTS.md
+    selfTestRef: "coord governance check-defect-patterns"

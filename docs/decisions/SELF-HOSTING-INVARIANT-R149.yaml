@@ -1,0 +1,109 @@
+decision: R149
+class: R
+status: accepted
+title: "No coord recovery path depends exclusively on coord (SELF-HOSTING-INVARIANT-R1)"
+issue: null
+
+decisionDate: "2026-10-21"
+acceptanceDate: "2026-10-21"
+
+ownerDecision:
+  decisionId: R149
+  ownerMessage: "принимаю оба"
+  disposition: ACCEPTED
+  recordedBy: "Claude Opus 5.5 (coordinator session)"
+  recordedAt: "2026-10-21"
+
+authority: AGENTS.md
+
+dependsOn:
+  - R148                     # audit-specific external control plane
+  - ADR-0004                 # runtime, daemon, write path, fencing
+  - ADR-0005                 # canonical storage and commit of state
+  - RECOVERY-REGULATION-R1   # agent session recovery
+
+context: >
+  coord is being used to manage its own development. Once coordd becomes the
+  control plane (P0-3 and later), a coord defect could block the very workflow
+  needed to repair it: dispatch, review/audit assignment, evidence collection or
+  recovery would all require a working coordd. During the Issue #70 live shadow
+  pilot this risk was not yet real: coordd is shadow-only and coordination runs
+  through Telepathy and human-opened sessions, so the de facto control plane is
+  external to coordd. This decision fixes the invariant before that changes.
+
+statement: No coord recovery path may depend exclusively on coord itself.
+
+requirements:
+  - every critical workflow SHALL have a documented external recovery path
+  - the recovery path SHALL be executable without coordd running
+  - evidence produced on the recovery path SHALL remain admissible under the
+    same rules (exact SHA, typed results, Operations Ledger records)
+  - governance requirements SHALL NOT be relaxed on the recovery path
+  - the recovery path SHOULD NOT depend on the component that failed
+
+criticalWorkflows:
+  - dispatch and assignment
+  - review and audit (covered for audit by R148 externalControlPlane)
+  - evidence collection and sealing
+  - session and run recovery
+  - daemon startup and lock recovery
+  - fencing of a stale writer
+  - canonical store integrity check and restore
+  - operational reachability of agents
+
+openQuestions:
+  - which workflows already have an external path today, and where it is documented
+  - how recovery-path actions are fenced against a coordd that resumes concurrently
+  - how evidence produced outside coordd is later ingested into the canonical store
+    without becoming a trust bypass
+
+applicability:
+  now: >
+    Inventory only. coordd is shadow-only; the existing control plane is external.
+  required: >
+    Before P0-3 admission grants coordd any production write or assignment
+    authority, each critical workflow has a verified external recovery path.
+
+securityImpact: >
+  No trust boundary is lowered. The invariant forbids recovery paths that
+  bypass governance; it requires that an external path exist, not that it be
+  more permissive. Fencing and canonical-store ingestion of externally produced
+  evidence are TD-R2 and require independent Review and Audit.
+
+proposedWorkPackage:
+  id: COORD-SELF-HOSTING-RECOVERY-INVENTORY
+  class: TD-R2
+  deliverables:
+    - inventory of critical workflows and their current external path
+    - gap list with owner and target milestone
+    - negative tests proving recovery works with coordd stopped
+
+normativeRuleText: |
+  ### Независимость восстановления coord от самого coord (SELF-HOSTING-INVARIANT-R1, R149)
+
+  Ни один путь восстановления coord не может зависеть исключительно от coord.
+  Каждый критический процесс (dispatch, review/audit, evidence, recovery
+  сессий и run, запуск daemon, fencing, canonical store, operational
+  reachability) MUST иметь задокументированный внешний путь, выполнимый без
+  работающего coordd. На внешнем пути действуют те же требования governance;
+  доказательства остаются допустимыми только при тех же правилах (exact SHA,
+  типизированный результат, запись в Operations Ledger). Внешний путь SHOULD NOT
+  зависеть от отказавшего компонента. До выдачи coordd production-полномочий
+  (P0-3) внешний путь каждого критического процесса MUST быть проверен.
+
+mutation:
+  coordOnlyRecovery:
+    description: Recovery path that requires a running coordd
+    expectedResult: KILLED
+    killedBy: "recovery-with-coordd-stopped test (not yet implemented)"
+  relaxedExternalPath:
+    description: External path accepts untyped result or different SHA
+    expectedResult: KILLED
+    killedBy: "external evidence admission test (not yet implemented)"
+
+normativeStatus: AUTHORITATIVE
+originalDecisionAcceptance: ACCEPTED_2026-10-21
+acceptedBy: "OWNER (naghuale)"
+acceptedDate: "2026-10-21"
+proposedBy: "Claude Opus 5.5 (coordinator session, Issue #70 delivery cycle)"
+proposedDate: "2026-10-21"

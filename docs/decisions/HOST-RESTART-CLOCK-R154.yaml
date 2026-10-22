@@ -1,0 +1,87 @@
+decision: R154
+class: R
+status: accepted
+title: "Host restart voids work but never extends the escalation clock (HOST-RESTART-CLOCK-R1)"
+issue: null
+
+decisionDate: "2026-10-22"
+acceptanceDate: "2026-10-22"
+
+ownerDecision:
+  decisionId: R154
+  ownerMessage: "Принимаю R154."
+  disposition: ACCEPTED
+  recordedBy: "Claude Opus 5.5 (coordinator session claude:workspace-5e)"
+  recordedAt: "2026-10-22"
+
+authority: AGENTS.md
+
+dependsOn:
+  - R148   # auditor unavailability timeline
+  - R152   # HOST_RESTARTED voids in-flight assignment
+  - R153   # escalationClock computed once
+
+resolves:
+  - "GOVERNANCE-CONSISTENCY-R148-R153 C-3 (HOST_RESTARTED: immediate fallback vs new full interval)"
+  - "GOVERNANCE-CONSISTENCY-R148-R153 C-2 (progress referencePoint vs fixed incident deadline), partially"
+  - "GOVERNANCE-CONSISTENCY-R148-R153 C-7 (void vs continuation), ID semantics only"
+
+context: >
+  Issue #70 audit of e72d7ee lost its auditor three times (o14 host restart
+  2026-10-21 03:04Z, oe4 never read, h6a host gone before 2026-10-22 02:31Z).
+  R152 says a host restart voids the assignment and starts the R148 fallback
+  path "from that moment"; R148 measures deadlines from the last auditor
+  message; R153 says deadlines are computed once. Read together they allow a
+  restart to be treated as a fresh referencePoint, so repeated restarts could
+  postpone fallback and OWNER escalation without bound.
+
+rule:
+  incident:
+    opensAt: "first AUDITOR_UNAVAILABLE observation for (subject SHA, audit gate)"
+    closesAt: "AUDIT_ACCEPTED or CHANGES_REQUIRED recorded for that gate, or OWNER closes it"
+    sourceOfTruth: incident journal
+  clock:
+    fixedAt: incident open
+    fields: [incidentOpenedAt, fallbackAllowedAt, ownerEscalationAt]
+    computedBy: "R148 auditClasses with referencePoint = last auditor message before incident open"
+    neverRecomputedBy:
+      - HOST_RESTARTED
+      - replacement auditor ACK or progress
+      - coordinator session change
+    changeOnlyBy: "explicit OWNER decision recorded in the journal"
+  hostRestarted:
+    assignmentEffect: "VOID immediately (R152 unchanged)"
+    clockEffect: none
+    fallbackEffect: "if fallbackAllowedAt has passed, an eligible fallback may be dispatched at once; otherwise at fallbackAllowedAt (no new full interval)"
+    escalationEffect: "a passed ownerEscalationAt stays passed; a restart never re-opens the pre-escalation window"
+  continuation:
+    voidedAssignmentId: "stays VOID forever; never reanimated by ALIVE or a fresh ACK"
+    resumeWork: "only under a NEW assignmentId; a durable checkpoint of the voided assignment may be listed as input evidence, re-verified by the new auditor"
+    ownerException: "a replacement under OWNER_EXCEPTION needs renewed OWNER words (AGR-007)"
+  progressBeforeIncident: "auditor ACK/progress before incident open still moves referencePoint (R148 unchanged)"
+
+notChanged:
+  - "R148 interval lengths"
+  - "R152 void rule"
+  - "executor exclusion; same-SHA rule"
+
+scenarios:
+  - id: S-1
+    case: "restart 10 min before fallbackAllowedAt"
+    expected: "assignment VOID; fallback allowed at original fallbackAllowedAt"
+  - id: S-2
+    case: "restart after ownerEscalationAt"
+    expected: "assignment VOID; OWNER escalation still required; no automatic fallback"
+  - id: S-3
+    case: "replacement auditor ACKs, then its host restarts"
+    expected: "deadlines unchanged; replacement assignment VOID"
+  - id: S-4
+    case: "restarted host resumes old assignmentId"
+    expected: "rejected"
+
+applicationToIssue70: >
+  Incident for e72d7ee opened 2026-10-21 (o14 HOST_RESTARTED). The h6a loss
+  and the o0e assignment do not move its deadlines; OWNER escalation had
+  already happened (R148-ESC-01*), so o0e runs under OWNER decision
+  R148-ESC-01-R3. The 18:48:41Z re-computation in the journal is recorded as
+  practice superseded by this rule, not as a new incident.

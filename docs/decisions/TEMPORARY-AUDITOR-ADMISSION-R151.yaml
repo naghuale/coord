@@ -1,0 +1,136 @@
+decision: R151
+class: R
+status: accepted
+title: "Temporary admission of a non-pool agent runtime to the Auditor role (TEMPORARY-AUDITOR-ADMISSION-R1)"
+issue: null
+
+decisionDate: "2026-10-21"
+acceptanceDate: "2026-10-21"
+
+ownerDecision:
+  decisionId: R151
+  ownerMessage: "принимаю R151 и R152"
+  disposition: ACCEPTED
+  recordedBy: "Claude Opus 5.5 (coordinator session)"
+  recordedAt: "2026-10-21"
+
+authority: AGENTS.md
+
+amends:
+  - R150 agentPoolBoundary   # adds a bounded exception for the Auditor role only
+
+dependsOn:
+  - R148   # fallback timeline, same-SHA binding, no executor self-audit
+  - R150   # non-pool runtimes are tools by default
+  - TWO-AGENT-TD-R2-FALLBACK-R1
+  - SESSION-COUNT-IS-NOT-AGENT-COUNT-R1
+
+context: >
+  Issue #70, subject e72d7eef364e5fa35a799c3f18a315b72e3c4511. The admitted
+  auditor o14 (OpenCode) went silent after ACK under an upstream endpoint
+  failure. A Hermes Agent session offered itself as fallback and correctly
+  recused: its session history included claude-fable-5.1 (executor model
+  family) and Hermes is outside the agent pool (R150). Independence should be
+  judged by participation and context provenance, not by product name, but the
+  pool boundary must not be dissolved ad hoc per SHA. A general, bounded rule
+  is preferred to a one-off exception.
+
+selectedOption: >
+  A non-pool agent runtime MAY act as Auditor (never Executor or Reviewer) for
+  one audit assignment when every admission condition below is met and
+  recorded. Admission is per assignment and does not make the runtime a pool
+  member.
+
+admissionConditions:
+  noAdmittedAuditor:
+    - R148 fallbackTimeout for the audit class has elapsed, or OWNER assigned
+      this auditor under R148 ownerEscalation
+    - every admitted eligible session (pool agent, not executor, not reviewer)
+      was probed and is unavailable; probe messages and outcomes recorded
+  freshSession:
+    - session started after the audit assignment was issued
+    - no prior conversation history in the session, under any model
+  modelProvenance:
+    - the session's model is recorded at ACK and in the result
+    - "the model is not of the executor agent's model family (consistent with R148 - another model of the executor agent is not a fallback auditor)"
+  noParticipation:
+    - did not implement, design or review the subject
+    - did not receive the executor's or reviewer's working context
+  sameRules:
+    - exact SHA of the original assignment (R148 subjectBinding)
+    - "full TD-R2 audit: own mutation battery, negative tests, full check"
+    - typed BEGIN/END_COORD_AUDIT_RESULT, Operations Ledger record
+
+verification:
+  coordinatorChecks:
+    - session start timestamp later than assignment timestamp
+    - runtime and model identity captured from the session's own report and
+      its configuration evidence
+    - absence of the session in prior assignment and message history
+  limitation: >
+    Coordinator cannot independently inspect a non-pool runtime's internal
+    history; freshness rests on the session declaration plus timestamp and
+    configuration evidence. This limitation is disclosed in the result.
+
+disclosure:
+  independenceLabel: TEMPORARY_ADMISSION
+  requiredFields:
+    - runtime (e.g. Hermes Agent) and version
+    - model id
+    - session start time and assignment time
+    - probe evidence for unavailable admitted auditors
+    - reason pool auditor was unavailable
+
+limits:
+  - Auditor role only; Executor and Reviewer remain prohibited for non-pool runtimes
+  - one assignment per admission; expires with the assignment
+  - if an admitted auditor returns a result on the same SHA first, that result prevails
+  - a later admitted-auditor CHANGES_REQUIRED on the same SHA is not overridden
+  - permanent pool membership requires a separate class R decision
+
+securityImpact: >
+  Narrows, rather than removes, the pool boundary. The executor still cannot
+  self-audit in any runtime or model; the temporary auditor must be fresh,
+  non-executor-family and fully disclosed, and its admission is evidenced and
+  expires. Residual risk: unverifiable internal history of a non-pool runtime,
+  disclosed in every use.
+
+normativeRuleText: |
+  ### Временный допуск среды вне пула к роли Auditor (TEMPORARY-AUDITOR-ADMISSION-R1, R151)
+
+  Агентская среда вне пула (R150) MAY выполнить одно audit assignment, если
+  одновременно: истёк срок fallback по R148 либо OWNER назначил её при
+  эскалации; все допустимые сессии пула проверены запросом и недоступны (с
+  записью); сессия запущена после выдачи assignment и не имеет предыдущей
+  истории ни на одной модели; её модель записана и не относится к семейству
+  модели исполнителя; она не участвовала в реализации и Review subject.
+  Действуют те же требования: exact SHA, полный TD-R2 аудит, типизированный
+  результат, запись в Operations Ledger. Независимость раскрывается как
+  TEMPORARY_ADMISSION с указанием среды, модели, времени запуска и
+  доказательств недоступности аудиторов пула. Допуск действует только на
+  одно assignment, только для роли Auditor и не делает среду членом пула.
+
+mutation:
+  admitWithAvailablePoolAuditor:
+    description: Admit non-pool auditor while an eligible pool session answered the probe
+    expectedResult: KILLED
+    killedBy: "pool availability precondition test (not yet implemented)"
+  admitContaminatedSession:
+    description: Admit session started before the assignment or with prior history
+    expectedResult: KILLED
+    killedBy: "session freshness test (not yet implemented)"
+  admitExecutorFamilyModel:
+    description: Admit a session whose model belongs to the executor's model family
+    expectedResult: KILLED
+    killedBy: "model provenance test (not yet implemented)"
+  grantReviewerRole:
+    description: Allow a non-pool runtime to act as Reviewer under this rule
+    expectedResult: KILLED
+    killedBy: "role scope test (not yet implemented)"
+
+normativeStatus: AUTHORITATIVE
+originalDecisionAcceptance: ACCEPTED_2026-10-21
+acceptedBy: "OWNER (naghuale)"
+acceptedDate: "2026-10-21"
+proposedBy: "Claude Opus 5.5 (coordinator session, Issue #70 delivery cycle)"
+proposedDate: "2026-10-21"

@@ -1,0 +1,191 @@
+decision: R150
+class: R
+status: accepted
+title: "Evidence-first recovery of MCP integrations and version drift control (MCP-RECOVERY-POLICY-R1)"
+issue: null
+
+decisionDate: "2026-10-21"
+acceptanceDate: "2026-10-21"
+
+ownerDecision:
+  decisionId: R150
+  ownerMessage: "принимаю r150"
+  disposition: ACCEPTED
+  recordedBy: "Claude Opus 5.5 (coordinator session)"
+  recordedAt: "2026-10-21"
+
+authority: AGENTS.md
+
+dependsOn:
+  - R148   # auditor eligibility; Hermes recusal case
+  - R149   # recovery paths must not depend on the failed component
+  - AGENTS.md "Обновление Telepathy"  # compatibility check before Telepathy updates
+
+context: >
+  On 2026-10-21 three independent failures had one root cause: Telepathy was
+  upgraded to 0.9.0 (the Codex plugin cache now holds only 0.9.0) while
+  consumers still referenced 0.8.0.
+    1. coordd rejected server 0.9.0 and addressed sessions by 0.8.0 pid-based
+       names, blocking the Issue #70 live shadow pilot (fixed in f167843).
+    2. A Hermes Agent session's MCP config pointed at telepathy/0.8.0/dist/server.mjs
+       -> MODULE_NOT_FOUND, no Telepathy tools. The first repair edited the
+       args array element by element, overwrote a CLI flag and duplicated the
+       path; the correct fix came only after reading the full config.
+    3. cmd/coord/main.go:358 auto-detects ~/.codex/plugins/cache/telepathy/
+       telepathy/0.8.0/dist/server.mjs, so coord without --server now fails.
+  The defect is systemic drift between a versioned MCP component and its
+  consumers, compounded by repair started before the current state was known.
+
+scope:
+  appliesTo:
+    - MCP client configuration (any agent runtime)
+    - MCP gateway and plugin host configuration
+    - MCP server installation and version
+    - source code, scripts and tests that reference versioned MCP artifacts
+  wording: >
+    The norm is tool-agnostic. Concrete commands for a specific runtime
+    belong in runbooks and case studies, not in the norm.
+
+definitions:
+  OBSERVED_STATE: State confirmed by diagnostic commands, not by recollection.
+  DESIRED_STATE: Target state confirmed by installed files, documentation or a known working configuration.
+  CONFIGURATION_DRIFT: Mismatch between the configured and the installed version or path of a component.
+  ASSUMPTION_DRIVEN_REPAIR: Mutation of a system before a complete model of its current state was captured.
+
+requirements:
+  diagnoseBeforeModify:
+    - captureConfiguredState   # exact configured server path, args, env
+    - captureInstalledState    # versions actually present on disk
+    - locateVersionedArtifacts # every reference to a versioned path
+    - verifyRuntimeRegistration # whether the running process loaded the tools
+    - root cause is stated with the evidence that supports it
+  mutationPlan:
+    required: [before, after, rollback, validationMethod]
+    rollback:
+      previousValue: recorded verbatim
+      restoreCommand: recorded and executable
+    rule: a repair without a recorded rollback is incomplete
+  atomicStructures:
+    - list- or map-valued settings (e.g. args arrays) are replaced as a whole
+    - element-by-index edits are prohibited unless the full structure was read first
+    - CLI flag strings inside a structure are data and must not be parsed as flags
+  validation:
+    - validate immediately after mutation with the client's own connectivity test
+    - success criteria: server reachable and expected tools discoverable
+    - a repair claim without validation evidence is not a repair
+  runtimeActivation:
+    - determine whether the running process reloads configuration
+    - if not, the required restart is recorded as the next action
+  driftInventory:
+    trigger: any install, upgrade or removal of a versioned MCP component
+    requiredAction: inventory all consumers of the versioned path before the old version is removed
+    consumers:
+      - agent and gateway configurations
+      - runtime configurations
+      - source code (e.g. auto-detection)
+      - integration tests and fixtures
+      - startup and build scripts (Makefile)
+      - documentation and help texts
+    output: consumer list with status (updated / pending / not affected)
+  coordinatorRequirements:
+    beforeAcceptingRepair: [symptom, rootCause, evidence, plannedMutation, rollback, validationMethod]
+    rejectWhen:
+      - repair based only on symptoms
+      - current state not captured
+      - rollback or validation absent
+
+agentPoolBoundary:
+  statement: >
+    An agent runtime outside the approved pool (currently Claude, Codex,
+    OpenCode) is classified as a tool. It MAY be used for diagnostics and local
+    environment repair under this policy. It MUST NOT hold Executor, Reviewer or
+    Auditor roles until a separate class R decision expands the pool.
+  current:
+    Hermes:
+      classification: tool
+      allowedRoles: []
+      prohibitedRoles: [Executor, Reviewer, Auditor]
+
+defectPatterns:
+  onAcceptance: add to docs/DEFECT_PATTERNS.md and docs/operations/DEFECT-PATTERNS.yaml
+  assignedIds: {CONFIGURATION_DRIFT: DP-006, ASSUMPTION_DRIVEN_REPAIR: DP-007}
+  patterns:
+    - CONFIGURATION_DRIFT
+    - ASSUMPTION_DRIVEN_REPAIR
+
+proposedWorkPackages:
+  - id: TELEPATHY-VERSION-DISCOVERY
+    class: TD
+    symptom: coord fails to start after Telepathy plugin upgrade (no --server)
+    rootCause: cmd/coord/main.go:358 hard-codes the 0.8.0 plugin path
+    recommendedFix: >
+      Resolve the server path from configuration first; otherwise discover
+      installed versions and select only those accepted by telepathy.Start;
+      fail closed with the list of found and accepted versions.
+    relatedOpenQuestion: >
+      Scope of 0.9.0 acceptance in the shared telepathy.Start API (open
+      question to the auditor of e72d7ee). The fix MUST follow that verdict.
+    alsoCheck: [Makefile TELEPATHY_SERVER messages, integration/telepathy/*.py, README Telepathy section, coordd --telepathy-server help]
+    tracking: GitHub issue text to be prepared locally; live GitHub API is not authorized in this session
+  - id: MCP-DRIFT-INVENTORY-2026-10-21
+    class: FD
+    action: run driftInventory for Telepathy 0.8.0 -> 0.9.0 across the consumers list
+
+caseStudy:
+  id: TELEPATHY-0.9.0-DRIFT-2026-10-21
+  location: docs/case-studies/ (to be created on acceptance)
+  includes:
+    - coordd live pilot identity mismatch and its fix (f167843, e72d7ee)
+    - Hermes MODULE_NOT_FOUND, incorrect index-based repair, correct atomic repair
+    - coord auto-detection defect
+
+securityImpact: >
+  No trust boundary is lowered. The policy adds evidence and rollback
+  requirements to environment repair and keeps non-pool runtimes out of
+  verification roles, which preserves the Review/Audit independence model.
+
+normativeRuleText: |
+  ### Восстановление MCP-интеграций и контроль дрейфа версий (MCP-RECOVERY-POLICY-R1, R150)
+
+  Перед изменением конфигурации MCP-клиента, gateway, plugin host или сервера
+  агент MUST зафиксировать настроенное состояние, установленное состояние,
+  все ссылки на версионированные артефакты и факт регистрации инструментов в
+  работающем процессе, а затем назвать первопричину с доказательствами.
+  Ремонт по одному симптому запрещён.
+
+  План изменения MUST содержать before, after, откат (прежнее значение и
+  команду восстановления) и способ проверки. Структурные значения (массивы
+  args и т. п.) заменяются целиком; правка по индексу без чтения полной
+  структуры запрещена. Сразу после изменения выполняется проверка
+  подключения клиента и наличия инструментов; без неё ремонт не завершён.
+  Если процесс не перечитывает конфигурацию, необходимость перезапуска
+  записывается как следующее действие.
+
+  При установке, обновлении или удалении версионированного MCP-компонента
+  MUST быть проведена инвентаризация всех потребителей пути (конфиги агентов,
+  код, тесты, скрипты, документация) до удаления старой версии.
+
+  Агентская среда вне утверждённого пула (Claude, Codex, OpenCode) считается
+  инструментом и MUST NOT получать роли Executor, Reviewer или Auditor без
+  отдельного решения класса R.
+
+mutation:
+  repairWithoutStateCapture:
+    description: Accept a repair record without observed state
+    expectedResult: KILLED
+    killedBy: "repair record validation test (not yet implemented)"
+  repairWithoutRollback:
+    description: Accept a repair record without rollback
+    expectedResult: KILLED
+    killedBy: "repair record validation test (not yet implemented)"
+  nonPoolAuditor:
+    description: Count an audit result from a non-pool runtime
+    expectedResult: KILLED
+    killedBy: "auditor eligibility test (not yet implemented)"
+
+normativeStatus: AUTHORITATIVE
+originalDecisionAcceptance: ACCEPTED_2026-10-21
+acceptedBy: "OWNER (naghuale)"
+acceptedDate: "2026-10-21"
+proposedBy: "Claude Opus 5.5 (coordinator session, Issue #70 delivery cycle)"
+proposedDate: "2026-10-21"
