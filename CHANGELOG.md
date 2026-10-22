@@ -11,11 +11,12 @@
   and any other input still fail closed through the strict decoder.
   (`TestShadowDecoderHandlesShadowRefusal`)
 - `--telepathy-server` help and provenance client-version metadata reflect the
-  accepted versions. Found by live shadow pilot v1; merged in PR #85 (`e9f3dbe`)
-  after independent Review and Audit (`AUDIT_ACCEPTED` on `e72d7ee`).
-  Live pilot v2 and P0-3 admission evaluation remain pending. Known test gaps
-  (mutants on protocol check, refusal classification, exact version match)
-  are tracked separately.
+  accepted versions. (не проверено)
+- Found by live shadow pilot v1; merged in PR #85 (`e9f3dbe`) after independent
+  Review and Audit (`AUDIT_ACCEPTED` on `e72d7ee`). Live pilot v2 and P0-3
+  admission evaluation remain pending. Known test gaps (mutants on protocol
+  check, refusal classification, exact version match) are tracked separately.
+  (документация)
 
 ## 2026-10-20 — coordd read-only shadow pilot entrypoint (WP-SV-07, Refs #70)
 
