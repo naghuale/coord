@@ -1,5 +1,35 @@
 # История изменений
 
+## 2026-10-23 — Assignment Ledger MVP on canonical JSON (Refs #90)
+
+- Added exact assignment authority/history inside the existing canonical snapshot,
+  including process assignments without Tasks, explicit ACK/ACTIVE, immutable
+  IDs/clocks, terminal refusal and observed coordinator loss/evidence-bound handoff.
+  (`TestAssignmentNoWorkBeforeActiveAndAckInsufficient`,
+  `TestAssignmentTerminalNeverRevives`,
+  `TestAssignmentOe4StaleLateDeliveryAfterRestartDoesNoWork`,
+  `TestAssignmentCoordinatorLossAndVerifiedHandoff`)
+- Result identity/TTL/session/coordinator checks and standalone or typed Run
+  completion commit atomically; transport delivery cannot change authority.
+  (`TestAssignmentDuplicateResultAcceptedOnlyOnceAtomically`,
+  `TestAssignmentExactIdentityGenerationAndSubject`,
+  `TestAssignmentTypedResultGateAtomicWithTask`,
+  `TestAssignmentTransportCommandCannotChangeAuthority`)
+- Read-only `coord assignment status <id> --format json|yaml` distinguishes
+  unknown/unavailable/corrupt state without daemon startup or store writes.
+  (`TestAssignmentStatusReadOnlyAndFailClosed`,
+  `TestAssignmentStatusUnknownUnavailableCorruptAreDistinct`,
+  `TestAssignmentStatusYAMLAndCLIBypassDaemon`)
+- `LEDGER_FROZEN` launch mode preserves ledger data and existing assignment
+  processing while rejecting new offers. Old snapshots stay compatible;
+  pre-ledger strict decoders refuse the new field without stripping data.
+  (`TestAssignmentLedgerRollbackFrozenMode`,
+  `TestAssignmentOldSnapshotCompatibleAndHistoryAppendOnly`,
+  `TestAssignmentStatusLaunchRollbackPreservesLedger`)
+- Added cutover/rollback and WP-R153-04/06 coverage documents; operational cutover
+  remains BLOCKED_ON_WRITE_AUTHORITY. No full R153/receiver enforcement or new
+  transport/credential permission is claimed. (документация)
+
 ## 2026-10-23 — coord: Telepathy server discovery without a hardcoded 0.8.0 path (Refs #31)
 
 - `cmd/coord` no longer looks only for the absent Codex-cache 0.8.0 path. An

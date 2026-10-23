@@ -380,3 +380,32 @@ This slice implements typed GitHub structural/semantic contracts and persistence
 <!-- run-recovery-command -->
 
 `ApplyRunRecoveryCommand` implements coordinator-driven recovery for orphaned Runs (TD-R2 class, WP-P03-02B). `MARK_INTERRUPTED` is the sole implemented transition: it commits Run→Failed, clears RecoveryNeeded and RecoveryClaim, emits RUN_RECOVERY_REQUESTED + RUN_STOP_PROOF_RECORDED + RUN_RECOVERY_BLOCKED atomically, and advances Task.Revision+1. KSC-C stop-proof validation requires Kind==Stop, Status==Completed, Stopped flag, StopMethod, full Binding fields matching the canonical Run, and a parent fence action with Completed status and FENCED outcome. Replay idempotency is enforced via inbox receipt matching. Four transitions (FENCE_ONLY, PREPARE_REPLACEMENT, COMPLETE_EXISTING, RESUME_OBSERVATION) are fail-closed under FO-C, Q3, CEE-C, and DS-6 constraints respectively. Seven specific violation codes remain distinct; TRANSITION_FORBIDDEN covers only admission/refusal boundaries. Tests: TestApplyRunRecoveryMarksInterruptedAtomically, TestRunRecoveryStopProofMutationMatrixFailsClosed, TestRunRecoveryDuplicateTransitionRejected.
+
+
+<!-- assignment-ledger -->
+## Assignment Ledger MVP (#90)
+
+Optional `assignment_ledger` lives in the same schema-3 CanonicalState JSON and
+atomic commit; no SQLite or second writer/store is introduced. Process assignments
+bind subject/role and exact AgentSession principals without fabricated Tasks;
+optional Task/Run links retain existing fence/attempt/role checks. Append-only
+history validates OFFERED/ACKED/ACTIVE/SUSPENDED and terminal COMPLETED/EXPIRED/VOID.
+Current coordinator loss blocks work/result until evidence-bound handoff; original
+issuer and deadline never change. Only trusted coordinator service commands grant
+authority, never transport receipt. Standalone receipts and typed Run result
+completion share the canonical transaction.
+
+`coord assignment status` reads an atomic validated snapshot without startup,
+lock/create/migration; status is an observation, not a perpetual work capability.
+`assignment_ledger_mode: LEDGER_FROZEN` preserves existing validation/results and
+normal non-ledger service while refusing new offers. Old strict binaries refuse
+new fields rather than discarding ledger data. See
+[implementation contract](operations/ASSIGNMENT-LEDGER.md),
+[cutover/rollback](operations/ASSIGNMENT-LEDGER-CUTOVER.md), and
+[R153 coverage](R153-COVERAGE-MATRIX.md).
+
+Maturity is partial: authenticated production first-offer write exposure remains
+BLOCKED_ON_WRITE_AUTHORITY; no legacy owner/supervisor credential is silently
+expanded. Physical liveness detection, universal receiver/pre-tool enforcement,
+full model/eligibility registry and incident clock orchestration remain outside
+this slice. It does not implement full R153 or close #89 dimensions.

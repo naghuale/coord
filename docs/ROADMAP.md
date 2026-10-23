@@ -115,3 +115,16 @@ legacy файлов не означает, что они уже подчинен
 с тестовым executable, включая process-group cancellation, и не заменяет
 production supervisor для произвольного агента. Исправления и воспроизводимые
 сценарии перечислены в VERIFICATION.md.
+
+
+## Assignment Ledger MVP (#90) — implementation / operational cutover split
+
+The canonical JSON assignment core, read-only `coord assignment status`, atomic
+result gate and LEDGER_FROZEN rollback are an implementation slice, not full R153
+or #89 acceptance. Operational cutover begins with the first explicit new ledger
+offer AFTER merge; old journals remain history and are not imported. Open process
+assignments must be closed/reissued. Actual cutover time/first ID belongs in the
+Completion Report. Current gate: BLOCKED_ON_WRITE_AUTHORITY, deferred by OWNER option (a) to #93
+for the authenticated coordinator-usable write path;
+no direct write CLI or legacy capability promotion is inferred. See
+[cutover](operations/ASSIGNMENT-LEDGER-CUTOVER.md) and [R153 coverage](R153-COVERAGE-MATRIX.md).

@@ -376,3 +376,36 @@ components:
     documents:
       currentAnchor: shadow-pilot-live-entrypoint
       targetAnchor: shadow-pilot-live-entrypoint
+
+  - id: assignment-ledger
+    title: Assignment Ledger MVP
+    status: partial
+    normativeSources:
+      - docs/ADR-0004-RUNTIME-AND-DAEMON-MODEL.md
+      - docs/ADR-0005-STORAGE-MODEL.md
+      - docs/decisions/AGENT-REGISTRY-R153.yaml
+    implemented:
+      - optional versioned append-only ledger in existing canonical JSON snapshot
+      - process assignments without Task/Run and optional existing Run/fence binding
+      - terminal no-revival and exact state/TTL/session/coordinator guards
+      - atomic standalone and typed Run result completion before Inbox replay
+      - read-only canonical assignment status and LEDGER_FROZEN rollback
+    missing:
+      - authenticated production first-offer write boundary (BLOCKED_ON_WRITE_AUTHORITY)
+      - physical host/coordinator loss detection and universal pre-tool receiver guard
+      - full R153 model/eligibility/incident-clock enforcement
+    evidence:
+      symbols:
+        - OfferAssignment
+        - AcceptAssignmentResult
+        - CheckAssignmentWork
+        - FreezeAssignmentLedger
+      tests:
+        - TestAssignmentOe4StaleLateDeliveryAfterRestartDoesNoWork
+        - TestAssignmentTypedResultGateAtomicWithTask
+        - TestAssignmentStatusReadOnlyAndFailClosed
+        - TestAssignmentLedgerRollbackFrozenMode
+      issues: [90]
+    documents:
+      currentAnchor: assignment-ledger
+      targetAnchor: assignment-ledger

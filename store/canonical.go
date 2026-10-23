@@ -2,6 +2,7 @@ package store
 
 import (
 	"coord/agentsession"
+	"coord/assignment"
 	"coord/envelope"
 	"coord/fsm"
 	"coord/internal/externalaction"
@@ -67,6 +68,7 @@ func InboxKey(actorID, messageID string) string {
 
 // CanonicalState is the versioned durable boundary for Coord-owned state.
 type CanonicalState struct {
+	AssignmentLedger   *assignment.Ledger              `json:"assignment_ledger,omitempty"`
 	SchemaMigrations   []SchemaMigration               `json:"schema_migrations,omitempty"`
 	Revision           uint64                          `json:"revision"`
 	Orchestration      externalaction.State            `json:"orchestration"`
@@ -133,13 +135,14 @@ type RunStore interface {
 }
 
 type CanonicalStore struct {
-	mu      sync.RWMutex
-	state   CanonicalState
-	p       CanonicalPersistence
-	release func() error
-	now     func() time.Time
-	closed  bool
-	failed  error
+	mu           sync.RWMutex
+	state        CanonicalState
+	p            CanonicalPersistence
+	release      func() error
+	now          func() time.Time
+	closed       bool
+	failed       error
+	ledgerFrozen bool
 }
 
 func NewCanonical(p CanonicalPersistence) (*CanonicalStore, error) {
@@ -190,6 +193,9 @@ func ValidateCanonicalState(state CanonicalState) error {
 	state = NormalizeCanonicalState(state)
 	if state.SchemaVersion != CanonicalSchemaVersion {
 		return fmt.Errorf("unsupported canonical schema version %d", state.SchemaVersion)
+	}
+	if err := validateAssignments(state); err != nil {
+		return err
 	}
 	if err := validateSchemaMigrations(state); err != nil {
 		return err
@@ -683,6 +689,9 @@ func (s *CanonicalStore) UpdateCanonical(fn func(*CanonicalState) error) error {
 	if err := ValidateCanonicalTransition(s.state, next); err != nil {
 		return err
 	}
+	if err := s.validateAssignmentMode(next); err != nil {
+		return err
+	}
 	committed, err := copyCanonicalState(next)
 	if err != nil {
 		return fmt.Errorf("copy updated canonical state: %w", err)
@@ -761,6 +770,9 @@ func (s *CanonicalStore) applyInboxCommandLocked(actorID, messageID string, task
 	if err := ValidateCanonicalTransition(s.state, next); err != nil {
 		return InboxReceipt{}, false, err
 	}
+	if err := s.validateAssignmentMode(next); err != nil {
+		return InboxReceipt{}, false, err
+	}
 	committed, err := copyCanonicalState(next)
 	if err != nil {
 		return InboxReceipt{}, false, fmt.Errorf("copy updated canonical state: %w", err)
@@ -776,6 +788,9 @@ func (s *CanonicalStore) applyInboxCommandLocked(actorID, messageID string, task
 // ValidateCanonicalTransition enforces append-only history and monotonic Task
 // versions across commits. Snapshot validation alone cannot prove these rules.
 func ValidateCanonicalTransition(previous, next CanonicalState) error {
+	if err := assignment.ValidateTransition(previous.AssignmentLedger, next.AssignmentLedger); err != nil {
+		return err
+	}
 	if !reflect.DeepEqual(previous.SchemaMigrations, next.SchemaMigrations) {
 		return fmt.Errorf("schema migration history is immutable during runtime")
 	}

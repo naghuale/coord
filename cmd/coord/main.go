@@ -35,6 +35,7 @@ const usage = `Coord — совместная работа существующ�
   coord start PROJECT --coordinator PEER --agent-id ID --operation ID
                                        owner приглашает координатора одной командой
   coord prompt                         общий стартовый промпт AI-агента
+  coord assignment status <id> [--format json|yaml]  read-only canonical assignment check
   coord sessions                       логические сессии, роли и поколения
   coord session assign <room> --agent-id ID --role ROLE --instructions TEXT
   coord session invite <session> --operation ID [--peer PEER]
@@ -79,6 +80,9 @@ func main() {
 	defer cancel()
 	if err := run(ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintln(os.Stderr, err)
+		if failure, ok := err.(interface{ ExitCode() int }); ok {
+			os.Exit(failure.ExitCode())
+		}
 		os.Exit(1)
 	}
 }
@@ -118,6 +122,9 @@ func run(ctx context.Context, args []string, in io.Reader, out, diagnostic io.Wr
 	}
 	if command == "_serve" {
 		return serve(ctx, state, *serverFlag)
+	}
+	if command == "assignment" {
+		return runAssignmentStatus(values, state, out, time.Now().UTC())
 	}
 	if roomCommand(command) {
 		return runRooms(ctx, command, values, state, *serverFlag, in, out, diagnostic)

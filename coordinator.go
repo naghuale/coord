@@ -3,6 +3,7 @@ package coord
 
 import (
 	"context"
+	"coord/assignment"
 	"coord/envelope"
 	"coord/fsm"
 	"coord/retry"
@@ -359,7 +360,19 @@ func (c *Coordinator) Handle(ctx context.Context, e envelope.Envelope) error {
 			Summary:            e.ResultPayload.Summary,
 			OutputArtifactRefs: []string{},
 		}
-		if _, _, err := canonical.RecordExecutorResult(e.MessageID, r.TaskID, r.RunID, rev, executorResult, now); err != nil {
+		var authority []assignment.Principal
+		snapshot, snapshotErr := canonical.CanonicalSnapshot()
+		if snapshotErr != nil {
+			return snapshotErr
+		}
+		if snapshot.AssignmentLedger != nil {
+			binding, exists := snapshot.AgentSessions[c.tp.WhoAmI()]
+			if !exists || !binding.Active() {
+				return assignment.ErrInvalid
+			}
+			authority = []assignment.Principal{{SessionID: binding.Address, AgentID: binding.AgentID, Generation: binding.Generation}}
+		}
+		if _, _, err := canonical.RecordExecutorResult(e.MessageID, r.TaskID, r.RunID, rev, executorResult, now, authority...); err != nil {
 			return err
 		}
 		return c.flush(ctx, r.RunID)

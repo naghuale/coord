@@ -1,6 +1,7 @@
 package store
 
 import (
+	"coord/assignment"
 	"coord/envelope"
 	"coord/fsm"
 	"coord/roles"
@@ -16,7 +17,7 @@ import (
 // always selected from the persisted Run, never from result input. The RESULT
 // envelope payload is translated to an ExecutorResult domain event; the legacy
 // fsm.Run.Result field is left unset for canonical Runs (TaskID != "").
-func (s *CanonicalStore) RecordExecutorResult(messageID string, id taskid.ID, runID string, expectedRevision uint64, result task.ExecutorResult, now time.Time) (InboxReceipt, bool, error) {
+func (s *CanonicalStore) RecordExecutorResult(messageID string, id taskid.ID, runID string, expectedRevision uint64, result task.ExecutorResult, now time.Time, coordinator ...assignment.Principal) (InboxReceipt, bool, error) {
 	run, ok := s.Get(runID)
 	if !ok || run.TaskID != id || run.RoleSelection == nil || run.RoleSelection.AgentID == "" {
 		return InboxReceipt{}, false, fmt.Errorf("canonical Run with Task-scoped RoleSelection required")
@@ -31,7 +32,7 @@ func (s *CanonicalStore) RecordExecutorResult(messageID string, id taskid.ID, ru
 		OutputArtifactRefs: cloneStrings(result.OutputArtifactRefs),
 		CreatedAt:          result.CreatedAt,
 	}
-	return s.ApplyInboxCommand(actorID, messageID, id, expectedRevision, func(state *CanonicalState) (InboxReceipt, error) {
+	return s.applyAssignmentResultCommand(actorID, messageID, id, runID, expectedRevision, now, coordinator, func(state *CanonicalState) (InboxReceipt, error) {
 		currentRun, exists := state.Runs[runID]
 		if !exists || currentRun.TaskID != id || currentRun.RoleSelection == nil || currentRun.RoleSelection.AgentID != actorID {
 			return InboxReceipt{}, fmt.Errorf("canonical Run actor changed")
@@ -85,20 +86,20 @@ func (s *CanonicalStore) RecordExecutorResult(messageID string, id taskid.ID, ru
 // RecordReviewResult commits a canonical Review verdict, its Task transition,
 // event, receipt and acknowledgement in one snapshot transaction. The actor is
 // always selected from the persisted Run, never from result input.
-func (s *CanonicalStore) RecordReviewResult(messageID string, id taskid.ID, runID string, expectedRevision uint64, result task.ReviewResult, now time.Time) (InboxReceipt, bool, error) {
+func (s *CanonicalStore) RecordReviewResult(messageID string, id taskid.ID, runID string, expectedRevision uint64, result task.ReviewResult, now time.Time, coordinator ...assignment.Principal) (InboxReceipt, bool, error) {
 	result = cloneReviewResult(result)
 	return s.recordRoleResult(messageID, id, runID, expectedRevision, now, func() (*task.ReviewResult, *task.AuditResult) {
 		return &result, nil
-	})
+	}, coordinator...)
 }
 
 // RecordAuditResult commits a canonical Audit verdict and its acknowledgement
 // through the same durable boundary as Review results.
-func (s *CanonicalStore) RecordAuditResult(messageID string, id taskid.ID, runID string, expectedRevision uint64, result task.AuditResult, now time.Time) (InboxReceipt, bool, error) {
+func (s *CanonicalStore) RecordAuditResult(messageID string, id taskid.ID, runID string, expectedRevision uint64, result task.AuditResult, now time.Time, coordinator ...assignment.Principal) (InboxReceipt, bool, error) {
 	result = cloneAuditResult(result)
 	return s.recordRoleResult(messageID, id, runID, expectedRevision, now, func() (*task.ReviewResult, *task.AuditResult) {
 		return nil, &result
-	})
+	}, coordinator...)
 }
 
 func cloneReviewResult(result task.ReviewResult) task.ReviewResult {
@@ -151,13 +152,13 @@ func cloneFindings(findings []task.Finding) []task.Finding {
 	return cloned
 }
 
-func (s *CanonicalStore) recordRoleResult(messageID string, id taskid.ID, runID string, expectedRevision uint64, now time.Time, payload func() (*task.ReviewResult, *task.AuditResult)) (InboxReceipt, bool, error) {
+func (s *CanonicalStore) recordRoleResult(messageID string, id taskid.ID, runID string, expectedRevision uint64, now time.Time, payload func() (*task.ReviewResult, *task.AuditResult), coordinator ...assignment.Principal) (InboxReceipt, bool, error) {
 	run, ok := s.Get(runID)
 	if !ok || run.TaskID != id || run.RoleSelection == nil || run.RoleSelection.AgentID == "" {
 		return InboxReceipt{}, false, fmt.Errorf("canonical Run with Task-scoped RoleSelection required")
 	}
 	actorID := run.RoleSelection.AgentID
-	return s.ApplyInboxCommand(actorID, messageID, id, expectedRevision, func(state *CanonicalState) (InboxReceipt, error) {
+	return s.applyAssignmentResultCommand(actorID, messageID, id, runID, expectedRevision, now, coordinator, func(state *CanonicalState) (InboxReceipt, error) {
 		currentRun, exists := state.Runs[runID]
 		if !exists || currentRun.TaskID != id || currentRun.RoleSelection == nil || currentRun.RoleSelection.AgentID != actorID {
 			return InboxReceipt{}, fmt.Errorf("canonical Run actor changed")

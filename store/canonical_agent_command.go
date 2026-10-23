@@ -174,6 +174,11 @@ func (s *CanonicalStore) ApplyAgentCommand(frame AgentCommandFrame, id taskid.ID
 		if err != nil {
 			return InboxReceipt{}, fmt.Errorf("%w: %v", ErrAgentCommandTransitionForbidden, err)
 		}
+		// Transport receipt/ACK/heartbeat cannot grant or rewrite assignment
+		// authority. The coordinator result command has a separate atomic gate.
+		if !reflect.DeepEqual(s.state.AssignmentLedger, state.AssignmentLedger) {
+			return InboxReceipt{}, fmt.Errorf("%w: transport cannot change assignment state", ErrAgentCommandTransitionForbidden)
+		}
 		queue := state.Outbox[run.RunID]
 		if len(queue.Messages) < priorOutbox || !hasCommandAcknowledgement(queue.Messages[priorOutbox:], e, receipt) {
 			return InboxReceipt{}, fmt.Errorf("%w: command acknowledgement must reference the committed event", ErrAgentCommandTransitionForbidden)
