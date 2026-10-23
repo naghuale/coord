@@ -108,7 +108,7 @@ func shadowTestDeps(t *testing.T) (shadowDeps, *shadowTestTools, []string, strin
 	tools := &shadowTestTools{probe: probe}
 	deps := shadowDeps{Root: root, Now: func() time.Time { return time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC) }, Probe: probe}
 	deps.OpenAdapter = func(context.Context, shadowOptions) (shadowAgentAdapter, error) {
-		return &telepathyShadowAgentAdapter{tools: tools, to: "codex:test-session", replyTo: "opencode:shadow-host"}, nil
+		return &telepathyShadowAgentAdapter{tools: tools, to: "codex:test-session", replyTo: "opencode:shadow-host", serverVersion: "0.9.0"}, nil
 	}
 	args := []string{"shadow-pilot", "run", "--input", filepath.Join(root, "testdata/shadow-validation/input.yaml"), "--adapter", "telepathy", "--executor-agent", "codex", "--executor-session", "test-session", "--reviewer-agent", "opencode", "--reply-to", "opencode:shadow-host", "--output", output, "--timeout", "5s"}
 	return deps, tools, args, output
@@ -476,7 +476,11 @@ func TestShadowMCPProtocolHelper(t *testing.T) {
 		}
 		var result any
 		if req.Method == "initialize" {
-			result = map[string]any{"protocolVersion": "2024-11-05", "serverInfo": map[string]any{"name": "telepathy", "version": "0.8.0"}}
+			version := "0.8.0"
+			if v := os.Getenv("COORD_SHADOW_MCP_VERSION"); v != "" {
+				version = v
+			}
+			result = map[string]any{"protocolVersion": "2024-11-05", "serverInfo": map[string]any{"name": "telepathy", "version": version}}
 		} else {
 			text := "delivered"
 			switch req.Params.Name {

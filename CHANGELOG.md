@@ -1,5 +1,26 @@
 # История изменений
 
+## 2026-10-23 — coordd shadow pilot: observed Telepathy server version in provenance (PV2-F1, Refs #88)
+
+- `telepathy.Process` records the server version returned at the MCP `initialize`
+  handshake (`ServerVersion`); the accepted client contract `0.8.0`, `0.9.0` is
+  defined once (`AcceptedServerVersions`). (`TestRPCChecksVersionAndToolFailure`,
+  `TestAcceptedServerVersionsContract`)
+- Shadow-pilot provenance replaces the declared range `mcpClientVersion` with
+  `acceptedClientContract`, `actualServerVersion` (taken from the live handshake,
+  never from a constant or a declared value) and `mcpProtocolVersion`; a run
+  without an observed supported version is refused before dispatch.
+  (`TestShadowProvenanceRecordsObservedServerVersion`,
+  `TestShadowUnsupportedServerVersionRejected`,
+  `TestShadowDeclaredVersionCannotSubstituteObserved`)
+- Provenance is validated before sealing: missing, empty, declared-range or
+  unsupported `actualServerVersion`, a changed contract and the legacy
+  `mcpClientVersion` field are refused, so v1 evidence cannot pass as observed.
+  (`TestShadowProvenanceValidatorRejectsMissingDeclaredAndLegacyVersions`)
+- Evidence from liveShadowPilot_v2/v2r keeps its OWNER-accepted one-line v1
+  contract; it is not re-labelled. The scratch dossier validator contract v2 and
+  its cases live in the Operations Ledger. (документация)
+
 ## 2026-10-22 — coordd shadow pilot: Telepathy 0.9.0 and explicit refusals (Refs #70)
 
 - The shared Telepathy MCP client (`telepathy.Start`) now accepts server versions
