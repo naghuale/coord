@@ -1,6 +1,7 @@
 apiVersion: coord.dev/v1alpha1
 kind: ProjectCheckpoint
-checkpointAt: 2026-10-15
+checkpointAt: 2026-10-23
+previousCheckpoint: fc9a5c7 (2026-10-15, p0-2-task era; superseded — kept in git history)
 
 projectId: coord
 projectRoot:
@@ -12,260 +13,68 @@ sessionLaunchCwd:
 
 source:
   repository: https://github.com/naghuale/coord.git
-  integrationBranch: p0-2-task
-  integrationHead: 1ad9df67c493930e40c217f0006d67bc8c300fdd
-  remoteCI: PASS
+  integrationBranch: main
+  integrationHead: 020ccba
+  remoteCI:
+    ci: {run: 39835265878, conclusion: success}
+    architecture-sync: {run: 39835265809, conclusion: success}
   note: >
-    Published authority: 1ad9df67 (CI PASS).
-    Local commit 5e60d81 (issue #47 WP-47-01: R146 Document Registry binding)
-    is NOT pushed; fullMakeCheck NOT_EVALUATED in clean env (local jsonschema dep).
-    Go checks PASS, Review ACCEPTED (o97), Audit ACCEPTED (oea).
+    main 020ccba = PR #87 (governance R147-R154 docs) on top of baf09e1 (PR #86 CHANGELOG)
+    and e9f3dbe (PR #85, shadow-pilot fix f167843 + e72d7ee). Runtime code identical to e9f3dbe.
 
-localState:
-  localHead: 5e60d81dcd0781a944bc05040596601d66d61d3f
-  pushedToRemote: false
-  staged: []
-  unpublishedCommits:
-    - sha: 5e60d81
-      issue: 47
-      title: "docs(decision): add Document Registry binding for OWNER class R decision R146"
-      review: REVIEW_ACCEPTED
-      audit: AUDIT_ACCEPTED
-      goChecks: PASS
-      fullMakeCheckCleanEnv: NOT_EVALUATED
-      remoteCI: NOT_EVALUATED
-      pushed: false
+stage:
+  current: post-P0-3
+  gate:
+    P0-3:
+      status: ACCEPTED_WITH_LIMITATIONS
+      decidedAt: 2026-10-23
+      decidedBy: OWNER
+      record: "${COORD_PROJECT_ROOT}/.scratch/tmp/live-pilot-v2r-e9f3dbe/P03-OWNER-DECISION.yaml"
+      package: "${COORD_PROJECT_ROOT}/.scratch/tmp/live-pilot-v2r-e9f3dbe/P03-OWNER-PACKAGE-FINAL.md"
+      completionReport: https://github.com/naghuale/coord/issues/70#issuecomment-6355978809
+  productionAuthority:
+    P0-3Scope: OPEN
+    excludedProperties: CLOSED_PENDING_SEPARATE_EVIDENCE
+    notAutomaticallyOpen:
+      - authority depending on live restart
+      - crash deduplication guarantees
+      - role independence claims
+      - readiness not checked in the pilot
+      - arbitrary production writes
+      - broader #6/#7 authority where additional gates apply
 
-workingTree:
-  modifiedTrackedFiles: 31
-  untrackedFiles: 62
-  staged: 0
-  breakdown:
-    issue47_proven:
-      paths:
-        - AGENTS.md
-        - docs/operations/ACTION-MAP.yaml
-        - docs/operations/COORDINATOR-STATE-MACHINE.md
-        - docs/operations/schemas/coordinator-state-machine.yaml
-        - docs/templates/COORDINATOR-RECOVERY-PROMPT.md
-        - internal/actionmap/model.go
-        - internal/actionmap/validate.go
-        - internal/actionmap/validate_test.go
-      count: 8
-      status: hunk_verified_no_mixed_hunks
-      stageAllowed: conditional
-      commitAllowed: false
+governance:
+  acceptedNotes: [R147, R148, R149, R150, R151, R152, R153, R154]
+  registered: docs/DOCUMENT-REGISTRY.yaml (main 020ccba)
+  notImplemented:
+    - R153 AGENT-REGISTRY-R1 (assignments rely on OWNER confirmation / waivers until implemented)
+  proposedNotAccepted:
+    - SESSION-ELIGIBILITY
+    - ROLE-INDEPENDENCE-R155 (C-1 independence unit open)
+    - MUTATION-REGRESSION-STANDARDS
+    - Assignment Ledger MVP (two-phase admission)
 
-    issue48_proven:
-      paths:
-        - internal/watchdog/model.go
-        - internal/watchdog/policy.go
-        - internal/watchdog/clock.go
-        - internal/watchdog/registry.go
-        - internal/watchdog/metrics.go
-        - internal/watchdog/watchdog.go
-        - internal/watchdog/completion.go
-        - internal/watchdog/fakeclock_test.go
-        - internal/watchdog/watchdog_test.go
-        - internal/coordinator/watchdog.go
-        - internal/coordinator/watchdog_test.go
-        - internal/agentsession/heartbeat.go
-      count: 12
-      status: CHANGES_REQUIRED
-      executor: opencode:workspace-o42
-      stageAllowed: false
-      commitAllowed: false
-
-    preserve_unknown_tracked:
-      count: 23
-      paths:
-        - .gitignore
-        - README.md
-        - cmd/coord/bootstrap.md
-        - cmd/coord/sessions_test.go
-        - docs/AGENT_INSTRUCTIONS.md
-        - docs/DEFECT_PATTERNS.md
-        - docs/DEVELOPMENT.md
-        - docs/EXPERIMENTS.md
-        - docs/OPERATIONS.md
-        - docs/QUICKSTART.md
-        - docs/ROADMAP.md
-        - docs/ROLE_PROMPTS.md
-        - docs/ROLE_SESSIONS.md
-        - docs/SESSION_CLI.md
-        - docs/TARGET-ARCHITECTURE.md
-        - docs/TASK-MODEL.md
-        - docs/TELEPATHY_HOST.md
-        - docs/TRANSPORT.md
-        - docs/UX_AUDIT.md
-        - docs/VERIFICATION.md
-        - docs/architecture/COMPONENT-STATUS.yaml
-        - docs/operations/ARCHITECTURE-SYNC-PROCESS.md
-        - scripts/check-architecture-sync-test
-      ownershipConfidence: UNKNOWN
-      mutationAllowed: false
-
-    preserve_unknown_untracked:
-      count: 50
-      examples:
-        - .github/workflows/action-map.yml
-        - .gitlab-ci.example.yml
-        - .gitlab/ci/action-map-metrics.yml
-        - .gitlab/ci/action-map.yml
-        - GITLAB-CI-INTEGRATION.md
-        - ci/baselines/action-map/README.md
-        - ci/baselines/action-map/manifest.yaml
-        - docs/operations/ACTION-MAP.md
-        - docs/operations/CI-GATES-AND-METRICS.md
-        - docs/operations/evaluation/action-map/
-        - docs/operations/scenarios/action-map/
-        - docs/rfc/RFC-0002-AI-AGENT-ENGINEERING-GOVERNANCE.md
-        - docs/templates/AGENT-BOOTSTRAP-TEMPLATE.md
-        - scripts/activate-action-map-baseline
-        - scripts/check-action-map
-        - scripts/check-document-registry
-        - scripts/check-defect-patterns
-      ownershipConfidence: UNKNOWN
-      mutationAllowed: false
-      note: >
-        Python scripts (check-defect-patterns, check-document-registry, etc.)
-        are PROHIBITED from staging after Go migration (issue #45).
-
-issues:
-  completed:
-    - issue: 30
-      commit: 3b9322e
-    - issue: 35
-      commit: 92e6e94
-    - issue: 36
-      commit: 5522da8
-    - issue: 37
-      commits: [8582d15, 180cac7]
-    - issue: 38
-      commit: dea1fa4
-    - issue: 39
-      commit: 2ec0468
-    - issue: 41
-      commit: 9863dbd
-    - issue: 42
-      commit: c8c1416
-    - issue: 44
-      commit: 1ad9df67
-      state: COMPLETE_REMOTE_CI_PASS
-    - issue: 45
-      note: Go migration complete (Python governance scripts PROHIBITED)
-    - issue: 46
-      note: Pre-issue work included in #44 baseline
-
-  active:
-    - issue: 47
-      title: >
-        Active Coordinator dispatch R146 — process/state-machine subject
-      scope:
-        - AGENTS.md (R146 rules, active coordinator obligations)
-        - docs/operations/ACTION-MAP.yaml (AGENT_ASSIGNMENT_DISPATCHED event)
-        - docs/operations/COORDINATOR-STATE-MACHINE.md (dispatch lifecycle)
-        - docs/operations/schemas/coordinator-state-machine.yaml
-        - docs/templates/COORDINATOR-RECOVERY-PROMPT.md
-        - internal/actionmap/model.go
-        - internal/actionmap/validate.go
-        - internal/actionmap/validate_test.go
-      completedWorkPackages:
-        - id: WP-47-01
-          title: Document Registry binding for R146
-          commit: 5e60d81
-          status: COMPLETE
-          review: REVIEW_ACCEPTED
-          audit: AUDIT_ACCEPTED
-          registryBinding:
-            class: process
-            currentNormativeAuthority: true
-            normativeAuthority: process
-          ownerConfirmed: "2026-10-15"
-          note: >
-            OWNER confirmed class=process is correct taxonomy.
-            Rejected assignment fields: class=normative (not in enum),
-            issue=47 (field not in Document struct), normativeAuthority=true (must be string).
-            Rewrite/repeat-review/repeat-audit prohibited.
-
-    nextWorkPackage:
-      id: WP-47-02
-      title: "Coordinator process rules — AGENTS.md hunk classification"
-      status: SCOPE_VERIFICATION_REQUIRED
-      executor: opencode:workspace-oec
-      action: READ_ONLY_HUNK_CLASSIFICATION
-      allowedPaths:
-        - AGENTS.md
-      stageAllowed: false
-      commitAllowed: false
-
-    remainingHunkVerifiedScope:
-      status: HUNK_VERIFIED_AWAITING_COMMIT
-      stageAllowed: conditional
-      commitAllowed: false
-      gate: >
-        make check PASS in clean env + OWNER push authorization
-
-    - issue: 48
-      title: Heartbeat watchdog runtime
-      scope:
-        - internal/watchdog/* (12 files)
-        - internal/coordinator/watchdog.go
-        - internal/coordinator/watchdog_test.go
-        - internal/agentsession/heartbeat.go
-      note: >
-        Watchdog scope belongs to #48, NOT #47.
-        Coordinator previously tracked watchdog under #47 — corrected by OWNER
-        scope reconciliation 2026-10-15.
-      status: CHANGES_REQUIRED
-      executor: opencode:workspace-o42
-      corrections:
-        - B1: TestDeliveredIsNotRunning missing
-        - B2: fence/dispatch ordering not asserted
-        - B3: hard metrics tautological (no production call sites)
-        - lifecycle: RunWithWatchdog lifecycle hang (c3f observation, forwarded to o42)
-      stageAllowed: false
-      commitAllowed: false
-      gate: >
-        IMPLEMENTATION_VERIFIED (o42) + REVIEW_ACCEPTED + AUDIT_ACCEPTED +
-        make check PASS + exact subject frozen
+telepathy:
+  version: 0.9.0 (upgraded by OWNER)
+  issue31: OPEN (pilot on 0.9.0 = compatibility evidence only, not authorization of mass upgrade)
 
 agentSessions:
-  active:
-    - id: opencode:workspace-o42
-      role: EXECUTOR
-      issue: 48
-      assignment: issue-48-watchdog-corrections-round2
-      state: RUNNING
-      lastActivity: corrections-dispatched
-      heartbeat: NOT_EVALUATED
+  usable:
+    - id: codex:workspace-c8a
+      state: idle
+      note: OWNER-launched, OWNER-visible (confirmed 2026-10-22)
+    - id: opencode:workspace-o0e
+      state: idle
+  unusable:
+    - id: codex:workspace-c8d
+      reason: not visible to OWNER; assignments void
+    - id: opencode:workspace-oe4
+      reason: headless duplicate; DEFECT-REPLAYED-VOID-ASSIGNMENT
 
-  idle:
-    - id: opencode:workspace-o97
-      role: REVIEWER
-      lastCompleted: review-issue47-watchdog-slice (CHANGES_REQUIRED)
-      available: true
-
-    - id: opencode:workspace-oea
-      role: AUDITOR
-      lastCompleted: audit-wp47-01-r146-registry (AUDIT_ACCEPTED)
-      available: true
-
-    - id: codex:workspace-c3f
-      role: READER
-      lastCompleted: project-audit-read-only
-      available: true
-
-pendingActions:
-  ownerRequired:
-    - push 5e60d81 to remote (explicit push authorization needed)
-    - push ops/coord/project state updates
-    - GitHub issue #47 body update (stale: FROZEN_PENDING_TRACKING)
-    - GitHub issue #48 body update (misleading: claims IMPLEMENTED)
-
-  coordinatorNext:
-    - await o42 IMPLEMENTATION_VERIFIED (round 2: B1/B2/B3 + lifecycle)
-    - dispatch o97 for watchdog re-review after IMPLEMENTATION_VERIFIED
-    - dispatch Auditor for watchdog after REVIEW_ACCEPTED
-    - stage + commit issue #48 watchdog subject
-    - stage + commit issue #47 remaining 8 files
+localState:
+  preserve:
+    - path: "${COORD_PROJECT_ROOT}/repositories/coord"
+      head: 11640e9
+      dirty: true
+      action: inventory before any deletion
+    - stale worktrees under ${COORD_PROJECT_ROOT}/worktrees: inventory before any deletion
