@@ -367,7 +367,11 @@ type telepathySelection struct {
 }
 
 // telepathyCacheRoots are the plugin caches whose managers install Telepathy
-// as <root>/<version>/dist/server.mjs.
+// as <root>/<version>/dist/server.mjs, at their default locations under the
+// home directory. Not scanned: OpenCode packages (the plugin runs in-process),
+// marketplace distribution copies and non-default CLAUDE_CONFIG_DIR or
+// CODEX_HOME roots; such a server needs an explicit path. A single installation
+// found here is unique only within these roots, not machine-wide.
 var telepathyCacheRoots = [][]string{
 	{".claude", "plugins", "cache", "telepathy", "telepathy"},
 	{".codex", "plugins", "cache", "telepathy", "telepathy"},
@@ -385,9 +389,9 @@ func fileDigest(path string) (string, error) {
 // discover selects the Telepathy server for coord. An explicit path or
 // TELEPATHY_SERVER wins. Otherwise installed copies are scanned: copies the
 // plugin manager marked orphaned and versions outside the client contract are
-// excluded; all remaining copies must be the same bytes. Several distinct
-// artifacts are ambiguous and need an explicit path; the newest version is
-// never picked automatically.
+// excluded. Exactly one remaining installation is selected; two or more, even
+// byte-identical, are ambiguous and need an explicit path. The newest version
+// is never picked automatically.
 func discover(explicit, fromEnv, home string) (telepathySelection, error) {
 	for _, source := range []struct{ name, path string }{{"--server", explicit}, {"TELEPATHY_SERVER", fromEnv}} {
 		if source.path == "" {
@@ -400,7 +404,7 @@ func discover(explicit, fromEnv, home string) (telepathySelection, error) {
 		return telepathySelection{Path: source.path, Source: source.name, Digest: digest}, nil
 	}
 	var found []telepathyCandidate
-	distinct := map[string]bool{}
+	eligible := 0
 	for _, root := range telepathyCacheRoots {
 		dir := filepath.Join(append([]string{home}, root...)...)
 		entries, err := os.ReadDir(dir)
@@ -428,15 +432,15 @@ func discover(explicit, fromEnv, home string) (telepathySelection, error) {
 			} else if !telepathy.SupportedServerVersion(c.Version) {
 				c.Excluded = "unsupported version"
 			} else {
-				distinct[c.Digest] = true
+				eligible++
 			}
 			found = append(found, c)
 		}
 	}
 	sel := telepathySelection{Source: "discovery", Candidates: found}
-	switch len(distinct) {
+	switch eligible {
 	case 0:
-		return sel, fmt.Errorf("telepathy не найден среди установленных копий; задайте TELEPATHY_SERVER или --server")
+		return sel, fmt.Errorf("telepathy не найден в кешах плагинов Claude и Codex; задайте TELEPATHY_SERVER или --server")
 	case 1:
 		for _, c := range found {
 			if c.Excluded == "" {
@@ -445,7 +449,7 @@ func discover(explicit, fromEnv, home string) (telepathySelection, error) {
 			}
 		}
 	}
-	return sel, fmt.Errorf("AMBIGUOUS_TELEPATHY_INSTALLATION: найдено %d разных копий telepathy; задайте TELEPATHY_SERVER или --server", len(distinct))
+	return sel, fmt.Errorf("AMBIGUOUS_TELEPATHY_INSTALLATION: найдено %d допустимых установок telepathy; задайте TELEPATHY_SERVER или --server", eligible)
 }
 
 func reportTelepathySelection(w io.Writer, sel telepathySelection, err error) {

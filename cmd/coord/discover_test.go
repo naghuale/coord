@@ -53,16 +53,16 @@ func TestDiscoverSingleInstallationSelected(t *testing.T) {
 	}
 }
 
-func TestDiscoverIdenticalCopiesAcrossHostsAreOneArtifact(t *testing.T) {
+func TestDiscoverIdenticalCopiesAcrossHostsAreAmbiguous(t *testing.T) {
 	home := t.TempDir()
-	first := installTelepathy(t, home, claudeRoot, "0.9.0", "v090")
+	installTelepathy(t, home, claudeRoot, "0.9.0", "v090")
 	installTelepathy(t, home, codexRoot, "0.9.0", "v090")
 	sel, err := discover("", "", home)
-	if err != nil {
-		t.Fatal(err)
+	if err == nil || !strings.HasPrefix(err.Error(), "AMBIGUOUS_TELEPATHY_INSTALLATION: найдено 2 ") {
+		t.Fatalf("err=%v", err)
 	}
-	if sel.Path != first || len(sel.Candidates) != 2 {
-		t.Fatalf("sel=%+v", sel)
+	if sel.Path != "" || len(sel.Candidates) != 2 {
+		t.Fatalf("selected despite two installations: %+v", sel)
 	}
 }
 
@@ -92,7 +92,7 @@ func TestDiscoverExcludesOrphanedAndUnsupportedCopies(t *testing.T) {
 	home := t.TempDir()
 	orphan(t, installTelepathy(t, home, claudeRoot, "0.8.0", "v080"))
 	installTelepathy(t, home, claudeRoot, "0.10.0", "v0100")
-	want := installTelepathy(t, home, claudeRoot, "0.9.0", "v090")
+	want := installTelepathy(t, home, codexRoot, "0.9.0", "v090")
 	sel, err := discover("", "", home)
 	if err != nil {
 		t.Fatal(err)

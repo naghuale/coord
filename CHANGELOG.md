@@ -5,12 +5,17 @@
 - `cmd/coord` no longer looks only for the absent Codex-cache 0.8.0 path. An
   explicit `--server` or `TELEPATHY_SERVER` still wins; otherwise the Claude and
   Codex plugin caches are scanned. Copies marked orphaned by the plugin manager
-  and versions outside the client contract are excluded; identical copies across
-  hosts count as one artifact. Several distinct artifacts fail with
-  `AMBIGUOUS_TELEPATHY_INSTALLATION` and require an explicit path; the newest
-  version is never chosen automatically. (`TestDiscoverSeveralVersionsAreAmbiguousNotNewest`,
+  and versions outside the client contract are excluded. Exactly one remaining
+  installation is selected; two or more, even byte-identical copies in different
+  host caches, fail with `AMBIGUOUS_TELEPATHY_INSTALLATION` and require an
+  explicit path; the newest version is never chosen automatically. Only the
+  default Claude and Codex plugin caches are scanned: OpenCode packages,
+  marketplace distribution copies and non-default `CLAUDE_CONFIG_DIR` or
+  `CODEX_HOME` roots need an explicit path, and a single installation found is
+  unique only within those two caches.
+  (`TestDiscoverSeveralVersionsAreAmbiguousNotNewest`,
   `TestDiscoverSameVersionDifferentBytesAmbiguous`,
-  `TestDiscoverIdenticalCopiesAcrossHostsAreOneArtifact`,
+  `TestDiscoverIdenticalCopiesAcrossHostsAreAmbiguous`,
   `TestDiscoverExcludesOrphanedAndUnsupportedCopies`,
   `TestDiscoverSingleInstallationSelected`, `TestDiscoverNoInstallationFails`,
   `TestDiscoverOnlyUnsupportedFails`, `TestDiscoverExplicitAndEnvWinOverScan`)
