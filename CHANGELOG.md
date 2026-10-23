@@ -1,5 +1,25 @@
 # История изменений
 
+## 2026-10-23 — coord: Telepathy server discovery without a hardcoded 0.8.0 path (Refs #31)
+
+- `cmd/coord` no longer looks only for the absent Codex-cache 0.8.0 path. An
+  explicit `--server` or `TELEPATHY_SERVER` still wins; otherwise the Claude and
+  Codex plugin caches are scanned. Copies marked orphaned by the plugin manager
+  and versions outside the client contract are excluded; identical copies across
+  hosts count as one artifact. Several distinct artifacts fail with
+  `AMBIGUOUS_TELEPATHY_INSTALLATION` and require an explicit path; the newest
+  version is never chosen automatically. (`TestDiscoverSeveralVersionsAreAmbiguousNotNewest`,
+  `TestDiscoverSameVersionDifferentBytesAmbiguous`,
+  `TestDiscoverIdenticalCopiesAcrossHostsAreOneArtifact`,
+  `TestDiscoverExcludesOrphanedAndUnsupportedCopies`,
+  `TestDiscoverSingleInstallationSelected`, `TestDiscoverNoInstallationFails`,
+  `TestDiscoverOnlyUnsupportedFails`, `TestDiscoverExplicitAndEnvWinOverScan`)
+- Launch diagnostics list every candidate with path, declared version, SHA-256
+  and exclusion reason, and the selected path, source and SHA-256.
+  (`TestReportTelepathySelectionListsCandidatesAndChoice`)
+- Not included: pinned active/fallback policy, declaring 0.9.0 the standard,
+  rollback checks, plugin-cache changes (#31 follow-up). (документация)
+
 ## 2026-10-23 — coordd shadow pilot: observed Telepathy server version in provenance (PV2-F1, Refs #88)
 
 - `telepathy.Process` records the server version returned at the MCP `initialize`
