@@ -35,14 +35,18 @@ requiredObligations:
     state: OPEN
   - issue: 90
     title: Assignment Ledger MVP on the existing canonical store
-    state: AUTHORIZED_NOT_STARTED
+    state: IN_PROGRESS (c8a implementing; checkpoints M1-M4 reported)
     roles: {implementer: codex:workspace-c8a, reviewer: opencode:workspace-o0e, auditor: "Claude coordinator, ROLE_CONFLICT_DISCLOSED"}
     startsAfter: narrow cmd/coord discover() fix merged
     plan: "${COORD_PROJECT_ROOT}/.scratch/tmp/issue90-PLAN.md"
+  - issue: 93
+    title: "Ledger write authority: OwnerCredential and authenticated canonical command path"
+    state: AUTHORIZED_AFTER_90
+    note: cutover to ledger blocked until done
   - issue: 31
     title: Telepathy 0.9.0 compatibility
     inventory: "DONE 2026-10-23 (issue31-telepathy-inventory-c8a-a1)"
-    inProgress: "narrow discover() fix c826745 (branch fix/issue-31-discover-telepathy): review c8a, then audit o0e"
+    discoverFix: "MERGED PR #92 58af1da; backlog A-1 HOME lookup, A-2 help text"
     remaining: [pinned active/fallback policy (OWNER decision), 0.9.0 status (OWNER decision), rollback requirement (OWNER decision), isolated storage-compatibility proof]
     state: OPEN
   - id: R153-IMPLEMENTATION
@@ -55,7 +59,7 @@ nonBlockingBacklog:
   - M3, M9, M10 surviving mutants (negative tests)
   - A3 issue
   - DEFECT-REPLAYED-VOID-ASSIGNMENT (addressed by #90 ledger scope)
-  - flaky TestRegulationNotRegistered (TempDir .git cleanup race)
+  - "#94 P1 recovery test stabilization (TempDir .git cleanup race: TestRegulationNotRegistered, TestDecisionClassInvalid, TestValidFixture) — after #90"
   - WP-P03-02B CHANGELOG correction
   - PV2-F2 admission dossier continuity
   - "#88 P3 follow-ups A-1..A-4"

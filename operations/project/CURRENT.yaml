@@ -14,7 +14,7 @@ sessionLaunchCwd:
 source:
   repository: https://github.com/naghuale/coord.git
   integrationBranch: main
-  integrationHead: 8f5c7ef
+  integrationHead: 58af1da
   remoteCI:
     ci: {run: 39835265878, conclusion: success}
     architecture-sync: {run: 39835265809, conclusion: success}
