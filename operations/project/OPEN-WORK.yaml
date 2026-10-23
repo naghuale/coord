@@ -1,6 +1,6 @@
 apiVersion: coord.dev/v1alpha1
 kind: OpenWork
-updatedAt: 2026-10-23
+updatedAt: 2026-10-23T04:50Z
 previous: fc9a5c7 (2026-10-15, issues #47-#53; all closed — kept in git history)
 note: >
   Period 2026-10-16..21 (issues #57-#77, WP-P03-02B PR #77) is not re-listed here;
@@ -8,12 +8,19 @@ note: >
 
 project:
   id: coord
-  mainHead: 020ccba
+  mainHead: 8f5c7ef
   remoteCI: PASS
 
 currentStage: post-P0-3
 
 closed:
+  - issue: 88
+    title: PV2-F1 observed Telepathy server version in provenance
+    closedAt: 2026-10-23
+    pr: 91
+    mergeCommit: 8f5c7ef
+    completionReport: https://github.com/naghuale/coord/issues/88#issuecomment-6357597637
+    p3FollowUps: [A-1 M15 writer self-validation test, A-2 harness results path, A-3 no live writer->v2 run, A-4 production constructor process assertion]
   - issue: 70
     title: Shadow Validation pilot
     closedAt: 2026-10-23
@@ -21,19 +28,22 @@ closed:
     completionReport: https://github.com/naghuale/coord/issues/70#issuecomment-6355978809
 
 requiredObligations:
-  - issue: 88
-    id: PV2-F1
-    title: record actual Telepathy server version in shadow-pilot provenance
-    requiredFix: "provenance.acceptedClientContract [0.8.0, 0.9.0] + actualServerVersion (required) + reviewed validator contract"
-    state: OPEN
   - issue: 89
     title: P0-3 admission limits — five dimensions NOT_EVALUATED
     dimensions: [liveRestart, crashDeduplication, roleIndependence, rationale, readiness]
     rule: no promotion to PASS from P0-3; dependent work needs separate evidence
     state: OPEN
+  - issue: 90
+    title: Assignment Ledger MVP on the existing canonical store
+    state: AUTHORIZED_NOT_STARTED
+    roles: {implementer: codex:workspace-c8a, reviewer: opencode:workspace-o0e, auditor: "Claude coordinator, ROLE_CONFLICT_DISCLOSED"}
+    startsAfter: narrow cmd/coord discover() fix merged
+    plan: "${COORD_PROJECT_ROOT}/.scratch/tmp/issue90-PLAN.md"
   - issue: 31
     title: Telepathy 0.9.0 compatibility
-    remaining: [installation inventory, "cmd/coord discover() pins absent 0.8.0 path (main.go:358)", rollback check or OWNER waiver]
+    inventory: "DONE 2026-10-23 (issue31-telepathy-inventory-c8a-a1)"
+    inProgress: "narrow discover() fix c826745 (branch fix/issue-31-discover-telepathy): review c8a, then audit o0e"
+    remaining: [pinned active/fallback policy (OWNER decision), 0.9.0 status (OWNER decision), rollback requirement (OWNER decision), isolated storage-compatibility proof]
     state: OPEN
   - id: R153-IMPLEMENTATION
     title: AGENT-REGISTRY-R1 implementation (WP-R153-01..07)
@@ -41,16 +51,19 @@ requiredObligations:
     note: P0-3 admission does not remove this obligation; nor assignment-runtime protections (WP-AUDIT-RUNTIME-01)
 
 nonBlockingBacklog:
-  - PV2-F2 admission dossier continuity (dossier bound to 2556f6a/c03/0.8.0)
+  - "#89 five NOT_EVALUATED dimensions (required obligation, listed above)"
   - M3, M9, M10 surviving mutants (negative tests)
-  - R-1 test asserts Reason with Contains, not exact equality
+  - A3 issue
+  - DEFECT-REPLAYED-VOID-ASSIGNMENT (addressed by #90 ledger scope)
   - flaky TestRegulationNotRegistered (TempDir .git cleanup race)
-  - DEFECT-REPLAYED-VOID-ASSIGNMENT (stale inbox replay after OpenCode restart)
-  - A3 issue, F-AGENT-OBSERVABILITY
-  - unified work-item index from scratch backlog (P2)
+  - WP-P03-02B CHANGELOG correction
+  - PV2-F2 admission dossier continuity
+  - "#88 P3 follow-ups A-1..A-4"
+  - R-1 test asserts Reason with Contains, not exact equality
+  - transport architecture gap analysis (READ_ONLY_ANALYSIS_AUTHORIZED; o0e after #90 review)
 
 ownerDiscussionPending:
-  - SESSION-ELIGIBILITY, ROLE-INDEPENDENCE-R155, R156 drafts; options O1-O8
+  - R155, R156, SESSION-ELIGIBILITY drafts; options O1-O8
   - C-1 independence unit (SESSION vs AGENT), retroactivity for WP-P03-02B
   - MUTATION-REGRESSION-STANDARDS
   - WP-P03-02B CHANGELOG correction
