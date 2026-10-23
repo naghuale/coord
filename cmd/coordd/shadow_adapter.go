@@ -62,6 +62,22 @@ type telepathyShadowAgentAdapter struct {
 	to      string
 	replyTo string
 	pending shadowDispatch
+	// serverVersion stands in for the handshake only when no MCP process is
+	// attached (protocol-free tests); a live process always wins.
+	serverVersion string
+}
+
+// actualServerVersion returns the Telepathy server version observed at the
+// MCP initialize handshake. A declared contract or range is never accepted.
+func (a *telepathyShadowAgentAdapter) actualServerVersion() (string, error) {
+	version := a.serverVersion
+	if a.process != nil {
+		version = a.process.ServerVersion()
+	}
+	if !telepathy.SupportedServerVersion(version) {
+		return "", refuse("actualServerVersion", "observed Telepathy server version required and must be in the accepted client contract")
+	}
+	return version, nil
 }
 
 func shadowReplyAddress(text string) (string, error) {

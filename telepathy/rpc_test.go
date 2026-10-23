@@ -58,12 +58,13 @@ func TestMCPHelper(t *testing.T) {
 }
 func TestRPCChecksVersionAndToolFailure(t *testing.T) {
 	for _, tc := range []struct {
-		name    string
-		envVars []string
-		wantErr bool
+		name        string
+		envVars     []string
+		wantErr     bool
+		wantVersion string
 	}{
-		{name: "v0.8.0 accepted", envVars: nil, wantErr: false},
-		{name: "v0.9.0 accepted", envVars: []string{"COORD_MCP_VERSION_090=1"}, wantErr: false},
+		{name: "v0.8.0 accepted", envVars: nil, wantErr: false, wantVersion: "0.8.0"},
+		{name: "v0.9.0 accepted", envVars: []string{"COORD_MCP_VERSION_090=1"}, wantErr: false, wantVersion: "0.9.0"},
 		{name: "bad version rejected", envVars: []string{"COORD_MCP_BAD_VERSION=1"}, wantErr: true},
 	} {
 		tc := tc
@@ -83,6 +84,9 @@ func TestRPCChecksVersionAndToolFailure(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			if got := p.ServerVersion(); got != tc.wantVersion {
+				t.Fatalf("ServerVersion=%q, want %q", got, tc.wantVersion)
+			}
 			_, err = p.Call(ctx, "send_message", map[string]any{})
 			if err == nil || !strings.Contains(err.Error(), "Rate limit") {
 				t.Fatalf("isError hidden: %v", err)
@@ -96,6 +100,27 @@ func TestRPCChecksVersionAndToolFailure(t *testing.T) {
 		})
 	}
 }
+func TestAcceptedServerVersionsContract(t *testing.T) {
+	got := AcceptedServerVersions()
+	if len(got) != 2 || got[0] != "0.8.0" || got[1] != "0.9.0" {
+		t.Fatalf("contract=%v", got)
+	}
+	got[0] = "9.9.9"
+	if AcceptedServerVersions()[0] != "0.8.0" {
+		t.Fatal("contract mutable through returned slice")
+	}
+	for _, v := range []string{"0.8.0", "0.9.0"} {
+		if !SupportedServerVersion(v) {
+			t.Fatalf("%s rejected", v)
+		}
+	}
+	for _, v := range []string{"", "0.10.0", "0.8", "telepathy>=0.8.0", ">=0.8.0", " 0.9.0"} {
+		if SupportedServerVersion(v) {
+			t.Fatalf("%q accepted", v)
+		}
+	}
+}
+
 func TestRPCCancellationReapsProcess(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

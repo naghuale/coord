@@ -297,9 +297,14 @@ func runShadowPilot(ctx context.Context, o shadowOptions, deps shadowDeps) (err 
 			_ = output.writeJSON("REFUSAL.json", map[string]any{"error": err.Error(), "executionCompleted": false, "evidenceAccepted": false, "recommendation": "NOT_EVALUATED"})
 		}
 	}()
-	replyTo := adapter.(*telepathyShadowAgentAdapter).replyTo
+	live := adapter.(*telepathyShadowAgentAdapter)
+	replyTo := live.replyTo
 	if replyTo == "" {
 		return refuse("replyTo", "MCP sender identity required")
+	}
+	serverVersion, err := live.actualServerVersion()
+	if err != nil {
+		return err
 	}
 	d := shadowDispatch{CommandDomain: shadowDomain, DispatchID: "dispatch-" + id, ShadowRunID: a.ShadowRunID, AssignmentID: a.AssignmentID, SubjectSHA: a.SubjectSHA, BaselineSHA: a.SubjectSHA, Generation: a.Generation, InputDigest: a.InputDigest, ReadOnly: true, Assignment: a, Invariants: fixture.Invariants, ReplyTo: replyTo, InputFixture: string(input)}
 	if err = output.writeJSON("RUN.yaml", map[string]any{"shadowRunID": a.ShadowRunID, "startedAt": started, "productionWrites": "prohibited", "p0_3AdmissionAuthority": false}); err != nil {
@@ -360,7 +365,7 @@ func runShadowPilot(ctx context.Context, o shadowOptions, deps shadowDeps) (err 
 	if err = output.writeJSON("COMMANDS.json", command); err != nil {
 		return err
 	}
-	provenance, err := shadowProvenance(deps.Root, d, r, started, deps.Now().UTC(), runtime, output.digests)
+	provenance, err := shadowProvenance(deps.Root, d, r, serverVersion, started, deps.Now().UTC(), runtime, output.digests)
 	if err != nil {
 		return err
 	}
@@ -439,7 +444,42 @@ func sortedKeys(m map[string]string) []string {
 	return keys
 }
 
-func shadowProvenance(root string, d shadowDispatch, r shadowResult, start, end time.Time, runtime shadowRuntimeEvidence, digests map[string]string) (string, error) {
+// shadowTelepathyProvenance separates the accepted client contract from the
+// server version actually observed at the handshake (PV2-F1).
+type shadowTelepathyProvenance struct {
+	AcceptedClientContract []string `json:"acceptedClientContract"`
+	ActualServerVersion    string   `json:"actualServerVersion"`
+	MCPProtocolVersion     string   `json:"mcpProtocolVersion"`
+}
+
+// validateShadowProvenance checks the Telepathy version fields of a sealed
+// provenance document. The legacy mcpClientVersion field, which carried only a
+// declared range, is rejected so old evidence cannot pass as observed.
+func validateShadowProvenance(raw string) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &fields); err != nil {
+		return refuse("provenance", "JSON object required")
+	}
+	if _, legacy := fields["mcpClientVersion"]; legacy {
+		return refuse("provenance", "legacy mcpClientVersion is not an observed server version")
+	}
+	var p shadowTelepathyProvenance
+	if err := json.Unmarshal([]byte(raw), &p); err != nil {
+		return refuse("provenance", "typed Telepathy version fields required")
+	}
+	if !slices.Equal(p.AcceptedClientContract, telepathy.AcceptedServerVersions()) {
+		return refuse("acceptedClientContract", "must equal the client contract")
+	}
+	if !slices.Contains(p.AcceptedClientContract, p.ActualServerVersion) {
+		return refuse("actualServerVersion", "observed server version required: one exact version from the accepted client contract")
+	}
+	if p.MCPProtocolVersion != telepathy.ProtocolVersion {
+		return refuse("mcpProtocolVersion", "must equal the negotiated MCP protocol version")
+	}
+	return nil
+}
+
+func shadowProvenance(root string, d shadowDispatch, r shadowResult, serverVersion string, start, end time.Time, runtime shadowRuntimeEvidence, digests map[string]string) (string, error) {
 	executable, err := os.Executable()
 	if err != nil {
 		return "", err
@@ -456,6 +496,9 @@ func shadowProvenance(root string, d shadowDispatch, r shadowResult, start, end 
 	if err != nil {
 		return "", err
 	}
-	raw, err := json.Marshal(map[string]any{"coorddCommit": strings.TrimSpace(string(commit)), "binaryDigest": digestBytes(binary), "commandDigest": digestBytes(argv), "candidateSHA": d.SubjectSHA, "baselineSHA": d.BaselineSHA, "inputDigest": d.InputDigest, "adapterKind": "telepathy", "mcpClientVersion": "telepathy>=0.8.0/protocol2024-11-05", "dispatchID": d.DispatchID, "agentID": r.Result.AgentID, "sessionID": r.Result.SessionID, "resultDigest": r.ResultDigest, "startedAt": start, "endedAt": end, "runtime": runtime, "artifactDigests": digests})
-	return string(raw), err
+	raw, err := json.Marshal(map[string]any{"coorddCommit": strings.TrimSpace(string(commit)), "binaryDigest": digestBytes(binary), "commandDigest": digestBytes(argv), "candidateSHA": d.SubjectSHA, "baselineSHA": d.BaselineSHA, "inputDigest": d.InputDigest, "adapterKind": "telepathy", "acceptedClientContract": telepathy.AcceptedServerVersions(), "actualServerVersion": serverVersion, "mcpProtocolVersion": telepathy.ProtocolVersion, "dispatchID": d.DispatchID, "agentID": r.Result.AgentID, "sessionID": r.Result.SessionID, "resultDigest": r.ResultDigest, "startedAt": start, "endedAt": end, "runtime": runtime, "artifactDigests": digests})
+	if err != nil {
+		return "", err
+	}
+	return string(raw), validateShadowProvenance(string(raw))
 }

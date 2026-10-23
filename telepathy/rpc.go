@@ -8,10 +8,14 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 )
+
+// ProtocolVersion is the MCP protocol version this client negotiates.
+const ProtocolVersion = "2024-11-05"
 
 // Process owns one MCP stdio subprocess, not an agent frontend.
 type Process struct {
@@ -28,7 +32,26 @@ type Process struct {
 	// sync.Once as cancel and read only after p.done, so no lock is needed.
 	selfClosed bool
 	id         uint64
+	// serverVersion is the serverInfo.version the server returned from
+	// initialize; it is set once in Start and never changed.
+	serverVersion string
 }
+
+// acceptedServerVersions is the client contract: the Telepathy server versions
+// this client accepts at initialize.
+var acceptedServerVersions = []string{"0.8.0", "0.9.0"}
+
+// AcceptedServerVersions returns a copy of the accepted client contract.
+func AcceptedServerVersions() []string { return slices.Clone(acceptedServerVersions) }
+
+// SupportedServerVersion reports whether an exact server version is in the contract.
+func SupportedServerVersion(version string) bool {
+	return slices.Contains(acceptedServerVersions, version)
+}
+
+// ServerVersion returns the version the connected server reported at initialize.
+func (p *Process) ServerVersion() string { return p.serverVersion }
+
 type response struct {
 	JSONRPC string          `json:"jsonrpc"`
 	ID      uint64          `json:"id"`
@@ -95,7 +118,7 @@ func Start(ctx context.Context, command []string, dir string, environment []stri
 	}()
 	initContext, stopInit := context.WithTimeout(ctx, 10*time.Second)
 	defer stopInit()
-	init, err := p.call(initContext, "initialize", map[string]any{"protocolVersion": "2024-11-05", "capabilities": map[string]any{}, "clientInfo": map[string]any{"name": "coord-telepathy", "version": "1"}})
+	init, err := p.call(initContext, "initialize", map[string]any{"protocolVersion": ProtocolVersion, "capabilities": map[string]any{}, "clientInfo": map[string]any{"name": "coord-telepathy", "version": "1"}})
 	if err != nil {
 		return nil, errors.Join(err, p.Close())
 	}
@@ -106,9 +129,10 @@ func Start(ctx context.Context, command []string, dir string, environment []stri
 	if err = json.Unmarshal(init, &info); err != nil {
 		return nil, errors.Join(err, p.Close())
 	}
-	if info.ServerInfo.Name != "telepathy" || (info.ServerInfo.Version != "0.8.0" && info.ServerInfo.Version != "0.9.0") || info.ProtocolVersion != "2024-11-05" {
+	if info.ServerInfo.Name != "telepathy" || !SupportedServerVersion(info.ServerInfo.Version) || info.ProtocolVersion != ProtocolVersion {
 		return nil, errors.Join(fmt.Errorf("unsupported MCP server %s %s / %s", info.ServerInfo.Name, info.ServerInfo.Version, info.ProtocolVersion), p.Close())
 	}
+	p.serverVersion = info.ServerInfo.Version
 	if err = p.write(initContext, map[string]any{"jsonrpc": "2.0", "method": "notifications/initialized"}); err != nil {
 		return nil, errors.Join(err, p.Close())
 	}
