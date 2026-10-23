@@ -9,7 +9,9 @@ import (
 	"coord/checkpoint"
 	"coord/internal/localchat"
 	"coord/telepathy"
+	"crypto/sha256"
 	_ "embed"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -344,22 +346,123 @@ func ensure(ctx context.Context, state, server string, client *localchat.Client)
 		}
 	}
 }
-func discover(explicit string) (string, error) {
-	if explicit != "" {
-		return explicit, nil
-	}
-	if path := os.Getenv("TELEPATHY_SERVER"); path != "" {
-		return path, nil
-	}
-	home, err := os.UserHomeDir()
+
+// telepathyCandidate is one Telepathy server.mjs found in a host plugin cache.
+// Version is the directory name the plugin manager installed it under, a
+// declaration only; telepathy.Start checks the real version at the handshake.
+type telepathyCandidate struct {
+	Path     string
+	Version  string
+	Digest   string
+	Excluded string
+}
+
+// telepathySelection is the server.mjs chosen for launch plus every candidate
+// considered, for the launch diagnostics.
+type telepathySelection struct {
+	Path       string
+	Source     string
+	Digest     string
+	Candidates []telepathyCandidate
+}
+
+// telepathyCacheRoots are the plugin caches whose managers install Telepathy
+// as <root>/<version>/dist/server.mjs, at their default locations under the
+// home directory. Not scanned: OpenCode packages (the plugin runs in-process),
+// marketplace distribution copies and non-default CLAUDE_CONFIG_DIR or
+// CODEX_HOME roots; such a server needs an explicit path. A single installation
+// found here is unique only within these roots, not machine-wide.
+var telepathyCacheRoots = [][]string{
+	{".claude", "plugins", "cache", "telepathy", "telepathy"},
+	{".codex", "plugins", "cache", "telepathy", "telepathy"},
+}
+
+func fileDigest(path string) (string, error) {
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
 	}
-	path := filepath.Join(home, ".codex", "plugins", "cache", "telepathy", "telepathy", "0.8.0", "dist", "server.mjs")
-	if info, err := os.Stat(path); err == nil && !info.IsDir() {
-		return path, nil
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+// discover selects the Telepathy server for coord. An explicit path or
+// TELEPATHY_SERVER wins. Otherwise installed copies are scanned: copies the
+// plugin manager marked orphaned and versions outside the client contract are
+// excluded. Exactly one remaining installation is selected; two or more, even
+// byte-identical, are ambiguous and need an explicit path. The newest version
+// is never picked automatically.
+func discover(explicit, fromEnv, home string) (telepathySelection, error) {
+	for _, source := range []struct{ name, path string }{{"--server", explicit}, {"TELEPATHY_SERVER", fromEnv}} {
+		if source.path == "" {
+			continue
+		}
+		digest, err := fileDigest(source.path)
+		if err != nil {
+			return telepathySelection{}, fmt.Errorf("telepathy server из %s недоступен: %w", source.name, err)
+		}
+		return telepathySelection{Path: source.path, Source: source.name, Digest: digest}, nil
 	}
-	return "", fmt.Errorf("telepathy 0.8.0 не найден; задайте TELEPATHY_SERVER или --server")
+	var found []telepathyCandidate
+	eligible := 0
+	for _, root := range telepathyCacheRoots {
+		dir := filepath.Join(append([]string{home}, root...)...)
+		entries, err := os.ReadDir(dir)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return telepathySelection{}, err
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			path := filepath.Join(dir, entry.Name(), "dist", "server.mjs")
+			info, err := os.Stat(path)
+			if err != nil || info.IsDir() {
+				continue
+			}
+			c := telepathyCandidate{Path: path, Version: entry.Name()}
+			if c.Digest, err = fileDigest(path); err != nil {
+				return telepathySelection{}, err
+			}
+			if _, err := os.Stat(filepath.Join(dir, entry.Name(), ".orphaned_at")); err == nil {
+				c.Excluded = "orphaned"
+			} else if !telepathy.SupportedServerVersion(c.Version) {
+				c.Excluded = "unsupported version"
+			} else {
+				eligible++
+			}
+			found = append(found, c)
+		}
+	}
+	sel := telepathySelection{Source: "discovery", Candidates: found}
+	switch eligible {
+	case 0:
+		return sel, fmt.Errorf("telepathy не найден в кешах плагинов Claude и Codex; задайте TELEPATHY_SERVER или --server")
+	case 1:
+		for _, c := range found {
+			if c.Excluded == "" {
+				sel.Path, sel.Digest = c.Path, c.Digest
+				return sel, nil
+			}
+		}
+	}
+	return sel, fmt.Errorf("AMBIGUOUS_TELEPATHY_INSTALLATION: найдено %d допустимых установок telepathy; задайте TELEPATHY_SERVER или --server", eligible)
+}
+
+func reportTelepathySelection(w io.Writer, sel telepathySelection, err error) {
+	for _, c := range sel.Candidates {
+		status := "eligible"
+		if c.Excluded != "" {
+			status = "excluded: " + c.Excluded
+		}
+		_, _ = fmt.Fprintf(w, "telepathy candidate path=%s version=%s sha256=%s %s\n", c.Path, c.Version, c.Digest, status)
+	}
+	if err == nil {
+		_, _ = fmt.Fprintf(w, "telepathy selected path=%s source=%s sha256=%s\n", sel.Path, sel.Source, sel.Digest)
+	}
 }
 func serve(ctx context.Context, state, explicitServer string) (err error) {
 	if err = os.MkdirAll(state, 0700); err != nil {
@@ -447,10 +550,16 @@ func openTools(ctx context.Context, state, explicit string) (localchat.Tools, fu
 	if explicit == "none" {
 		return localTools{}, func() error { return nil }, nil
 	}
-	server, err := discover(explicit)
+	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, nil, err
 	}
+	sel, err := discover(explicit, os.Getenv("TELEPATHY_SERVER"), home)
+	reportTelepathySelection(os.Stderr, sel, err)
+	if err != nil {
+		return nil, nil, err
+	}
+	server := sel.Path
 	if !filepath.IsAbs(server) {
 		server, err = filepath.Abs(server)
 		if err != nil {
