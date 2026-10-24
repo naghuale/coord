@@ -65,14 +65,18 @@ func Check(opts Options) (*Result, error) {
 		}
 	}
 
-	docRegStatus := loadActionMapProposed(root, opts.DocRegistryPath)
+	docs := loadDocumentRegistryIndex(root, opts.DocRegistryPath)
+	actionMap := actionMapDocStatus{}
+	if d, ok := docs.byPath["docs/operations/ACTION-MAP.yaml"]; ok {
+		actionMap = actionMapDocStatus{found: true, proposed: d.Status == "proposed"}
+	}
 
 	var vs []Violation
 	vs = append(vs, validateDocuments(root, reg)...)
 	vs = append(vs, validateComponents(root, reg, idx)...)
 	vs = append(vs, validateAxes(reg)...)
-	vs = append(vs, validateRequirements(reg, idx, docRegStatus)...)
-	vs = append(vs, validateActionMapRefs(root, reg, docRegStatus)...)
+	vs = append(vs, validateRequirements(reg, idx, docs)...)
+	vs = append(vs, validateActionMapRefs(root, reg, actionMap)...)
 	if !opts.SkipChangedDocs {
 		vs = append(vs, validateChangedDocs(root, reg, regPath)...)
 	}
@@ -85,7 +89,23 @@ type actionMapDocStatus struct {
 	found    bool
 }
 
-func loadActionMapProposed(root, docRegistryPath string) actionMapDocStatus {
+// registryDoc is a lightweight DOCUMENT-REGISTRY row used for authority checks.
+type registryDoc struct {
+	ID                           string
+	Path                         string
+	Status                       string
+	CanonicalProductionAuthority bool
+	CurrentOperationalAuthority  bool
+	CurrentNormativeAuthority    bool
+}
+
+type documentRegistryIndex struct {
+	byID   map[string]registryDoc
+	byPath map[string]registryDoc
+}
+
+func loadDocumentRegistryIndex(root, docRegistryPath string) documentRegistryIndex {
+	out := documentRegistryIndex{byID: map[string]registryDoc{}, byPath: map[string]registryDoc{}}
 	path := docRegistryPath
 	if path == "" {
 		path = filepath.Join(root, "docs/DOCUMENT-REGISTRY.yaml")
@@ -94,24 +114,41 @@ func loadActionMapProposed(root, docRegistryPath string) actionMapDocStatus {
 	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return actionMapDocStatus{}
+		return out
 	}
-	// Lightweight scan: avoid pulling the full documentregistry package cycle.
+	// Lightweight scan: avoid importing internal/documentregistry (cycle risk).
 	var doc struct {
 		Documents []struct {
-			Path   string `yaml:"path"`
-			Status string `yaml:"status"`
+			ID                           string `yaml:"id"`
+			Path                         string `yaml:"path"`
+			Status                       string `yaml:"status"`
+			CanonicalProductionAuthority bool   `yaml:"canonicalProductionAuthority"`
+			CurrentOperationalAuthority  bool   `yaml:"currentOperationalAuthority"`
+			CurrentNormativeAuthority    *bool  `yaml:"currentNormativeAuthority"`
 		} `yaml:"documents"`
 	}
 	if err := yaml.Unmarshal(raw, &doc); err != nil {
-		return actionMapDocStatus{}
+		return out
 	}
 	for _, d := range doc.Documents {
-		if d.Path == "docs/operations/ACTION-MAP.yaml" {
-			return actionMapDocStatus{proposed: d.Status == "proposed", found: true}
+		norm := false
+		if d.CurrentNormativeAuthority != nil {
+			norm = *d.CurrentNormativeAuthority
+		}
+		row := registryDoc{
+			ID: d.ID, Path: d.Path, Status: d.Status,
+			CanonicalProductionAuthority: d.CanonicalProductionAuthority,
+			CurrentOperationalAuthority:  d.CurrentOperationalAuthority,
+			CurrentNormativeAuthority:    norm,
+		}
+		if d.ID != "" {
+			out.byID[d.ID] = row
+		}
+		if d.Path != "" {
+			out.byPath[d.Path] = row
 		}
 	}
-	return actionMapDocStatus{found: false}
+	return out
 }
 
 func validateDocuments(root string, reg Registry) []Violation {
@@ -256,31 +293,84 @@ func validateAxes(reg Registry) []Violation {
 	return vs
 }
 
-func validateRequirements(reg Registry, idx *CodeIndex, actionMap actionMapDocStatus) []Violation {
+// nonAuthoritativeDocStatus is true when DOCUMENT-REGISTRY status cannot authorize
+// production-use / production-connection / qualified axis claims (F97-1).
+// The requirement row's own NormativeStatus is never authoritative.
+func nonAuthoritativeDocStatus(status string) bool {
+	switch status {
+	case "proposed", "historical", "superseded":
+		return true
+	default:
+		return false
+	}
+}
+
+// componentHasForbiddenProductionClaim reports axis values that mean production
+// use, production connection, or qualification under the #97 four-axis vocabulary.
+// Mapping (RESULT semanticMapping):
+//
+//	productionUse        -> Production ACTIVE | ACTIVE_WITH_LIMITATIONS
+//	productionConnection -> Connection PRODUCTION_CONNECTED
+//	qualified            -> Qualification PASS | ACCEPTED_WITH_LIMITATIONS
+//	disabledOrBlocked    -> Production DISABLED | BLOCKED (allowed with non-authoritative source)
+func componentHasForbiddenProductionClaim(c Component) (bool, string) {
+	switch c.Production {
+	case "ACTIVE", "ACTIVE_WITH_LIMITATIONS":
+		return true, fmt.Sprintf("production=%s", c.Production)
+	}
+	if c.Connection == "PRODUCTION_CONNECTED" {
+		return true, fmt.Sprintf("connection=%s", c.Connection)
+	}
+	switch c.Qualification {
+	case "PASS", "ACCEPTED_WITH_LIMITATIONS":
+		return true, fmt.Sprintf("qualification=%s", c.Qualification)
+	}
+	return false, ""
+}
+
+func validateRequirements(reg Registry, idx *CodeIndex, docs documentRegistryIndex) []Violation {
 	if len(reg.Requirements) == 0 {
 		return nil
 	}
 	var vs []Violation
-	components := map[string]bool{}
+	components := map[string]Component{}
 	for _, c := range reg.Components {
-		components[c.ID] = true
+		components[c.ID] = c
 	}
 	for id, req := range reg.Requirements {
 		if id == "" {
 			vs = append(vs, Violation{Code: CodeUnknownRequirementID, Detail: "empty requirement id"})
 			continue
 		}
-		if req.Component != "" && !components[req.Component] {
-			vs = append(vs, Violation{Code: CodeUnknownRequirementID, Detail: fmt.Sprintf("%s: unknown component %q", id, req.Component)})
+		if req.Component != "" {
+			if _, ok := components[req.Component]; !ok {
+				vs = append(vs, Violation{Code: CodeUnknownRequirementID, Detail: fmt.Sprintf("%s: unknown component %q", id, req.Component)})
+			}
 		}
-		if req.NormativeStatus == "PROPOSED" {
-			// Proposed source cannot authorize production enablement claims.
-			for _, c := range reg.Components {
-				if c.ID != req.Component {
-					continue
+		// Resolution chain: requirement -> sourceDocumentId -> DOCUMENT-REGISTRY -> status -> axes.
+		// The row's declared NormativeStatus never raises authority (F97-1).
+		srcID := strings.TrimSpace(req.SourceDocumentID)
+		if srcID == "" {
+			vs = append(vs, Violation{Code: CodeUnknownRequirementID, Detail: fmt.Sprintf("%s: missing sourceDocumentId", id)})
+			if c, ok := components[req.Component]; ok {
+				if bad, claim := componentHasForbiddenProductionClaim(c); bad {
+					vs = append(vs, Violation{Code: CodeProposedProductionAuth, Detail: fmt.Sprintf("%s: missing sourceDocumentId cannot authorize %s for %s", id, claim, c.ID)})
 				}
-				if c.Production == "ACTIVE" || c.Production == "ACTIVE_WITH_LIMITATIONS" {
-					vs = append(vs, Violation{Code: CodeProposedProductionAuth, Detail: fmt.Sprintf("%s: PROPOSED requirement cannot authorize production for %s", id, c.ID)})
+			}
+		} else {
+			src, ok := docs.byID[srcID]
+			if !ok {
+				vs = append(vs, Violation{Code: CodeUnknownRequirementID, Detail: fmt.Sprintf("%s: unresolved sourceDocumentId %q", id, srcID)})
+				if c, ok := components[req.Component]; ok {
+					if bad, claim := componentHasForbiddenProductionClaim(c); bad {
+						vs = append(vs, Violation{Code: CodeProposedProductionAuth, Detail: fmt.Sprintf("%s: unresolved source %q cannot authorize %s for %s", id, srcID, claim, c.ID)})
+					}
+				}
+			} else if nonAuthoritativeDocStatus(src.Status) {
+				if c, ok := components[req.Component]; ok {
+					if bad, claim := componentHasForbiddenProductionClaim(c); bad {
+						vs = append(vs, Violation{Code: CodeProposedProductionAuth, Detail: fmt.Sprintf("%s: non-authoritative source %q (status=%s) cannot authorize %s for %s", id, srcID, src.Status, claim, c.ID)})
+					}
 				}
 			}
 		}
@@ -299,7 +389,6 @@ func validateRequirements(reg Registry, idx *CodeIndex, actionMap actionMapDocSt
 				vs = append(vs, Violation{Code: CodeConnectedNoEntrypoint, Detail: fmt.Sprintf("requirement %s: entrypoint not found: %s", id, ep)})
 			}
 		}
-		_ = actionMap
 	}
 	return vs
 }

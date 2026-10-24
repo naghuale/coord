@@ -2,6 +2,7 @@ package architecturecheck
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -154,6 +155,7 @@ func TestActiveWithoutRuntimeKills(t *testing.T) {
 }
 
 func TestProposedProductionAuthorityKills(t *testing.T) {
+	// Legacy self-declared PROPOSED row: still fails when registry source is proposed.
 	dir := t.TempDir()
 	writeMinimalFixture(t, dir, func(reg *Registry) {
 		reg.Components[0].Code = "PARTIAL"
@@ -164,19 +166,138 @@ func TestProposedProductionAuthorityKills(t *testing.T) {
 		reg.Components[0].Evidence.Tests = []string{"TestFixtureOK"}
 		reg.Requirements = map[string]Requirement{
 			"CM-TEST": {
-				SourceDocumentID: "adr-0001",
+				SourceDocumentID: "src-proposed",
 				Section:          "1",
 				Component:        "fixture-component",
-				NormativeStatus:  "PROPOSED",
+				NormativeStatus:  "ACCEPTED", // row cannot raise; registry wins (F97-1)
 			},
 		}
 	})
-	res, err := Check(Options{Root: dir, SkipChangedDocs: true})
+	writeDocRegistry(t, dir, `apiVersion: coord.dev/v1alpha1
+kind: DocumentRegistry
+documents:
+  - id: src-proposed
+    path: docs/proposed.md
+    status: proposed
+`)
+	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !hasCode(res.Violations, CodeProposedProductionAuth) {
 		t.Fatalf("expected %s, got %v", CodeProposedProductionAuth, res.Violations)
+	}
+}
+
+// F97-1: registry says proposed, row claims ACCEPTED, Production ACTIVE -> FAIL.
+func TestF97_1_RegistryProposedRowAcceptedProductionActiveKills(t *testing.T) {
+	dir := t.TempDir()
+	writeMinimalFixture(t, dir, func(reg *Registry) {
+		setAxes(&reg.Components[0], "PARTIAL", "TEST_ONLY", "PARTIAL", "ACTIVE")
+		reg.Requirements = map[string]Requirement{
+			"CM-F97-1": {
+				SourceDocumentID: "src-proposed",
+				Section:          "1",
+				Component:        "fixture-component",
+				NormativeStatus:  "ACCEPTED",
+			},
+		}
+	})
+	writeDocRegistry(t, dir, docRegistryYAML("src-proposed", "proposed"))
+	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCode(res.Violations, CodeProposedProductionAuth) {
+		t.Fatalf("expected %s, got %v", CodeProposedProductionAuth, res.Violations)
+	}
+}
+
+// F97-1: source missing from registry -> FAIL for production claim.
+func TestF97_1_MissingSourceDocumentKills(t *testing.T) {
+	dir := t.TempDir()
+	writeMinimalFixture(t, dir, func(reg *Registry) {
+		setAxes(&reg.Components[0], "PARTIAL", "TEST_ONLY", "PARTIAL", "ACTIVE")
+		reg.Requirements = map[string]Requirement{
+			"CM-MISSING": {
+				SourceDocumentID: "does-not-exist",
+				Section:          "1",
+				Component:        "fixture-component",
+				NormativeStatus:  "ACCEPTED",
+			},
+		}
+	})
+	writeDocRegistry(t, dir, `apiVersion: coord.dev/v1alpha1
+kind: DocumentRegistry
+documents: []
+`)
+	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCode(res.Violations, CodeUnknownRequirementID) {
+		t.Fatalf("expected unresolved source %s, got %v", CodeUnknownRequirementID, res.Violations)
+	}
+	if !hasCode(res.Violations, CodeProposedProductionAuth) {
+		t.Fatalf("expected %s for missing source production claim, got %v", CodeProposedProductionAuth, res.Violations)
+	}
+}
+
+// F97-1: historical / superseded source cannot authorize production claims.
+func TestF97_1_HistoricalAndSupersededSourceKillProductionClaims(t *testing.T) {
+	for _, status := range []string{"historical", "superseded"} {
+		status := status
+		t.Run(status, func(t *testing.T) {
+			dir := t.TempDir()
+			writeMinimalFixture(t, dir, func(reg *Registry) {
+				setAxes(&reg.Components[0], "IMPLEMENTED", "PRODUCTION_CONNECTED", "PASS", "DISABLED")
+				reg.Components[0].ProductionEntrypoints = []string{"FixtureSymbol"}
+				reg.Requirements = map[string]Requirement{
+					"CM-HIST": {
+						SourceDocumentID: "src-" + status,
+						Section:          "1",
+						Component:        "fixture-component",
+						NormativeStatus:  "ACCEPTED",
+					},
+				}
+			})
+			writeDocRegistry(t, dir, docRegistryYAML("src-"+status, status))
+			res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !hasCode(res.Violations, CodeProposedProductionAuth) {
+				t.Fatalf("expected %s for status=%s, got %v", CodeProposedProductionAuth, status, res.Violations)
+			}
+		})
+	}
+}
+
+// F97-1 positive control: accepted source + production claim -> PASS (no CodeProposedProductionAuth).
+func TestF97_1_AcceptedSourceAllowsProductionClaim(t *testing.T) {
+	dir := t.TempDir()
+	writeMinimalFixture(t, dir, func(reg *Registry) {
+		setAxes(&reg.Components[0], "IMPLEMENTED", "PRODUCTION_CONNECTED", "PASS", "ACTIVE")
+		reg.Components[0].ProductionEntrypoints = []string{"FixtureSymbol"}
+		reg.Requirements = map[string]Requirement{
+			"CM-OK": {
+				SourceDocumentID: "src-accepted",
+				Section:          "1",
+				Component:        "fixture-component",
+				NormativeStatus:  "PROPOSED", // row cannot lower either for this check; registry accepted wins
+			},
+		}
+	})
+	writeDocRegistry(t, dir, docRegistryYAML("src-accepted", "accepted"))
+	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasCode(res.Violations, CodeProposedProductionAuth) {
+		t.Fatalf("accepted source must allow production claim, got %v", res.Violations)
+	}
+	if hasCode(res.Violations, CodeUnknownRequirementID) {
+		t.Fatalf("accepted source must resolve, got %v", res.Violations)
 	}
 }
 
@@ -244,6 +365,37 @@ func TestUnclassifiedActionMapHitKills(t *testing.T) {
 	}
 }
 
+// F97-3: empty / absent classification inventory must not disable the scan.
+func TestF97_3_EmptyClassificationsWithHitKills(t *testing.T) {
+	dir := t.TempDir()
+	writeMinimalFixture(t, dir, func(reg *Registry) {
+		reg.ActionMapReferenceClassifications = nil
+	})
+	mustWrite(t, filepath.Join(dir, "docs/ARCHITECTURE.md"), "<!-- fixture-component -->\nAction Map checklist line.\n")
+	res, err := Check(Options{Root: dir, SkipChangedDocs: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCode(res.Violations, CodeUnclassifiedActionMap) {
+		t.Fatalf("expected %s with empty classifications, got %v", CodeUnclassifiedActionMap, res.Violations)
+	}
+}
+
+func TestF97_3_AbsentClassificationsWithHitKills(t *testing.T) {
+	dir := t.TempDir()
+	writeMinimalFixture(t, dir, func(reg *Registry) {
+		reg.ActionMapReferenceClassifications = []ActionMapReferenceClassification{}
+	})
+	mustWrite(t, filepath.Join(dir, "docs/ARCHITECTURE.md"), "<!-- fixture-component -->\nSee ACTION-MAP.yaml for steps.\n")
+	res, err := Check(Options{Root: dir, SkipChangedDocs: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCode(res.Violations, CodeUnclassifiedActionMap) {
+		t.Fatalf("expected %s with absent/empty inventory, got %v", CodeUnclassifiedActionMap, res.Violations)
+	}
+}
+
 func TestMakefileAndWorkflowUseGoBlocking(t *testing.T) {
 	root := repoRoot(t)
 	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
@@ -303,6 +455,31 @@ func repoRoot(t *testing.T) string {
 	}
 	// internal/architecturecheck -> repo root
 	return filepath.Clean(filepath.Join(wd, "../.."))
+}
+
+func setAxes(c *Component, code, connection, qualification, production string) {
+	c.Code = code
+	c.Connection = connection
+	c.Qualification = qualification
+	c.Production = production
+	c.Evidence.Symbols = []string{"FixtureSymbol"}
+	c.Evidence.Tests = []string{"TestFixtureOK"}
+}
+
+func docRegistryYAML(id, status string) string {
+	return fmt.Sprintf(`apiVersion: coord.dev/v1alpha1
+kind: DocumentRegistry
+documents:
+  - id: %s
+    path: docs/%s.md
+    status: %s
+`, id, id, status)
+}
+
+func writeDocRegistry(t *testing.T, dir, yaml string) {
+	t.Helper()
+	mustMkdir(t, filepath.Join(dir, "docs"))
+	mustWrite(t, filepath.Join(dir, "docs/DOCUMENT-REGISTRY.yaml"), yaml)
 }
 
 func writeMinimalFixture(t *testing.T, dir string, mutate func(*Registry)) {

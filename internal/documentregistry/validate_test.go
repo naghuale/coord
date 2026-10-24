@@ -245,6 +245,101 @@ documents:
 	}
 }
 
+// F97-2: each authority flag on a proposed document must fail independently.
+func TestF97_2_ProposedCanonicalProductionAuthorityKills(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "docs"), 0750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "docs/a.md"), []byte(""), 0600); err != nil {
+		t.Fatal(err)
+	}
+	y := `apiVersion: coord.dev/v1alpha1
+kind: DocumentRegistry
+documents:
+  - id: proposed-prod
+    path: docs/a.md
+    class: process
+    status: proposed
+    purpose: [x]
+    usedBy: [COORDINATOR]
+    readWhen: [SESSION_START]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: true
+    normativeAuthority: none
+    ownership: {}
+    acceptance: {}
+`
+	vs := violations(t, y, root)
+	if !hasCode(vs, "PROPOSED_PRODUCTION_AUTHORITY") {
+		t.Errorf("expected PROPOSED_PRODUCTION_AUTHORITY, got: %v", vs)
+	}
+}
+
+func TestF97_2_ProposedCurrentOperationalAuthorityKills(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "docs"), 0750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "docs/a.md"), []byte(""), 0600); err != nil {
+		t.Fatal(err)
+	}
+	y := `apiVersion: coord.dev/v1alpha1
+kind: DocumentRegistry
+documents:
+  - id: proposed-ops
+    path: docs/a.md
+    class: process
+    status: proposed
+    purpose: [x]
+    usedBy: [COORDINATOR]
+    readWhen: [SESSION_START]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    normativeAuthority: none
+    ownership: {}
+    acceptance: {}
+`
+	vs := violations(t, y, root)
+	if !hasCode(vs, "PROPOSED_OPERATIONAL_AUTHORITY") {
+		t.Errorf("expected PROPOSED_OPERATIONAL_AUTHORITY, got: %v", vs)
+	}
+}
+
+func TestF97_2_ProposedCurrentNormativeAuthorityKills(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "docs"), 0750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "docs/a.md"), []byte(""), 0600); err != nil {
+		t.Fatal(err)
+	}
+	y := `apiVersion: coord.dev/v1alpha1
+kind: DocumentRegistry
+documents:
+  - id: proposed-norm-flag
+    path: docs/a.md
+    class: process
+    status: proposed
+    purpose: [x]
+    usedBy: [COORDINATOR]
+    readWhen: [SESSION_START]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: none
+    currentNormativeAuthority: true
+    ownership: {}
+    acceptance: {}
+`
+	vs := violations(t, y, root)
+	if !hasCode(vs, "PROPOSED_MANDATORY_AUTHORITY") {
+		t.Errorf("expected PROPOSED_MANDATORY_AUTHORITY, got: %v", vs)
+	}
+}
+
 func TestHistoricalCurrentAuthority(t *testing.T) {
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "docs"), 0750); err != nil {

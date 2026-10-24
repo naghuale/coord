@@ -213,13 +213,27 @@ func validate(reg Registry, opts Options, reader ExternalBlobReader) Result {
 			out.Violations = append(out.Violations, Violation{Code: "LEGACY_CANONICAL_AUTHORITY", Detail: fmt.Sprintf("%s: legacy doc cannot be canonical production authority", loc)})
 		}
 
-		if doc.Status == StatusProposed &&
-			normativeAuthorityAllowlist[doc.NormativeAuthority] &&
-			doc.CurrentNormativeAuthority != nil && *doc.CurrentNormativeAuthority {
-			out.Violations = append(out.Violations, Violation{
-				Code:   "PROPOSED_MANDATORY_AUTHORITY",
-				Detail: fmt.Sprintf("%s: proposed doc claims current normative authority %q", loc, doc.NormativeAuthority),
-			})
+		// PROPOSED is never production, operational, or current-normative authority,
+		// regardless of the normativeAuthority vocabulary string.
+		if doc.Status == StatusProposed {
+			if doc.CanonicalProductionAuthority {
+				out.Violations = append(out.Violations, Violation{
+					Code:   "PROPOSED_PRODUCTION_AUTHORITY",
+					Detail: fmt.Sprintf("%s: proposed doc cannot set canonicalProductionAuthority", loc),
+				})
+			}
+			if doc.CurrentOperationalAuthority {
+				out.Violations = append(out.Violations, Violation{
+					Code:   "PROPOSED_OPERATIONAL_AUTHORITY",
+					Detail: fmt.Sprintf("%s: proposed doc cannot set currentOperationalAuthority", loc),
+				})
+			}
+			if doc.CurrentNormativeAuthority != nil && *doc.CurrentNormativeAuthority {
+				out.Violations = append(out.Violations, Violation{
+					Code:   "PROPOSED_MANDATORY_AUTHORITY",
+					Detail: fmt.Sprintf("%s: proposed doc cannot set currentNormativeAuthority", loc),
+				})
+			}
 		}
 
 		if doc.Class != "normative" &&

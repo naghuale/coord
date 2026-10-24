@@ -35,9 +35,8 @@ var defaultActionMapScanPaths = []string{
 }
 
 func validateActionMapRefs(root string, reg Registry, actionMap actionMapDocStatus) []Violation {
-	if len(reg.ActionMapReferenceClassifications) == 0 {
-		return nil
-	}
+	// NV-4 inventory is required schema when Action Map hits exist (F97-3).
+	// An empty or absent classification list never disables the scan.
 	var vs []Violation
 	classified := map[string]ActionMapReferenceClassification{}
 	for _, c := range reg.ActionMapReferenceClassifications {
@@ -53,6 +52,9 @@ func validateActionMapRefs(root string, reg Registry, actionMap actionMapDocStat
 	}
 
 	hits := scanActionMapHits(root)
+	if len(hits) > 0 && len(reg.ActionMapReferenceClassifications) == 0 {
+		vs = append(vs, Violation{Code: CodeUnclassifiedActionMap, Detail: "actionMapReferenceClassifications is required when Action Map hits exist (empty or absent inventory)"})
+	}
 	for _, hit := range hits {
 		key := fmt.Sprintf("%s:%d", hit.path, hit.line)
 		if _, ok := classified[key]; !ok {
