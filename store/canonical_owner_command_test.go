@@ -5,7 +5,9 @@ import (
 	"coord/ownercredential"
 	"coord/task"
 	"coord/taskid"
+	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
@@ -13,6 +15,7 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 )
 
 type ownerCommandFixture struct {
@@ -60,15 +63,45 @@ func (f *ownerCommandFixture) command(kind, messageID, signer string, revision u
 }
 
 func assertionFor(command ownercredential.Command, private ed25519.PrivateKey, count uint32) ownercredential.Assertion {
-	clientData, _ := json.Marshal(map[string]any{"type": "webauthn.get", "challenge": command.WebAuthnChallenge, "origin": "http://localhost:8090"})
+	return assertionWithWebAuthnFields(command, private, count, command.WebAuthnChallenge, "webauthn.get", "localhost", 0x05)
+}
+
+func assertionWithWebAuthnFields(command ownercredential.Command, private ed25519.PrivateKey, count uint32, challenge, clientType, rpID string, flags byte) ownercredential.Assertion {
+	clientData, _ := json.Marshal(map[string]any{"type": clientType, "challenge": challenge, "origin": "http://localhost:8090"})
 	authData := make([]byte, 37)
-	rpHash := sha256.Sum256([]byte("localhost"))
+	rpHash := sha256.Sum256([]byte(rpID))
 	copy(authData[:32], rpHash[:])
-	authData[32] = 0x05 // UP + UV
+	authData[32] = flags
 	binary.BigEndian.PutUint32(authData[33:], count)
 	clientHash := sha256.Sum256(clientData)
 	signed := append(append([]byte(nil), authData...), clientHash[:]...)
 	return ownercredential.Assertion{ClientDataJSON: clientData, AuthenticatorData: authData, Signature: ed25519.Sign(private, signed)}
+}
+
+func assertOwnerCommandRejectedWithoutWrite(t *testing.T, f *ownerCommandFixture, command ownercredential.Command, assertion ownercredential.Assertion, want error) {
+	t.Helper()
+	before := ownerStateBytes(t, f.s)
+	saves := f.p.saveCalls
+	if _, replayed, err := f.s.ApplyOwnerCredentialCommand(command.ChallengeID, command, assertion); !errors.Is(err, want) || replayed {
+		t.Fatalf("command replayed=%v error=%v want=%v", replayed, err, want)
+	}
+	if !bytes.Equal(before, ownerStateBytes(t, f.s)) || f.p.saveCalls != saves {
+		t.Fatalf("rejected command changed canonical state or saved: saves=%d want=%d", f.p.saveCalls, saves)
+	}
+}
+
+func edDSACOSE(publicKey []byte) []byte {
+	encoded := []byte{0xa4, 0x01, 0x01, 0x03, 0x27, 0x20, 0x06, 0x21, 0x58, 0x20}
+	return append(encoded, publicKey...)
+}
+
+func registerPayload(t *testing.T, id string, cose []byte) []byte {
+	t.Helper()
+	payload, err := json.Marshal(ownercredential.RegisterCredentialPayload{CredentialID: id, COSEPublicKey: cose})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return payload
 }
 
 func ownerStateBytes(t *testing.T, s *CanonicalStore) []byte {
@@ -395,6 +428,134 @@ func TestOwnerTaskCreateRejectsDifferentTaskOwnerUnknownPrincipalAndWrongCommand
 	}
 	if !bytes.Equal(before, ownerStateBytes(t, f.s)) || f.p.saveCalls != 1 {
 		t.Fatal("unknown principal or command-kind substitution changed canonical state")
+	}
+}
+
+func TestOwnerAssertionRejectsClientDataChallengeForDifferentCommand(t *testing.T) {
+	f := newOwnerCommandFixture(t)
+	payload, _ := json.Marshal(ownercredential.RevokeCredentialPayload{CredentialID: "owner-backup"})
+	command := f.command(ownercredential.CommandRevokeCredential, "challenge-bound-command", "owner-primary", 1, payload)
+	other := f.command(ownercredential.CommandRevokeCredential, "different-command", "owner-primary", 1, payload)
+	assertion := assertionWithWebAuthnFields(command, f.private["owner-primary"], 1, other.WebAuthnChallenge, "webauthn.get", "localhost", 0x05)
+	assertOwnerCommandRejectedWithoutWrite(t, f, command, assertion, ErrOwnerCommandInvalid)
+}
+
+func TestOwnerRevokedCredentialCannotSignCommand(t *testing.T) {
+	f := newOwnerCommandFixture(t)
+	revokePayload, _ := json.Marshal(ownercredential.RevokeCredentialPayload{CredentialID: "owner-backup"})
+	revoke := f.command(ownercredential.CommandRevokeCredential, "revoke-backup-before-stale-key", "owner-primary", 1, revokePayload)
+	if _, _, err := f.s.ApplyOwnerCredentialCommand(revoke.ChallengeID, revoke, assertionFor(revoke, f.private["owner-primary"], 1)); err != nil {
+		t.Fatal(err)
+	}
+
+	newPublic, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := registerPayload(t, "owner-third", edDSACOSE(newPublic))
+	// Inject a structurally valid current-revision challenge to exercise the
+	// apply-side credential-active check independently of challenge issuance.
+	command, err := ownercredential.NewChallenge(ownercredential.CommandRequest{
+		Kind: ownercredential.CommandRegisterCredential, MessageID: "revoked-key-command", PrincipalID: "owner-1",
+		CredentialID: "owner-backup", ExpectedCredentialRevision: 2, Payload: payload,
+	}, f.s.now().UTC(), ownercredential.ChallengeLifetime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.s.ownerChallenges[command.ChallengeID] = command
+	assertOwnerCommandRejectedWithoutWrite(t, f, command, assertionFor(command, f.private["owner-backup"], 1), ErrOwnerCredentialInactive)
+}
+
+func TestOwnerCommandExpiredChallengeRejectsWithoutWrite(t *testing.T) {
+	f := newOwnerCommandFixture(t)
+	clock := &canonicalTestClock{now: time.Now().UTC()}
+	f.s.now = clock.Now
+	payload, _ := json.Marshal(ownercredential.RevokeCredentialPayload{CredentialID: "owner-backup"})
+	command := f.command(ownercredential.CommandRevokeCredential, "expired-command", "owner-primary", 1, payload)
+	assertion := assertionFor(command, f.private["owner-primary"], 1)
+	clock.advance(ownercredential.ChallengeLifetime + time.Nanosecond)
+	assertOwnerCommandRejectedWithoutWrite(t, f, command, assertion, ErrOwnerChallengeExpired)
+}
+
+func TestOwnerCommandRejectsChallengeAtPriorCredentialRevisionWithoutWrite(t *testing.T) {
+	f := newOwnerCommandFixture(t)
+	firstPublic, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondPublic, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := f.command(ownercredential.CommandRegisterCredential, "revision-first", "owner-primary", 1, registerPayload(t, "owner-third", edDSACOSE(firstPublic)))
+	second := f.command(ownercredential.CommandRegisterCredential, "revision-second", "owner-primary", 1, registerPayload(t, "owner-fourth", edDSACOSE(secondPublic)))
+	if _, _, err := f.s.ApplyOwnerCredentialCommand(first.ChallengeID, first, assertionFor(first, f.private["owner-primary"], 1)); err != nil {
+		t.Fatal(err)
+	}
+	assertOwnerCommandRejectedWithoutWrite(t, f, second, assertionFor(second, f.private["owner-primary"], 2), ErrOwnerCredentialRevision)
+}
+
+func TestOwnerCommandRejectsInvalidRPIDPresenceAndClientDataTypeWithoutWrite(t *testing.T) {
+	cases := []struct {
+		name       string
+		clientType string
+		rpID       string
+		flags      byte
+	}{
+		{name: "wrong rp id hash", clientType: "webauthn.get", rpID: "elsewhere.local", flags: 0x05},
+		{name: "uv without up", clientType: "webauthn.get", rpID: "localhost", flags: 0x04},
+		{name: "creation client data type", clientType: "webauthn.create", rpID: "localhost", flags: 0x05},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newOwnerCommandFixture(t)
+			payload, _ := json.Marshal(ownercredential.RevokeCredentialPayload{CredentialID: "owner-backup"})
+			command := f.command(ownercredential.CommandRevokeCredential, "invalid-webauthn-"+tc.name, "owner-primary", 1, payload)
+			assertion := assertionWithWebAuthnFields(command, f.private["owner-primary"], 1, command.WebAuthnChallenge, tc.clientType, tc.rpID, tc.flags)
+			assertOwnerCommandRejectedWithoutWrite(t, f, command, assertion, ErrOwnerCommandInvalid)
+		})
+	}
+}
+
+func TestOwnerCredentialRegisterRejectsDuplicateCOSELabelWithoutWrite(t *testing.T) {
+	f := newOwnerCommandFixture(t)
+	otherPublic, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cose := []byte{0xa5, 0x01, 0x01, 0x03, 0x27, 0x20, 0x06, 0x21, 0x58, 0x20}
+	cose = append(cose, f.credentials["owner-backup"].PublicKey...)
+	cose = append(cose, 0x21, 0x58, 0x20) // duplicate -2 (x) label with a different key
+	cose = append(cose, otherPublic...)
+	command := f.command(ownercredential.CommandRegisterCredential, "duplicate-cose-label", "owner-primary", 1, registerPayload(t, "owner-third", cose))
+	assertOwnerCommandRejectedWithoutWrite(t, f, command, assertionFor(command, f.private["owner-primary"], 1), ErrOwnerCommandInvalid)
+}
+
+func TestOwnerCredentialRegisterRejectsCOSEKeyTypeAlgorithmMismatchWithoutWrite(t *testing.T) {
+	p256Key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	x := p256Key.X.FillBytes(make([]byte, 32))
+	y := p256Key.Y.FillBytes(make([]byte, 32))
+	validP256 := []byte{0xa5, 0x01, 0x02, 0x03, 0x27, 0x20, 0x01, 0x21, 0x58, 0x20}
+	validP256 = append(validP256, x...)
+	validP256 = append(validP256, 0x22, 0x58, 0x20)
+	validP256 = append(validP256, y...)
+	validEd25519 := make([]byte, 32)
+	cases := []struct {
+		name string
+		cose []byte
+	}{
+		{name: "EC2 with EdDSA algorithm", cose: validP256},
+		{name: "OKP with ES256 algorithm", cose: append([]byte{0xa4, 0x01, 0x01, 0x03, 0x26, 0x20, 0x06, 0x21, 0x58, 0x20}, validEd25519...)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newOwnerCommandFixture(t)
+			command := f.command(ownercredential.CommandRegisterCredential, "cose-mismatch-"+tc.name, "owner-primary", 1, registerPayload(t, "owner-third", tc.cose))
+			assertOwnerCommandRejectedWithoutWrite(t, f, command, assertionFor(command, f.private["owner-primary"], 1), ErrOwnerCommandInvalid)
+		})
 	}
 }
 
