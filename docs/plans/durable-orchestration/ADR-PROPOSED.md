@@ -1,7 +1,7 @@
 # ADR-DRAFT: Durable orchestration в существующем coordd
 
 - **Статус:** Proposed — не является принятой нормой или разрешением production implementation.
-- **Эксплуатационная пометка (2026-10-24):** OWNER решил отключить durable orchestration до принятия этого ADR (#96). До посадки #96 fixture-only runtime всё ещё подключён в `coordd`. Эта пометка не меняет код и не принимает ADR. Аутентифицированный production write path остаётся за #93 и #95.
+- **Эксплуатационная пометка (2026-10-24):** Durable orchestration в production `coordd` отключена (DISABLE_PENDING_ACCEPTANCE, #96): recovery/tick/adapter/projection не выполняются; данные и read-only OwnsRun fencing сохранены. Включение возможно только в явном test harness, без production env/config/flag. Возврат требует одновременно принятого orchestration ADR и готового аутентифицированного единого пути записи; этот статус не принимает ADR. Аутентифицированный production write path остаётся за #93 и #95.
 - **Дата:** 2026-10-15.
 - **Номер ADR:** не назначен. ADR-0006 и ADR-0009 уже упоминаются в архитектуре как отдельные контракты; этот draft не занимает их номера.
 - **Класс решения:** R; класс implementation slice: TD-R2.

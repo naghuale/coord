@@ -13,6 +13,8 @@ import (
 	"coord/internal/coorddconfig"
 	"coord/internal/externalaction"
 	"coord/internal/filelock"
+	"coord/internal/orchestration"
+	"coord/internal/projection"
 	"coord/roles"
 	"coord/store"
 	"coord/task"
@@ -907,36 +909,30 @@ func replayHelper(stateDir string) {
 	_ = coordinator.Close()
 }
 
-func TestCoorddPublishesCanonicalRevisionBundle(t *testing.T) {
+func TestExplicitOrchestrationHarnessPublishesCanonicalRevisionBundle(t *testing.T) {
 	cfg := testConfig(t)
-	cfg.ControlAddr, cfg.MetricsAddr = freeLoopbackAddrs(t)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	done := make(chan error, 1)
-	go func() {
-		done <- run(ctx, cfg, func(context.Context, coorddconfig.Config) (transport.Transport, func() error, error) {
-			return &idleTransport{session: "coordd", in: make(chan envelope.Envelope)}, func() error { return nil }, nil
-		})
-	}()
-	path := filepath.Join(cfg.StateDir, "operations", "current.json")
-	timer := time.NewTimer(5 * time.Second)
-	defer timer.Stop()
-	ticker := time.NewTicker(10 * time.Millisecond)
-	defer ticker.Stop()
-	var data []byte
-	for {
-		var err error
-		data, err = os.ReadFile(path)
-		if err == nil {
-			break
-		}
-		select {
-		case err := <-done:
-			t.Fatalf("coordd stopped before projection: %v", err)
-		case <-ticker.C:
-		case <-timer.C:
-			t.Fatal("coordd never wired projection runtime")
-		}
+	canonical, err := store.NewCanonical(checkpoint.CanonicalFile{Path: filepath.Join(cfg.StateDir, "canonical.json")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = canonical.Close() })
+	c, err := coord.New(&idleTransport{session: "explicit-harness", in: make(chan envelope.Envelope)}, canonical, coord.DefaultConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// #96: a production start must not generate this bundle. Keep the positive
+	// projection contract in the explicit test-only harness instead.
+	enabledOrchestrationHarness(c, canonical, nil, time.Now().UTC())
+	c.Workflow.(*orchestration.Runtime).Projector = &projection.Writer{Root: filepath.Join(cfg.StateDir, "operations")}
+	if err = c.RecoverWorkflow(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err = c.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(cfg.StateDir, "operations", "current.json"))
+	if err != nil {
+		t.Fatal(err)
 	}
 	var manifest struct {
 		Revision uint64            `json:"sourceRevision"`
@@ -948,8 +944,11 @@ func TestCoorddPublishesCanonicalRevisionBundle(t *testing.T) {
 	if len(manifest.Files) != 3 {
 		t.Fatal("incomplete projection bundle")
 	}
-	cancel()
-	if err := <-done; err != nil {
-		t.Fatalf("coordd shutdown: %v", err)
+	snap, err := canonical.CanonicalSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.Revision != snap.Revision {
+		t.Fatalf("projection revision %d differs from canonical %d", manifest.Revision, snap.Revision)
 	}
 }
