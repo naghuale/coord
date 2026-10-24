@@ -528,6 +528,35 @@ documents:
       reviewer: required
       auditor: required
       owner: required_to_accept
+  - id: adr-0010
+    path: docs/ADR-0010-COORDINATOR-DELEGATION.md
+    class: normative
+    status: proposed
+    purpose:
+      - proposed bounded coordinator delegation and ordered succession
+      - records OWNER model D plus S2 for drafting only
+    usedBy:
+      - COORDINATOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - ISSUE_PLANNING
+      - REVIEW
+      - AUDIT
+    updateWhen:
+      - PRODUCT_NORM_CHANGED
+    currentNormativeAuthority: false
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: proposed_direction
+    ownership:
+      creates: COORDINATOR
+      updates: EXECUTOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: required
+      owner: required_to_accept
   - id: component-status
     path: docs/architecture/COMPONENT-STATUS.yaml
     class: architecture_status
