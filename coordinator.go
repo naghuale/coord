@@ -22,6 +22,7 @@ import (
 var ErrTransportClosed = errors.New("transport closed")
 var ErrStale = errors.New("noncanonical identity")
 var ErrUnsupportedLegacyEnvelopeSchema = errors.New("legacy coordinator path does not support envelope schema")
+var ErrLegacyEnvelopeOnAuthenticatedIngress = errors.New("legacy envelope is not accepted by authenticated ingress")
 
 // ErrDeadlineExceeded rejects application events after the absolute run deadline.
 var ErrDeadlineExceeded = errors.New("task deadline exceeded")
@@ -430,14 +431,11 @@ func (c *Coordinator) handleAuthenticatedFrame(ctx context.Context, frame transp
 	if frame.ReceivedBy() != c.tp.WhoAmI() || e.To != c.tp.WhoAmI() {
 		return fmt.Errorf("authenticated frame recipient mismatch")
 	}
-	if e.Kind == envelope.Result && e.SchemaVersion != envelope.SchemaVersionAgentResult {
-		return fmt.Errorf("legacy RESULT is not accepted by the authenticated agent ingress")
+	if e.SchemaVersion != envelope.SchemaVersionAgentResult {
+		return ErrLegacyEnvelopeOnAuthenticatedIngress
 	}
-	if e.SchemaVersion == envelope.SchemaVersionAgentResult && e.Kind != envelope.Result {
+	if e.Kind != envelope.Result {
 		return fmt.Errorf("version-2 agent ingress accepts RESULT only")
-	}
-	if e.SchemaVersion != envelope.SchemaVersionAgentResult || e.Kind != envelope.Result {
-		return c.Handle(ctx, e)
 	}
 	canonical, ok := c.store.(*store.CanonicalStore)
 	if !ok || e.AgentResultPayload == nil {

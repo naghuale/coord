@@ -605,8 +605,8 @@ func TestAuthenticatedIngressRejectsLegacyV1Result(t *testing.T) {
 		t.Fatal("authenticated adapter did not verify legacy test frame")
 	}
 	f.c.tp = &ingressTestTransport{fakeTransport: f.tp, session: "coord"}
-	if err := f.c.handleAuthenticatedFrame(ctx, frame); err == nil {
-		t.Fatal("legacy v1 RESULT passed through authenticated ingress")
+	if err := f.c.handleAuthenticatedFrame(ctx, frame); !errors.Is(err, ErrLegacyEnvelopeOnAuthenticatedIngress) {
+		t.Fatalf("legacy v1 RESULT authenticated-ingress error=%v", err)
 	}
 }
 
