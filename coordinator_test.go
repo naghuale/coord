@@ -156,7 +156,7 @@ func TestAgentResultResponseIsStableAcrossRedelivery(t *testing.T) {
 }
 
 func TestAuthenticatedAgentCommandIngressRemainsDisabledByDefault(t *testing.T) {
-	if authenticatedAgentIngressEnabled {
+	if AuthenticatedAgentIngressEnabled {
 		t.Fatal("production authenticated agent command ingress must remain disabled before explicit cutover")
 	}
 }
@@ -182,14 +182,26 @@ func (r ingressTestKeyResolver) ResolveVerificationKey(context.Context, string) 
 
 type ingressTestTransport struct {
 	*fakeTransport
-	receiver *transport.AuthenticatedAdapter
-	session  string
+	receiver    *transport.AuthenticatedAdapter
+	session     string
+	configured  bool
+	legacyReads int
+	authReads   int
+	authInbox   <-chan transport.AuthenticatedFrame
 }
 
-func (t *ingressTestTransport) WhoAmI() string                       { return t.session }
-func (t *ingressTestTransport) AuthenticatedIngressConfigured() bool { return t.receiver != nil }
+func (t *ingressTestTransport) WhoAmI() string { return t.session }
+func (t *ingressTestTransport) Receive(ctx context.Context) <-chan envelope.Envelope {
+	t.legacyReads++
+	return t.fakeTransport.Receive(ctx)
+}
+func (t *ingressTestTransport) AuthenticatedIngressConfigured() bool { return t.configured }
 func (t *ingressTestTransport) ReceiveAuthenticated(ctx context.Context) <-chan transport.AuthenticatedFrame {
-	return t.receiver.ReceiveAuthenticated(ctx)
+	t.authReads++
+	if t.receiver != nil {
+		return t.receiver.ReceiveAuthenticated(ctx)
+	}
+	return t.authInbox
 }
 
 func newAuthenticatedReviewFixture(t *testing.T) (*store.CanonicalStore, *canonicalAgentEnvelope, ed25519.PrivateKey) {
@@ -340,6 +352,87 @@ func TestAuthenticatedAgentResultRunsOnlyThroughExplicitHarness(t *testing.T) {
 	}
 	if len(tp.sent) != 1 || tp.sent[0].Kind != envelope.ResultAck || tp.sent[0].ResultAckPayload.Disposition != "ACCEPTED" {
 		t.Fatalf("durable result response not delivered: %+v", tp.sent)
+	}
+}
+
+func TestRunWithReadinessKeepsLegacyReceiverWhenAuthenticatedIngressIsOff(t *testing.T) {
+	f := setup(t)
+	probe := &ingressTestTransport{fakeTransport: f.tp, session: "coord", configured: true, authInbox: make(chan transport.AuthenticatedFrame)}
+	f.c.tp = probe
+	ctx, cancel := context.WithCancel(context.Background())
+	err := f.c.RunWithReadiness(ctx, cancel)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("RunWithReadiness error=%v", err)
+	}
+	if probe.legacyReads != 1 || probe.authReads != 0 {
+		t.Fatalf("receiver selection legacy=%d authenticated=%d", probe.legacyReads, probe.authReads)
+	}
+}
+
+func TestRunWithReadinessProcessesLegacyV1ResultAsBefore(t *testing.T) {
+	f := setup(t)
+	f.assign(t)
+	probe := &ingressTestTransport{fakeTransport: f.tp, session: "coord", configured: true, authInbox: make(chan transport.AuthenticatedFrame)}
+	f.c.tp = probe
+	f.tp.in <- f.ack()
+	f.tp.in <- f.heartbeat("STARTED")
+	f.tp.in <- f.heartbeat("RESULT_READY")
+	result := f.reply(envelope.Result)
+	result.ResultPayload = &envelope.ResultPayload{Outcome: "SUCCESS", Artifacts: []string{"blob://legacy-result"}}
+	f.tp.in <- result
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- f.c.RunWithReadiness(ctx, nil) }()
+	deadline := time.After(time.Second)
+	for {
+		if run, ok := f.s.Get("run"); ok && run.Status == fsm.Done {
+			cancel()
+			break
+		}
+		select {
+		case <-deadline:
+			cancel()
+			t.Fatal("legacy version-1 RESULT was not applied by normal receive path")
+		case <-time.After(time.Millisecond):
+		}
+	}
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("RunWithReadiness error=%v", err)
+	}
+	if probe.legacyReads != 1 || probe.authReads != 0 {
+		t.Fatalf("receiver selection legacy=%d authenticated=%d", probe.legacyReads, probe.authReads)
+	}
+}
+
+func TestAuthenticatedIngressRejectsLegacyV1Result(t *testing.T) {
+	f := setup(t)
+	private := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{0x19}, ed25519.SeedSize))
+	e := envelope.Envelope{
+		SchemaVersion: envelope.SchemaVersionLegacyAgent, MessageID: "legacy-authenticated-result",
+		Timestamp: *f.now, From: "codex:worker", To: "coord", Kind: envelope.Result, InReplyTo: "task-delivery",
+		Task: "task_01ARZ3NDEKTSV4RRFFQ69G5FAV", Run: "run-1", Attempt: 1,
+		TargetSHA: strings.Repeat("a", 40), Fence: 1,
+		ResultPayload: &envelope.ResultPayload{Outcome: "SUCCESS", Summary: "legacy result"},
+	}
+	raw, err := envelope.Sign(e, private)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byteClient := &ingressTestByteClient{incoming: make(chan []byte, 1)}
+	byteClient.incoming <- raw
+	signed := &transport.SignedClient{Client: byteClient, Resolver: ingressTestKeyResolver{key: transport.VerificationKey{PublicKey: private.Public().(ed25519.PublicKey), Generation: 1}}}
+	adapter := &transport.AuthenticatedAdapter{Client: signed, Session: "coord"}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var frame transport.AuthenticatedFrame
+	select {
+	case frame = <-adapter.ReceiveAuthenticated(ctx):
+	case <-time.After(time.Second):
+		t.Fatal("authenticated adapter did not verify legacy test frame")
+	}
+	f.c.tp = &ingressTestTransport{fakeTransport: f.tp, session: "coord"}
+	if err := f.c.handleAuthenticatedFrame(ctx, frame); err == nil {
+		t.Fatal("legacy v1 RESULT passed through authenticated ingress")
 	}
 }
 

@@ -718,12 +718,15 @@ func (c *Coordinator) RunWithReadiness(ctx context.Context, onReady func()) erro
 	}
 	var inbox <-chan envelope.Envelope
 	var authenticatedInbox <-chan transport.AuthenticatedFrame
-	if receiver, ok := c.tp.(transport.ConfiguredAuthenticatedReceiver); ok && receiver.AuthenticatedIngressConfigured() {
-		authenticatedInbox = receiver.ReceiveAuthenticated(ctx)
-		if authenticatedInbox == nil {
-			return fmt.Errorf("authenticated transport receive returned nil channel")
+	if AuthenticatedAgentIngressEnabled {
+		if receiver, ok := c.tp.(transport.ConfiguredAuthenticatedReceiver); ok && receiver.AuthenticatedIngressConfigured() {
+			authenticatedInbox = receiver.ReceiveAuthenticated(ctx)
+			if authenticatedInbox == nil {
+				return fmt.Errorf("authenticated transport receive returned nil channel")
+			}
 		}
-	} else {
+	}
+	if authenticatedInbox == nil {
 		inbox = c.tp.Receive(ctx)
 		if inbox == nil {
 			return fmt.Errorf("transport receive returned nil channel")
@@ -762,7 +765,7 @@ func (c *Coordinator) RunWithReadiness(ctx context.Context, onReady func()) erro
 				return ErrTransportClosed
 			}
 			e := frame.Envelope()
-			if e.SchemaVersion == envelope.SchemaVersionAgentResult && !authenticatedAgentIngressEnabled {
+			if e.SchemaVersion == envelope.SchemaVersionAgentResult && !AuthenticatedAgentIngressEnabled {
 				c.Metrics.Inc("rejected_messages_total")
 				continue
 			}
@@ -788,4 +791,4 @@ func (c *Coordinator) RunWithReadiness(ctx context.Context, onReady func()) erro
 
 // Agent results remain disabled in production until a separate OWNER-authorized
 // ledger cutover. Tests exercise handleAuthenticatedFrame directly.
-const authenticatedAgentIngressEnabled = false
+const AuthenticatedAgentIngressEnabled = false

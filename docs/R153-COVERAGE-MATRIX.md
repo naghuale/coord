@@ -18,8 +18,10 @@ Status applies to this slice; Review/Audit on the frozen SHA still required.
 Operational cutover: the ledger is merged (PR #98, `0c6eaf469024822a34fc501b5349ddcb68b70cc2`) and is not active. Cutover remains BLOCKED_ON_WRITE_AUTHORITY, deliberately deferred by OWNER
 option (a) to follow-up #93 (COMMAND-BOUNDARY §3.2). #95 is the agent command ingress.
 No direct canonical write CLI or legacy credential reuse is authorized. #95's
-authenticated v2 handler is wired into the daemon receive loop but compile-time
-disabled in production; no production ledger cutover is claimed.
+authenticated v2 handler is available behind a compile-time gate. With the gate
+false, production coordd retains the pre-#95 configured-peer `Receive` path,
+including legacy v1 result handling; the authenticated adapter is not installed.
+No production ledger cutover is claimed.
 
 Overall WP-R153-04: PARTIALLY_IMPLEMENTED. Overall WP-R153-06:
 PARTIALLY_IMPLEMENTED. WP-R153-01/02/03 full registry/source adapters/model mapping,

@@ -214,16 +214,8 @@ func runWithWriterFactories(ctx context.Context, cfg coorddconfig.Config, factor
 		}
 		return &startupFailure{section: "transport", ownership: "released", namespaceLock: "released", exitCode: 1, err: errors.Join(fmt.Errorf("transport factory returned incomplete runtime"), closeErr, registry.Close(), canonical.Close())}
 	}
-	if configurable, ok := tp.(interface {
-		ConfigureAgentSessionIngress(transport.KeyResolver) error
-	}); ok {
-		canonicalStore, ok := canonical.(*store.CanonicalStore)
-		if !ok {
-			return &startupFailure{section: "transport", ownership: "released", namespaceLock: "released", exitCode: 1, err: errors.Join(fmt.Errorf("AgentSession ingress requires CanonicalStore"), closeTransport(), registry.Close(), canonical.Close())}
-		}
-		if err = configurable.ConfigureAgentSessionIngress(canonicalAgentSessionResolver{store: canonicalStore}); err != nil {
-			return &startupFailure{section: "transport", ownership: "released", namespaceLock: "released", exitCode: 1, err: errors.Join(fmt.Errorf("configure authenticated agent ingress: %w", err), closeTransport(), registry.Close(), canonical.Close())}
-		}
+	if err = configureAuthenticatedAgentIngress(tp, canonical); err != nil {
+		return &startupFailure{section: "transport", ownership: "released", namespaceLock: "released", exitCode: 1, err: errors.Join(fmt.Errorf("configure authenticated agent ingress: %w", err), closeTransport(), registry.Close(), canonical.Close())}
 	}
 
 	coordinator, err := coord.New(tp, canonical, coord.DefaultConfig())
@@ -250,6 +242,23 @@ func runWithWriterFactories(ctx context.Context, cfg coorddconfig.Config, factor
 		return &startupFailure{section: "runtime", ownership: "released", namespaceLock: "released", exitCode: 1, err: err}
 	}
 	return nil
+}
+
+func configureAuthenticatedAgentIngress(tp transport.Transport, canonical store.RunStore) error {
+	if !coord.AuthenticatedAgentIngressEnabled {
+		return nil
+	}
+	configurable, ok := tp.(interface {
+		ConfigureAgentSessionIngress(transport.KeyResolver) error
+	})
+	if !ok {
+		return nil
+	}
+	canonicalStore, ok := canonical.(*store.CanonicalStore)
+	if !ok {
+		return fmt.Errorf("AgentSession ingress requires CanonicalStore")
+	}
+	return configurable.ConfigureAgentSessionIngress(canonicalAgentSessionResolver{store: canonicalStore})
 }
 
 type canonicalAgentSessionResolver struct{ store *store.CanonicalStore }

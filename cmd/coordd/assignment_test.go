@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"coord"
 	"coord/assignment"
 	"coord/checkpoint"
 	"coord/internal/coorddconfig"
@@ -14,6 +15,29 @@ import (
 	"io"
 	"testing"
 )
+
+type agentIngressConfigurationSpy struct {
+	transport.Transport
+	configured int
+}
+
+func (s *agentIngressConfigurationSpy) ConfigureAgentSessionIngress(transport.KeyResolver) error {
+	s.configured++
+	return nil
+}
+
+func TestProductionCompositionDoesNotConfigureAgentSessionIngress(t *testing.T) {
+	if coord.AuthenticatedAgentIngressEnabled {
+		t.Fatal("production authenticated ingress must remain disabled pending cutover")
+	}
+	spy := &agentIngressConfigurationSpy{}
+	if err := configureAuthenticatedAgentIngress(spy, nil); err != nil {
+		t.Fatal(err)
+	}
+	if spy.configured != 0 {
+		t.Fatalf("normal production composition configured authenticated ingress %d times", spy.configured)
+	}
+}
 
 func TestAssignmentFrozenModeConfiguredBeforeTransport(t *testing.T) {
 	cfg := testConfig(t)
