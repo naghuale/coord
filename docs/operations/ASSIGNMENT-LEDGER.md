@@ -110,7 +110,7 @@ change authority. Delivery is not ACK/admission/workStarted/result acceptance.
 All mutating service APIs require the authenticated authorized command boundary,
 as existing RegisterAgentSession does. A caller-provided principal/evidence string
 by itself grants no external permission. No new transport or general supervisor
-permission has been created. Production cutover is BLOCKED_ON_WRITE_AUTHORITY
+permission has been created. The ledger implementation is merged (PR #98, `0c6eaf469024822a34fc501b5349ddcb68b70cc2`) and is not an active cutover. Production cutover is BLOCKED_ON_WRITE_AUTHORITY
 until follow-up #93 provides the OWNER-authorized coordinator-usable write boundary. See the cutover runbook for actual integration limits.
 
 ## Read-only status (M3)

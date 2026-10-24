@@ -719,7 +719,7 @@ generation checks и идемпотентность. Переноса тольк
 - ReviewResult и AuditResult (canonical record + Domain Event);
 - canonical Discussion Graph core.
 
-Следующий шаг — ограниченная Shadow Validation и приёмка границы этапа (P0-2 выполнен).
+Ограниченная Shadow Validation уже реализована (пакет `shadowval`: только `TaskIDReference` и `AgentIDPresence`). Приёмка P0-3 — ACCEPTED_WITH_LIMITATIONS (2026-10-23) и не открывает production write path. Пять измерений остаются NOT_EVALUATED в #89: liveRestart, crashDeduplication, roleIndependence, rationale, readiness. Assignment Ledger MVP влит (PR #98, `0c6eaf469024822a34fc501b5349ddcb68b70cc2`) и не активен: cutover BLOCKED_ON_WRITE_AUTHORITY. Аутентифицированный путь записи — #93 (OwnerCredential) и #95 (ingress команды агента в `ApplyAgentCommand`). OWNER 2026-10-24 решил отключить durable orchestration до принятия ADR (#96); до посадки #96 fixture-only runtime всё ещё подключён в `coordd`. Эта строка не меняет код и не принимает ADR.
 
 Следующий этап — P0-3:
 

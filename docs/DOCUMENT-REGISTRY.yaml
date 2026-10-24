@@ -1201,6 +1201,7 @@ documents:
       - active task
       - next safe action
       - context readiness
+      - "location TRACKED_IN_OTHER_BRANCH: naghuale/coord branch ops/coord/project commit 08af0a7305df641468105f2471d8355d04c5dc52; stays active and optional until #97; OPS-BRANCH-DOCUMENT-LOCATION-01; semanticChange false"
     usedBy:
       - COORDINATOR
       - REVIEWER
@@ -1233,6 +1234,7 @@ documents:
       - open work and blockers
       - owner-reserved decisions
       - milestone readiness
+      - "location TRACKED_IN_OTHER_BRANCH: naghuale/coord branch ops/coord/project commit 08af0a7305df641468105f2471d8355d04c5dc52; stays active and optional until #97; OPS-BRANCH-DOCUMENT-LOCATION-01; semanticChange false"
     usedBy:
       - COORDINATOR
       - REVIEWER
@@ -1398,9 +1400,10 @@ documents:
   - id: action-map
     path: docs/operations/ACTION-MAP.md
     class: process
-    status: active
+    status: historical
     purpose:
       - event-driven read/action/write/gate sequence
+      - "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 19f1c49875c2b96cc55ed3eb039e23f7c88a0967a13921867e38f61ef3460029; actionmap-recon-grok-a17; OWNER 2026-10-24 ACTION-MAP-STATUS-01; semanticChange false"
     usedBy:
       - COORDINATOR
       - EXECUTOR
@@ -1412,7 +1415,7 @@ documents:
     updateWhen:
       - PROCESS_NORM_CHANGED
       - ISSUE_STATE_CHANGED
-    currentOperationalAuthority: true
+    currentOperationalAuthority: false
     canonicalProductionAuthority: false
     normativeAuthority: process
     ownership:
@@ -1427,10 +1430,11 @@ documents:
   - id: gitlab-ci-integration-guide
     path: GITLAB-CI-INTEGRATION.md
     class: process
-    status: active
+    status: historical
     purpose:
       - integration of Action Map checks into an existing GitLab pipeline
       - final merged pipeline lint requirements
+      - "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 1ba92acef90c1dfae1455ce86f89d587d0344dfe1efb5ae5561974e382e300b0; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"
     usedBy: [COORDINATOR, OPERATOR]
     readWhen: [ISSUE_PLANNING, ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED, CLI_CHANGED]
@@ -1443,10 +1447,11 @@ documents:
   - id: gitlab-ci-example
     path: .gitlab-ci.example.yml
     class: process
-    status: active
+    status: historical
     purpose:
       - example root GitLab pipeline showing the Action Map include
       - not an active pipeline configuration
+      - "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 01db8a9cc50dd7230f62103834f3e6983da25e2b78df33700899f784e6a66bd6; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"
     usedBy: [COORDINATOR, OPERATOR]
     readWhen: [ISSUE_PLANNING, ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED, CLI_CHANGED]
@@ -1459,8 +1464,8 @@ documents:
   - id: action-map-ci-gates-metrics
     path: docs/operations/CI-GATES-AND-METRICS.md
     class: process
-    status: active
-    purpose: [implemented and proposed Action Map gates and evaluation metrics]
+    status: historical
+    purpose: [implemented and proposed Action Map gates and evaluation metrics, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 405ae881bdf13113e0d73da53270fe4694f83c7c37159882d4f94efa276105fd; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION, COMMIT_READINESS]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1473,8 +1478,8 @@ documents:
   - id: action-map-evaluation-suite
     path: docs/operations/evaluation/action-map/EVALUATION-SUITE.md
     class: process
-    status: active
-    purpose: [scope and limitations of Action Map behavioral evaluation]
+    status: historical
+    purpose: [scope and limitations of Action Map behavioral evaluation, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 af95cc8054370808231a49886f5a48b39d0bf69de54bf8296390612a722efd5e; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1487,8 +1492,8 @@ documents:
   - id: action-map-evaluation-manifest
     path: docs/operations/evaluation/action-map/evaluation-manifest.yaml
     class: process
-    status: active
-    purpose: [machine-readable Action Map agent evaluation suite metadata]
+    status: historical
+    purpose: [machine-readable Action Map agent evaluation suite metadata, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 30135bb07ca790ae3d066ed0660dfd65477654d628b4d6635f483a9eed07020d; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1501,8 +1506,8 @@ documents:
   - id: action-map-evaluation-profiles
     path: docs/operations/evaluation/action-map/profiles.yaml
     class: process
-    status: active
-    purpose: [candidate profiles for comparative agent evaluation]
+    status: historical
+    purpose: [candidate profiles for comparative agent evaluation, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 6adfd97f64480f07a3ac1c9b2071f66c3f7f9b0ce7f39625b4b128b195adebf3; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1515,8 +1520,8 @@ documents:
   - id: action-map-evaluation-pipeline
     path: docs/operations/evaluation/action-map/PIPELINE.md
     class: process
-    status: active
-    purpose: [evaluation and baseline pipeline stages, status, and limitations]
+    status: historical
+    purpose: [evaluation and baseline pipeline stages, status, and limitations, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 f8a3a958a1c55170986945a3311f99081af3939e3197bf802e3785ab42444be5; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER, OPERATOR]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1529,8 +1534,8 @@ documents:
   - id: action-map-threshold-policy
     path: docs/operations/evaluation/action-map/threshold-policy.yaml
     class: process
-    status: active
-    purpose: [immutable hard gates and baseline-relative comparison tolerances]
+    status: historical
+    purpose: [immutable hard gates and baseline-relative comparison tolerances, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 88ab4a840d1060b11f60342e3d6678cb45d3c0023dbe97862ef933721bed5df2; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER, OPERATOR]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1543,8 +1548,8 @@ documents:
   - id: action-map-baseline-store-readme
     path: ci/baselines/action-map/README.md
     class: process
-    status: active
-    purpose: [baseline run storage, candidate review, and activation instructions]
+    status: historical
+    purpose: [baseline run storage, candidate review, and activation instructions, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 a7e702e644417093d6f6fa7c10c807a269de049aec7ede9ff96961d0f9434563; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER, OPERATOR]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1557,8 +1562,8 @@ documents:
   - id: action-map-baseline-store-manifest
     path: ci/baselines/action-map/manifest.yaml
     class: process
-    status: active
-    purpose: [baseline-store compatibility and promotion contract]
+    status: historical
+    purpose: [baseline-store compatibility and promotion contract, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 13f52392d9483e575628c34e8e2b7abdcaf104084fff5cae943f03287ff14f8c; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1571,8 +1576,8 @@ documents:
   - id: gitlab-action-map-metrics-pipeline
     path: .gitlab/ci/action-map-metrics.yml
     class: process
-    status: active
-    purpose: [optional adapter-backed Action Map behavioral evaluation and reports]
+    status: historical
+    purpose: [optional adapter-backed Action Map behavioral evaluation and reports, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 1dd5c687c614978b1ca3a5465d9308467f435f06aea37b0f0ac79728b0ffcf66; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, OPERATOR]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED, CLI_CHANGED]
@@ -1585,8 +1590,8 @@ documents:
   - id: run-action-map-behavior
     path: scripts/run-action-map-behavior
     class: process
-    status: active
-    purpose: [invoke an explicitly configured evaluation adapter per scenario]
+    status: historical
+    purpose: [invoke an explicitly configured evaluation adapter per scenario, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 56eca87881d3affd94831f1a6957d737c0f2b8fc241236a458f9b3c8604d2a3b; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, OPERATOR]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1599,8 +1604,8 @@ documents:
   - id: check-action-map-results
     path: scripts/check-action-map-results
     class: process
-    status: active
-    purpose: [independently compare agent output with Action Map expectations]
+    status: historical
+    purpose: [independently compare agent output with Action Map expectations, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 05cb6b76af58499c3f492aca1cc9a96dbc508bd612f40c6f1dd49ee242edaf03; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1613,8 +1618,8 @@ documents:
   - id: check-action-map-results-test
     path: scripts/check-action-map-results-test
     class: process
-    status: active
-    purpose: [self-tests for deterministic behavioral result comparison]
+    status: historical
+    purpose: [self-tests for deterministic behavioral result comparison, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 b01134cbf4e8f8e3940d1880449741c14cf4cda24c1d3b0640f665e443d7020a; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1627,8 +1632,8 @@ documents:
   - id: collect-action-map-metrics
     path: scripts/collect-action-map-metrics
     class: process
-    status: active
-    purpose: [collect evaluation verdicts into GitLab report formats]
+    status: historical
+    purpose: [collect evaluation verdicts into GitLab report formats, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 05ba76ebbdabe8c556b5786fafa9ccda4e2e9cc07f8f797cfbc5bdb1bdce3788; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, OPERATOR]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1641,8 +1646,8 @@ documents:
   - id: check-action-map-metrics
     path: scripts/check-action-map-metrics
     class: process
-    status: active
-    purpose: [gate measured hard violations without treating missing evaluation as pass]
+    status: historical
+    purpose: [gate measured hard violations without treating missing evaluation as pass, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 02e7c69711b3280d54644aa3133c5bd9e83d428890191be4db65f59db0a6c89e; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, OPERATOR]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1655,8 +1660,8 @@ documents:
   - id: action-map-baseline-compare
     path: scripts/compare-action-map-baseline
     class: process
-    status: active
-    purpose: [fail-closed comparison against compatible accepted baseline]
+    status: historical
+    purpose: [fail-closed comparison against compatible accepted baseline, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 5b3cb34ec1b07434b3fcb834729640b2befd706b199c0f53f9320690d85222e9; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER, OPERATOR]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1669,8 +1674,8 @@ documents:
   - id: action-map-baseline-store-check
     path: scripts/check-action-map-baseline-store
     class: process
-    status: active
-    purpose: [validate baseline paths, run provenance, review status, and current pointer]
+    status: historical
+    purpose: [validate baseline paths, run provenance, review status, and current pointer, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 5aaf4f60aa3961a0b822075ab8198fe2aedc41b23b42e38ce09cd5e4c7014841; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER, OPERATOR]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1683,8 +1688,8 @@ documents:
   - id: action-map-threshold-policy-check
     path: scripts/check-action-map-threshold-policy
     class: process
-    status: active
-    purpose: [prevent changes that relax hard gates or compatibility requirements]
+    status: historical
+    purpose: [prevent changes that relax hard gates or compatibility requirements, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 a3cdd91753d516a09d17e5db52b0be1aeab5e20f79666c8e21526b6f8ed87283; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER, OPERATOR]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1697,8 +1702,8 @@ documents:
   - id: action-map-baseline-run-store
     path: scripts/store-action-map-run
     class: process
-    status: active
-    purpose: [append aggregate metrics only for fully evaluated compatible runs]
+    status: historical
+    purpose: [append aggregate metrics only for fully evaluated compatible runs, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 228c43aed81d8536a82dd4873d4f2811aa30e9d10ba9a633619dc394794b7d90; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, OPERATOR]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1711,8 +1716,8 @@ documents:
   - id: action-map-baseline-candidate
     path: scripts/promote-action-map-baseline
     class: process
-    status: active
-    purpose: [generate review-required median candidate from compatible runs]
+    status: historical
+    purpose: [generate review-required median candidate from compatible runs, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 0480ce3e8025006cd582223fab1482a675167fcb47f2aa51a22db9c733c061c4; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1725,8 +1730,8 @@ documents:
   - id: action-map-baseline-activate
     path: scripts/activate-action-map-baseline
     class: process
-    status: active
-    purpose: [activate only a reviewed candidate with resolvable source runs]
+    status: historical
+    purpose: [activate only a reviewed candidate with resolvable source runs, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 9f947c2147bbacc84771036ddabbadbcda95717335c73f56fedd75c09bef716d; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1739,8 +1744,8 @@ documents:
   - id: action-map-baseline-test
     path: scripts/check-action-map-baseline-test
     class: process
-    status: active
-    purpose: [self-tests for missing and incompatible baseline handling]
+    status: historical
+    purpose: [self-tests for missing and incompatible baseline handling, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 c1783af368fc9e057d8c59a1c54f6158a7b2b4dca7b97d2c23ed869ae20f90b5; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1753,8 +1758,8 @@ documents:
   - id: action-map-scenario-readme
     path: docs/operations/scenarios/action-map/README.md
     class: process
-    status: active
-    purpose: [scenario suite usage and coverage]
+    status: historical
+    purpose: [scenario suite usage and coverage, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 8f794869c435ac0ffadbf04535568e40a7445db11329ec6f9498025d55c05db1; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1767,8 +1772,8 @@ documents:
   - id: action-map-scenario-suite
     path: docs/operations/scenarios/action-map/suite.yaml
     class: process
-    status: active
-    purpose: [machine-readable Action Map scenario suite manifest]
+    status: historical
+    purpose: [machine-readable Action Map scenario suite manifest, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 af71028b2086054d9502dee25ca5de60f5eb8456717a1da2d0b6668570ad0804; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1781,8 +1786,8 @@ documents:
   - id: action-map-scenario-result-schema
     path: docs/operations/scenarios/action-map/scenario-result.schema.yaml
     class: process
-    status: active
-    purpose: [structured response contract for Action Map scenario evaluation]
+    status: historical
+    purpose: [structured response contract for Action Map scenario evaluation, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 a7e5f526e34b992aefbf268888896a045a23a1846fa5b9c6a6b4c2176983c79f; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1795,8 +1800,8 @@ documents:
   - id: action-map-scenario-session-start
     path: docs/operations/scenarios/action-map/01-session-start.yaml
     class: process
-    status: active
-    purpose: [Coordinator session-start admission scenario]
+    status: historical
+    purpose: [Coordinator session-start admission scenario, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 0a35083ad71f937ed742043c1d7f351611cd704ed18f5e2c1da89f4826c77fe5; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1809,8 +1814,8 @@ documents:
   - id: action-map-scenario-context-stale
     path: docs/operations/scenarios/action-map/02-context-stale.yaml
     class: process
-    status: active
-    purpose: [stale context recovery scenario]
+    status: historical
+    purpose: [stale context recovery scenario, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 9360c6c0c5d1e41e2d498828d1c1b61d8a8200a27cc1096188e92ba4f2bcc058; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1823,8 +1828,8 @@ documents:
   - id: action-map-scenario-issue-created
     path: docs/operations/scenarios/action-map/03-issue-created.yaml
     class: process
-    status: active
-    purpose: [Issue planning and assignment scenario]
+    status: historical
+    purpose: [Issue planning and assignment scenario, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 25f28dd613d2e9e5403080962bbca21ce41e44401f6ac82dcce7ca97c7cdb2dc; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1837,8 +1842,8 @@ documents:
   - id: action-map-scenario-review-changes
     path: docs/operations/scenarios/action-map/04-review-changes-required.yaml
     class: process
-    status: active
-    purpose: [autonomous review correction scenario]
+    status: historical
+    purpose: [autonomous review correction scenario, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 74d91e324c517e5da0d90cfa317cb1f042d65aea8b32cea070c4808c94052311; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1851,8 +1856,8 @@ documents:
   - id: action-map-scenario-human-action
     path: docs/operations/scenarios/action-map/05-human-action-required.yaml
     class: process
-    status: active
-    purpose: [HUMAN_ACTION_REQUIRED and OWNER boundary scenario]
+    status: historical
+    purpose: [HUMAN_ACTION_REQUIRED and OWNER boundary scenario, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 e7bfa6d3320a9cce5119e045d048e4a04ddb5e658b68eb981a44459e9bdfca8b; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1865,8 +1870,8 @@ documents:
   - id: action-map-scenario-owner-boundary
     path: docs/operations/scenarios/action-map/06-owner-required.yaml
     class: process
-    status: active
-    purpose: [confirmed OWNER boundary scenario]
+    status: historical
+    purpose: [confirmed OWNER boundary scenario, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 2f260a296c1652e064f6cddc2c5d03eb49b5b9e30b70bc483c806da8312556f0; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1879,8 +1884,8 @@ documents:
   - id: action-map-scenario-migration
     path: docs/operations/scenarios/action-map/07-migration-completed.yaml
     class: process
-    status: active
-    purpose: [workspace migration synchronization scenario]
+    status: historical
+    purpose: [workspace migration synchronization scenario, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 6e717b60bc40ab6357615a60b50ba57842130beed066654589c5826c74db12f5; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1893,8 +1898,8 @@ documents:
   - id: action-map-scenario-commit-readiness
     path: docs/operations/scenarios/action-map/08-commit-readiness.yaml
     class: process
-    status: active
-    purpose: [exact-subject Commit Readiness scenario]
+    status: historical
+    purpose: [exact-subject Commit Readiness scenario, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 de434b386628082f95dedd139257a751ee703f98487c5299a0cefcf50f7c450d; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1907,8 +1912,8 @@ documents:
   - id: action-map-scenario-ci-failed
     path: docs/operations/scenarios/action-map/09-ci-failed.yaml
     class: process
-    status: active
-    purpose: [autonomous CI correction scenario]
+    status: historical
+    purpose: [autonomous CI correction scenario, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 1223efef18112813acfce9bf2a7bda8e198f18bb37e89f687a9926eceff8e7d4; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1921,8 +1926,8 @@ documents:
   - id: action-map-scenario-historical
     path: docs/operations/scenarios/action-map/10-historical-document.yaml
     class: process
-    status: active
-    purpose: [historical document authority exclusion scenario]
+    status: historical
+    purpose: [historical document authority exclusion scenario, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 26e2fbd7787e1d293552b932246522a1bcc05c35da5fdad88b80507388fadd33; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1935,8 +1940,8 @@ documents:
   - id: action-map-scenario-proposed-adr
     path: docs/operations/scenarios/action-map/11-proposed-adr.yaml
     class: process
-    status: active
-    purpose: [Proposed ADR authority exclusion scenario]
+    status: historical
+    purpose: [Proposed ADR authority exclusion scenario, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 f559ec7f87ce3bd050a9ac4a4c730913654b2e86b111b61f2e20f2efa0713410; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1949,8 +1954,8 @@ documents:
   - id: action-map-scenario-legacy-guide
     path: docs/operations/scenarios/action-map/12-legacy-guide.yaml
     class: process
-    status: active
-    purpose: [legacy guide authority exclusion scenario]
+    status: historical
+    purpose: [legacy guide authority exclusion scenario, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 a24c1f730d78caff023b0a59c97f9946ed7698903bede62e1eecb80c6688162a; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1963,8 +1968,8 @@ documents:
   - id: action-map-scenario-architecture-impact
     path: docs/operations/scenarios/action-map/13-architecture-impact.yaml
     class: process
-    status: active
-    purpose: [Architecture Sync transaction scenario]
+    status: historical
+    purpose: [Architecture Sync transaction scenario, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 c5b584b8ed5a011ee6369d8067c6f2d97f7b0661f0fbd973d260d78418ee8202; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1977,8 +1982,8 @@ documents:
   - id: action-map-scenario-integration
     path: docs/operations/scenarios/action-map/14-integration-completed.yaml
     class: process
-    status: active
-    purpose: [Issue completion and context compaction scenario]
+    status: historical
+    purpose: [Issue completion and context compaction scenario, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 0bf1d91d51919f5c653a7b8c98036a24e5e22c2feccbe7c352c219ff1ec828c5; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -1991,8 +1996,8 @@ documents:
   - id: action-map-scenario-unknown-event
     path: docs/operations/scenarios/action-map/15-unknown-event.yaml
     class: process
-    status: active
-    purpose: [unknown Action Map event fail-closed scenario]
+    status: historical
+    purpose: [unknown Action Map event fail-closed scenario, "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 f4694f534f295345f353642a5405eb44d25d0e504ba4174cc370c6678503139d; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"]
     usedBy: [COORDINATOR, REVIEWER]
     readWhen: [ACTION_MAP_SCENARIO_VALIDATION]
     updateWhen: [PROCESS_NORM_CHANGED]
@@ -2632,10 +2637,11 @@ documents:
   - id: rfc-0002-agent-governance
     path: docs/rfc/RFC-0002-AI-AGENT-ENGINEERING-GOVERNANCE.md
     class: process
-    status: proposed
+    status: historical
     purpose:
       - proposed process norm for context selection, evidence, agent admission, review and behavioral evaluation
       - design rationale, metrics, rollout and acceptance criteria for governed AI-agent engineering
+      - "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 91d3c573bb5c027df7caef0c6ab6a880ae1e5445e6d9503416741232d64adfd6; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"
     usedBy:
       - COORDINATOR
       - EXECUTOR
@@ -2663,10 +2669,11 @@ documents:
   - id: agent-bootstrap-template
     path: docs/templates/AGENT-BOOTSTRAP-TEMPLATE.md
     class: design
-    status: proposed
+    status: historical
     purpose:
       - proposed template for assignment-bound agent admission, ActionContext, evidence, role output and handoff
       - implementation aid for RFC-0002 evaluation; not an active launcher contract
+      - "historical record only; file absent from main 0c6eaf469024822a34fc501b5349ddcb68b70cc2; legacy sha256 278aa0d6093c4e7c3f3cf03d275a17308c858be052352dc51f4c6be4e72ae8b1; actionmap-recon-grok-a17; OWNER 2026-10-24 LEGACY-RATIONALE-PRESERVATION-01; semanticChange false"
     usedBy:
       - COORDINATOR
       - EXECUTOR

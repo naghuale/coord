@@ -1,8 +1,8 @@
 # Assignment Ledger MVP cutover and rollback (#90)
 
 Profile: canonical coordd, existing JSON snapshot; Telepathy only.
-Status: implementation runbook under OWNER #90 plan; execute after exact-SHA
-Review, disclosed-conflict Audit, full checks and merge, not during implementation.
+Status: implementation is merged (PR #98, `0c6eaf469024822a34fc501b5349ddcb68b70cc2`).
+Operational cutover has not started and is not active. Do not execute steps 3–5 while the write gate below stays closed.
 
 ## Current cutover gate: BLOCKED_ON_WRITE_AUTHORITY
 
