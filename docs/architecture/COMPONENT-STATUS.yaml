@@ -430,6 +430,7 @@ components:
   status: partial
   normativeSources:
   - AGENTS.md
+  - docs/ADR-0001-CANONICAL-COORDINATION-MODEL.md
   implemented:
   - exact coordd shadow-pilot run branch returns before daemon startup
   - typed Telepathy adapter wraps existing version-pinned MCP client
@@ -599,6 +600,27 @@ requirements:
     - accepted orchestration ADR AND ready authenticated single write path before enablement
     issues:
     - 96
+  SP-P0-3:
+    sourceDocumentId: adr-0001
+    section: "P0-3 ACCEPTED_WITH_LIMITATIONS (2026-10-23); shadow validation does not open production write path"
+    component: shadow-pilot-live-entrypoint
+    normativeStatus: ACCEPTED
+    implementationSymbols:
+    - runShadowPilot
+    - telepathyShadowAgentAdapter
+    - startupProbe
+    productionEntrypoints: []
+    tests:
+    - TestShadowCLIUsesExistingMCPClientEndToEnd
+    - TestShadowRuntimeBreachesPreventEvidenceSealing
+    - TestShadowEveryIdentityBindingHasTypedRefusal
+    - TestShadowMissingDimensionsAndUnsealedEvidenceCannotReachReport
+    gaps:
+    - independently accepted live c03 round trip
+    - independent implementation Review and TD-R2 Audit acceptance
+    - live process crash and restart campaign
+    issues:
+    - 70
 actionMapReferenceClassifications:
 - path: docs/operations/AGENT-SESSION-RECOVERY-REGULATION.md
   line: 506

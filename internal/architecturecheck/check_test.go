@@ -243,6 +243,32 @@ documents: []
 	}
 }
 
+// F97-1: requirement has no sourceDocumentId -> FAIL.
+func TestF97_1_RequirementMissingSourceFieldKills(t *testing.T) {
+	dir := t.TempDir()
+	writeMinimalFixture(t, dir, func(reg *Registry) {
+		setAxes(&reg.Components[0], "PARTIAL", "TEST_ONLY", "PARTIAL", "ACTIVE")
+		reg.Requirements = map[string]Requirement{
+			"CM-NOSRC": {
+				SourceDocumentID: "",
+				Section:          "1",
+				Component:        "fixture-component",
+				NormativeStatus:  "ACCEPTED",
+			},
+		}
+	})
+	res, err := Check(Options{Root: dir, SkipChangedDocs: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCode(res.Violations, CodeUnknownRequirementID) {
+		t.Fatalf("expected %s for missing sourceDocumentId, got %v", CodeUnknownRequirementID, res.Violations)
+	}
+	if !hasCode(res.Violations, CodeProposedProductionAuth) {
+		t.Fatalf("expected %s for unsourced production claim, got %v", CodeProposedProductionAuth, res.Violations)
+	}
+}
+
 // F97-1: historical / superseded source cannot authorize production claims.
 func TestF97_1_HistoricalAndSupersededSourceKillProductionClaims(t *testing.T) {
 	for _, status := range []string{"historical", "superseded"} {
@@ -298,6 +324,119 @@ func TestF97_1_AcceptedSourceAllowsProductionClaim(t *testing.T) {
 	}
 	if hasCode(res.Violations, CodeUnknownRequirementID) {
 		t.Fatalf("accepted source must resolve, got %v", res.Violations)
+	}
+}
+
+// F97-1 residual: absent requirements + production claim -> FAIL.
+func TestF97_1_AbsentRequirementsWithProductionClaimKills(t *testing.T) {
+	dir := t.TempDir()
+	writeMinimalFixture(t, dir, func(reg *Registry) {
+		setAxes(&reg.Components[0], "PARTIAL", "TEST_ONLY", "PARTIAL", "ACTIVE")
+		reg.Requirements = nil
+	})
+	res, err := Check(Options{Root: dir, SkipChangedDocs: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCode(res.Violations, CodeProposedProductionAuth) {
+		t.Fatalf("expected %s for absent requirements, got %v", CodeProposedProductionAuth, res.Violations)
+	}
+}
+
+// F97-1 residual: empty requirements inventory + production claim -> FAIL.
+func TestF97_1_EmptyRequirementsWithProductionClaimKills(t *testing.T) {
+	dir := t.TempDir()
+	writeMinimalFixture(t, dir, func(reg *Registry) {
+		setAxes(&reg.Components[0], "PARTIAL", "TEST_ONLY", "PASS", "DISABLED")
+		reg.Requirements = map[string]Requirement{}
+	})
+	res, err := Check(Options{Root: dir, SkipChangedDocs: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCode(res.Violations, CodeProposedProductionAuth) {
+		t.Fatalf("expected %s for empty inventory, got %v", CodeProposedProductionAuth, res.Violations)
+	}
+}
+
+// F97-1 residual: production-claimed component with no linked requirement -> FAIL.
+func TestF97_1_ProductionClaimWithoutLinkedRequirementKills(t *testing.T) {
+	dir := t.TempDir()
+	writeMinimalFixture(t, dir, func(reg *Registry) {
+		setAxes(&reg.Components[0], "IMPLEMENTED", "PRODUCTION_CONNECTED", "PASS", "ACTIVE")
+		reg.Components[0].ProductionEntrypoints = []string{"FixtureSymbol"}
+		reg.Requirements = map[string]Requirement{
+			"CM-OTHER": {
+				SourceDocumentID: "src-accepted",
+				Section:          "1",
+				Component:        "other-component", // different component
+				NormativeStatus:  "ACCEPTED",
+			},
+		}
+		reg.Components = append(reg.Components, Component{
+			ID: "other-component", Title: "Other", Status: "partial",
+			NormativeForCurrentProduct: reg.Components[0].NormativeForCurrentProduct,
+			NormativeSources:           []string{"docs/ADR-FIXTURE.md"},
+			Implemented:                []string{"x"}, Missing: []string{"y"},
+			Evidence:  Evidence{Symbols: []string{"FixtureSymbol"}, Tests: []string{"TestFixtureOK"}},
+			Documents: ComponentDocs{CurrentAnchor: "other-component", TargetAnchor: "other-component"},
+			Code:      "PARTIAL", Connection: "NOT_CONNECTED", Qualification: "NOT_EVALUATED", Production: "DISABLED",
+		})
+	})
+	writeDocRegistry(t, dir, docRegistryYAML("src-accepted", "accepted"))
+	mustWrite(t, filepath.Join(dir, "docs/ARCHITECTURE.md"), "<!-- fixture-component -->\n<!-- other-component -->\n")
+	mustWrite(t, filepath.Join(dir, "docs/TARGET-ARCHITECTURE.md"), "<!-- fixture-component -->\n<!-- other-component -->\n")
+	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCode(res.Violations, CodeProposedProductionAuth) {
+		t.Fatalf("expected %s for unlinked production claim, got %v", CodeProposedProductionAuth, res.Violations)
+	}
+}
+
+// F97-1 residual: requirement with empty component -> FAIL.
+func TestF97_1_RequirementEmptyComponentKills(t *testing.T) {
+	dir := t.TempDir()
+	writeMinimalFixture(t, dir, func(reg *Registry) {
+		reg.Requirements = map[string]Requirement{
+			"CM-EMPTY": {
+				SourceDocumentID: "src-accepted",
+				Section:          "1",
+				Component:        "",
+				NormativeStatus:  "ACCEPTED",
+			},
+		}
+	})
+	writeDocRegistry(t, dir, docRegistryYAML("src-accepted", "accepted"))
+	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCode(res.Violations, CodeUnknownRequirementID) {
+		t.Fatalf("expected %s for empty component, got %v", CodeUnknownRequirementID, res.Violations)
+	}
+}
+
+func TestF97_1_RequirementUnknownComponentKills(t *testing.T) {
+	dir := t.TempDir()
+	writeMinimalFixture(t, dir, func(reg *Registry) {
+		reg.Requirements = map[string]Requirement{
+			"CM-UNK": {
+				SourceDocumentID: "src-accepted",
+				Section:          "1",
+				Component:        "no-such-component",
+				NormativeStatus:  "ACCEPTED",
+			},
+		}
+	})
+	writeDocRegistry(t, dir, docRegistryYAML("src-accepted", "accepted"))
+	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCode(res.Violations, CodeUnknownRequirementID) {
+		t.Fatalf("expected %s for unknown component, got %v", CodeUnknownRequirementID, res.Violations)
 	}
 }
 

@@ -328,51 +328,67 @@ func componentHasForbiddenProductionClaim(c Component) (bool, string) {
 	return false, ""
 }
 
-func validateRequirements(reg Registry, idx *CodeIndex, docs documentRegistryIndex) []Violation {
-	if len(reg.Requirements) == 0 {
-		return nil
+// authoritativeAcceptedSource is true when DOCUMENT-REGISTRY status can authorize
+// a production claim (accepted or active). proposed/historical/superseded cannot.
+func authoritativeAcceptedSource(status string) bool {
+	switch status {
+	case "accepted", "active":
+		return true
+	default:
+		return false
 	}
+}
+
+func validateRequirements(reg Registry, idx *CodeIndex, docs documentRegistryIndex) []Violation {
 	var vs []Violation
 	components := map[string]Component{}
 	for _, c := range reg.Components {
 		components[c.ID] = c
 	}
+
+	// Components covered by at least one requirement whose source resolves to
+	// an authoritative (accepted/active) DOCUMENT-REGISTRY status.
+	authorizedComponents := map[string]bool{}
+
 	for id, req := range reg.Requirements {
 		if id == "" {
 			vs = append(vs, Violation{Code: CodeUnknownRequirementID, Detail: "empty requirement id"})
 			continue
 		}
-		if req.Component != "" {
-			if _, ok := components[req.Component]; !ok {
-				vs = append(vs, Violation{Code: CodeUnknownRequirementID, Detail: fmt.Sprintf("%s: unknown component %q", id, req.Component)})
-			}
+		compID := strings.TrimSpace(req.Component)
+		if compID == "" {
+			vs = append(vs, Violation{Code: CodeUnknownRequirementID, Detail: fmt.Sprintf("%s: empty component", id)})
+			continue
+		}
+		c, ok := components[compID]
+		if !ok {
+			vs = append(vs, Violation{Code: CodeUnknownRequirementID, Detail: fmt.Sprintf("%s: unknown component %q", id, compID)})
+			continue
 		}
 		// Resolution chain: requirement -> sourceDocumentId -> DOCUMENT-REGISTRY -> status -> axes.
 		// The row's declared NormativeStatus never raises authority (F97-1).
 		srcID := strings.TrimSpace(req.SourceDocumentID)
 		if srcID == "" {
 			vs = append(vs, Violation{Code: CodeUnknownRequirementID, Detail: fmt.Sprintf("%s: missing sourceDocumentId", id)})
-			if c, ok := components[req.Component]; ok {
-				if bad, claim := componentHasForbiddenProductionClaim(c); bad {
-					vs = append(vs, Violation{Code: CodeProposedProductionAuth, Detail: fmt.Sprintf("%s: missing sourceDocumentId cannot authorize %s for %s", id, claim, c.ID)})
-				}
+			if bad, claim := componentHasForbiddenProductionClaim(c); bad {
+				vs = append(vs, Violation{Code: CodeProposedProductionAuth, Detail: fmt.Sprintf("%s: missing sourceDocumentId cannot authorize %s for %s", id, claim, c.ID)})
 			}
-		} else {
-			src, ok := docs.byID[srcID]
-			if !ok {
-				vs = append(vs, Violation{Code: CodeUnknownRequirementID, Detail: fmt.Sprintf("%s: unresolved sourceDocumentId %q", id, srcID)})
-				if c, ok := components[req.Component]; ok {
-					if bad, claim := componentHasForbiddenProductionClaim(c); bad {
-						vs = append(vs, Violation{Code: CodeProposedProductionAuth, Detail: fmt.Sprintf("%s: unresolved source %q cannot authorize %s for %s", id, srcID, claim, c.ID)})
-					}
-				}
-			} else if nonAuthoritativeDocStatus(src.Status) {
-				if c, ok := components[req.Component]; ok {
-					if bad, claim := componentHasForbiddenProductionClaim(c); bad {
-						vs = append(vs, Violation{Code: CodeProposedProductionAuth, Detail: fmt.Sprintf("%s: non-authoritative source %q (status=%s) cannot authorize %s for %s", id, srcID, src.Status, claim, c.ID)})
-					}
-				}
+			continue
+		}
+		src, ok := docs.byID[srcID]
+		if !ok {
+			vs = append(vs, Violation{Code: CodeUnknownRequirementID, Detail: fmt.Sprintf("%s: unresolved sourceDocumentId %q", id, srcID)})
+			if bad, claim := componentHasForbiddenProductionClaim(c); bad {
+				vs = append(vs, Violation{Code: CodeProposedProductionAuth, Detail: fmt.Sprintf("%s: unresolved source %q cannot authorize %s for %s", id, srcID, claim, c.ID)})
 			}
+			continue
+		}
+		if nonAuthoritativeDocStatus(src.Status) {
+			if bad, claim := componentHasForbiddenProductionClaim(c); bad {
+				vs = append(vs, Violation{Code: CodeProposedProductionAuth, Detail: fmt.Sprintf("%s: non-authoritative source %q (status=%s) cannot authorize %s for %s", id, srcID, src.Status, claim, c.ID)})
+			}
+		} else if authoritativeAcceptedSource(src.Status) {
+			authorizedComponents[compID] = true
 		}
 		for _, sym := range req.ImplementationSymbols {
 			if !idx.HasSymbol(sym) {
@@ -387,6 +403,23 @@ func validateRequirements(reg Registry, idx *CodeIndex, docs documentRegistryInd
 		for _, ep := range req.ProductionEntrypoints {
 			if !idx.HasSymbol(ep) {
 				vs = append(vs, Violation{Code: CodeConnectedNoEntrypoint, Detail: fmt.Sprintf("requirement %s: entrypoint not found: %s", id, ep)})
+			}
+		}
+	}
+
+	// Every component with a production claim must be linked to at least one
+	// requirement whose DOCUMENT-REGISTRY source is accepted/active.
+	// Absent or empty requirements inventory fails whenever any such claim exists.
+	for _, c := range reg.Components {
+		bad, claim := componentHasForbiddenProductionClaim(c)
+		if !bad {
+			continue
+		}
+		if !authorizedComponents[c.ID] {
+			if len(reg.Requirements) == 0 {
+				vs = append(vs, Violation{Code: CodeProposedProductionAuth, Detail: fmt.Sprintf("%s: production claim %s requires a non-empty requirements inventory with an accepted source", c.ID, claim)})
+			} else {
+				vs = append(vs, Violation{Code: CodeProposedProductionAuth, Detail: fmt.Sprintf("%s: production claim %s has no requirement linked to an accepted DOCUMENT-REGISTRY source", c.ID, claim)})
 			}
 		}
 	}
