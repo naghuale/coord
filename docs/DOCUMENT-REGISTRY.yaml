@@ -534,7 +534,7 @@ documents:
     status: proposed
     purpose:
       - proposed bounded coordinator delegation and ordered succession
-      - records OWNER model D plus S2 for drafting only
+      - records OWNER model D plus S2 combined for drafting only
     usedBy:
       - COORDINATOR
       - REVIEWER
