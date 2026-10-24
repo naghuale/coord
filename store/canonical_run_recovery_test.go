@@ -51,6 +51,7 @@ func recoveryTestStore(t *testing.T) (*CanonicalStore, *canonicalMemory, RunReco
 	addRecoveryTestAction(&state, "fence-1", externalaction.Fence, "observe-1", binding, "FENCED", base)
 	addRecoveryTestAction(&state, "stop-1", externalaction.Stop, "fence-1", binding, "STOPPED", base)
 
+	state = ownerEnrolledCanonicalState(t, state)
 	p := &canonicalMemory{state: state}
 	clock := &canonicalTestClock{now: base.Add(2 * time.Second)}
 	s := newCanonicalWithTestClock(t, p, clock)

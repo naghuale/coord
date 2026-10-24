@@ -6,9 +6,11 @@ import (
 	"coord/envelope"
 	"coord/fsm"
 	"coord/internal/externalaction"
+	ownercredential "coord/ownercredential"
 	"coord/roles"
 	"coord/task"
 	"coord/taskid"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,10 +21,14 @@ import (
 	"time"
 )
 
-const CanonicalSchemaVersion uint32 = 3
+const CanonicalSchemaVersion uint32 = 4
 
 // ErrFenceExhausted prevents Task.Fence from wrapping to an earlier writer epoch.
 var ErrFenceExhausted = errors.New("task fence exhausted")
+
+var ErrOwnerCommandRequired = errors.New("OwnerCredential and Owner Task writes require the authenticated command boundary")
+
+var ErrOwnerBootstrapClosed = errors.New("OwnerCredential bootstrap is closed for this canonical state")
 
 // OutboxMessage preserves the wire envelope identity and, for new Task-scoped
 // commands, the DomainEvent committed by the same command.
@@ -42,14 +48,17 @@ type OutboxQueue struct {
 // InboxReceipt records a committed, deduplicated Task command. ActorID is a
 // stable authenticated principal, not a transport session address.
 type InboxReceipt struct {
-	ActorID           string    `json:"actor_id"`
-	MessageID         string    `json:"message_id"`
-	TaskID            taskid.ID `json:"task_id"`
-	RunID             string    `json:"run_id,omitempty"`
-	EventIDs          []string  `json:"event_ids"`
-	ExpectedRevision  uint64    `json:"expected_revision"`
-	CommittedRevision uint64    `json:"committed_revision"`
-	RecordedAt        time.Time `json:"recorded_at"`
+	ActorID                 string    `json:"actor_id"`
+	MessageID               string    `json:"message_id"`
+	OwnerCommandDigest      string    `json:"owner_command_digest,omitempty"`
+	OwnerNonce              string    `json:"owner_nonce,omitempty"`
+	OwnerCredentialRevision uint64    `json:"owner_credential_revision,omitempty"`
+	TaskID                  taskid.ID `json:"task_id"`
+	RunID                   string    `json:"run_id,omitempty"`
+	EventIDs                []string  `json:"event_ids"`
+	ExpectedRevision        uint64    `json:"expected_revision"`
+	CommittedRevision       uint64    `json:"committed_revision"`
+	RecordedAt              time.Time `json:"recorded_at"`
 }
 
 type RevisionConflictError struct {
@@ -68,23 +77,25 @@ func InboxKey(actorID, messageID string) string {
 
 // CanonicalState is the versioned durable boundary for Coord-owned state.
 type CanonicalState struct {
-	AssignmentLedger   *assignment.Ledger              `json:"assignment_ledger,omitempty"`
-	SchemaMigrations   []SchemaMigration               `json:"schema_migrations,omitempty"`
-	Revision           uint64                          `json:"revision"`
-	Orchestration      externalaction.State            `json:"orchestration"`
-	SchemaVersion      uint32                          `json:"schema_version"`
-	Tasks              map[taskid.ID]task.Task         `json:"tasks"`
-	Runs               map[string]fsm.Run              `json:"runs"`
-	Events             []task.DomainEvent              `json:"events"`
-	Inbox              map[string]InboxReceipt         `json:"inbox"`
-	Outbox             map[string]OutboxQueue          `json:"outbox"`
-	AgentSessions      map[string]agentsession.Session `json:"agent_sessions"`
-	AgentSessionEvents []agentsession.Event            `json:"agent_session_events"`
+	AssignmentLedger   *assignment.Ledger                   `json:"assignment_ledger,omitempty"`
+	OwnerCredentials   map[string]ownercredential.Aggregate `json:"owner_credentials"`
+	SchemaMigrations   []SchemaMigration                    `json:"schema_migrations,omitempty"`
+	Revision           uint64                               `json:"revision"`
+	Orchestration      externalaction.State                 `json:"orchestration"`
+	SchemaVersion      uint32                               `json:"schema_version"`
+	Tasks              map[taskid.ID]task.Task              `json:"tasks"`
+	Runs               map[string]fsm.Run                   `json:"runs"`
+	Events             []task.DomainEvent                   `json:"events"`
+	Inbox              map[string]InboxReceipt              `json:"inbox"`
+	Outbox             map[string]OutboxQueue               `json:"outbox"`
+	AgentSessions      map[string]agentsession.Session      `json:"agent_sessions"`
+	AgentSessionEvents []agentsession.Event                 `json:"agent_session_events"`
 }
 
 func EmptyCanonicalState() CanonicalState {
 	return CanonicalState{
 		SchemaVersion:      CanonicalSchemaVersion,
+		OwnerCredentials:   map[string]ownercredential.Aggregate{},
 		Orchestration:      externalaction.Empty(),
 		Tasks:              map[taskid.ID]task.Task{},
 		Runs:               map[string]fsm.Run{},
@@ -96,8 +107,9 @@ func EmptyCanonicalState() CanonicalState {
 	}
 }
 
-// NormalizeCanonicalState initializes collections added compatibly to schema
-// v1. Older v1 snapshots have no AgentSession fields until their next save.
+// NormalizeCanonicalState initializes collections added compatibly to older
+// canonical schemas. Schema 3 remains schema 3 in memory until the first
+// successful commit publishes schema 4.
 func NormalizeCanonicalState(state CanonicalState) CanonicalState {
 	legacy := state.SchemaVersion == 1
 	if legacy {
@@ -111,6 +123,9 @@ func NormalizeCanonicalState(state CanonicalState) CanonicalState {
 	}
 	if state.AgentSessionEvents == nil {
 		state.AgentSessionEvents = []agentsession.Event{}
+	}
+	if state.OwnerCredentials == nil {
+		state.OwnerCredentials = map[string]ownercredential.Aggregate{}
 	}
 	return state
 }
@@ -135,14 +150,17 @@ type RunStore interface {
 }
 
 type CanonicalStore struct {
-	mu           sync.RWMutex
-	state        CanonicalState
-	p            CanonicalPersistence
-	release      func() error
-	now          func() time.Time
-	closed       bool
-	failed       error
-	ledgerFrozen bool
+	mu              sync.RWMutex
+	state           CanonicalState
+	p               CanonicalPersistence
+	release         func() error
+	now             func() time.Time
+	closed          bool
+	failed          error
+	ledgerFrozen    bool
+	ownerChallenges map[string]ownercredential.Command
+	ownerRPID       string
+	ownerOrigin     string
 }
 
 func NewCanonical(p CanonicalPersistence) (*CanonicalStore, error) {
@@ -186,13 +204,16 @@ func NewCanonicalWithClock(p CanonicalPersistence, now func() time.Time) (*Canon
 		}
 		return nil, err
 	}
-	return &CanonicalStore{state: state, p: p, release: release, now: now}, nil
+	return &CanonicalStore{state: state, p: p, release: release, now: now, ownerChallenges: map[string]ownercredential.Command{}}, nil
 }
 
 func ValidateCanonicalState(state CanonicalState) error {
 	state = NormalizeCanonicalState(state)
-	if state.SchemaVersion != CanonicalSchemaVersion {
+	if state.SchemaVersion != CanonicalSchemaVersion && state.SchemaVersion != 3 {
 		return fmt.Errorf("unsupported canonical schema version %d", state.SchemaVersion)
+	}
+	if state.SchemaVersion == 3 && len(state.OwnerCredentials) != 0 {
+		return fmt.Errorf("schema 3 cannot contain OwnerCredential aggregates")
 	}
 	if err := validateAssignments(state); err != nil {
 		return err
@@ -297,6 +318,17 @@ func ValidateCanonicalState(state CanonicalState) error {
 	if err := agentsession.ValidateHistory(state.AgentSessions, state.AgentSessionEvents); err != nil {
 		return err
 	}
+	if state.OwnerCredentials == nil {
+		return fmt.Errorf("OwnerCredential collection must be present")
+	}
+	for principalID, aggregate := range state.OwnerCredentials {
+		if principalID != aggregate.PrincipalID {
+			return fmt.Errorf("OwnerCredential map key does not match principal ID")
+		}
+		if err := aggregate.Validate(); err != nil {
+			return fmt.Errorf("invalid OwnerCredential aggregate %q: %w", principalID, err)
+		}
+	}
 	return nil
 }
 
@@ -318,6 +350,21 @@ func validateInbox(state CanonicalState) error {
 		}
 		if receipt.RecordedAt.IsZero() || len(receipt.EventIDs) == 0 {
 			return fmt.Errorf("inbox receipt %q lacks commit time or DomainEvent references", key)
+		}
+		ownerFields := receipt.OwnerCommandDigest != "" || receipt.OwnerNonce != "" || receipt.OwnerCredentialRevision != 0
+		if ownerFields {
+			if len(receipt.OwnerCommandDigest) != 64 || receipt.OwnerNonce == "" || receipt.OwnerCredentialRevision == 0 {
+				return fmt.Errorf("owner task receipt %q has incomplete authorization binding", key)
+			}
+			digest, err := hex.DecodeString(receipt.OwnerCommandDigest)
+			if err != nil || len(digest) != 32 {
+				return fmt.Errorf("owner task receipt %q has invalid command digest", key)
+			}
+			aggregate, exists := state.OwnerCredentials[receipt.ActorID]
+			ownerReceipt, receiptExists := aggregate.Receipts[receipt.MessageID]
+			if !exists || !receiptExists || ownerReceipt.CommandKind != ownercredential.CommandCreateTask || ownerReceipt.CredentialID == "" || ownerReceipt.CommandDigest != receipt.OwnerCommandDigest || ownerReceipt.Nonce != receipt.OwnerNonce || ownerReceipt.ExpectedCredentialRevision != receipt.OwnerCredentialRevision || ownerReceipt.EventSequence != 0 {
+				return fmt.Errorf("owner task receipt %q is not bound to its credential aggregate", key)
+			}
 		}
 		if receipt.ExpectedRevision == ^uint64(0) || receipt.CommittedRevision != receipt.ExpectedRevision+1 || taskValue.Revision < receipt.CommittedRevision {
 			return fmt.Errorf("inbox receipt %q has invalid expected/committed Task revision", key)
@@ -348,6 +395,21 @@ func validateInbox(state CanonicalState) error {
 		}
 		if !revisionEvent {
 			return fmt.Errorf("inbox receipt %q does not reference its committed Task revision", key)
+		}
+	}
+	for principalID, aggregate := range state.OwnerCredentials {
+		for messageID, ownerReceipt := range aggregate.Receipts {
+			if ownerReceipt.CommandKind != ownercredential.CommandCreateTask {
+				continue
+			}
+			taskID := taskid.ID(ownerReceipt.TaskID)
+			if err := taskID.Validate(); err != nil {
+				return fmt.Errorf("owner task receipt %q has invalid TaskID: %w", messageID, err)
+			}
+			inbox, exists := state.Inbox[InboxKey(principalID, messageID)]
+			if !exists || inbox.TaskID != taskID || inbox.OwnerCommandDigest != ownerReceipt.CommandDigest || inbox.OwnerNonce != ownerReceipt.Nonce || inbox.OwnerCredentialRevision != ownerReceipt.ExpectedCredentialRevision {
+				return fmt.Errorf("owner task receipt %q has no matching canonical Inbox receipt", messageID)
+			}
 		}
 	}
 	return nil
@@ -676,6 +738,10 @@ func (s *CanonicalStore) UpdateCanonical(fn func(*CanonicalState) error) error {
 	if err := fn(&next); err != nil {
 		return err
 	}
+	if !reflect.DeepEqual(s.state.OwnerCredentials, next.OwnerCredentials) {
+		return ErrOwnerCommandRequired
+	}
+	next.SchemaVersion = CanonicalSchemaVersion
 	if reflect.DeepEqual(s.state, next) {
 		return nil
 	}
@@ -704,10 +770,69 @@ func (s *CanonicalStore) UpdateCanonical(fn func(*CanonicalState) error) error {
 	return nil
 }
 
-// ApplyInboxCommand applies one already-authenticated command and commits its
-// receipt with the resulting state and DomainEvents. Authentication and
-// capability checks belong to the daemon command layer. taskID and
-// expectedRevision come from that boundary; revision is checked before apply.
+// BootstrapOwnerCredentials is an initialization-only operation. It is not
+// mounted on the daemon listener; the caller must hold the canonical store
+// lock during the explicit Owner setup ceremony before normal operation.
+func (s *CanonicalStore) BootstrapOwnerCredentials(principalID, messageID string, credentials []ownercredential.Credential) (ownercredential.Receipt, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return ownercredential.Receipt{}, fmt.Errorf("store closed")
+	}
+	if s.failed != nil {
+		return ownercredential.Receipt{}, fmt.Errorf("store requires reopen after durability failure: %w", s.failed)
+	}
+	now := s.now().UTC()
+	aggregate, err := ownercredential.Bootstrap(principalID, messageID, credentials, now)
+	if err != nil {
+		return ownercredential.Receipt{}, err
+	}
+	if len(s.state.OwnerCredentials) != 0 {
+		if prior, exists := s.state.OwnerCredentials[principalID]; exists {
+			if receipt, ok := prior.Receipts[messageID]; ok && receipt.CommandKind == "bootstrap" && receipt.CommandDigest == aggregate.Receipts[messageID].CommandDigest {
+				return receipt, nil
+			}
+		}
+		return ownercredential.Receipt{}, ErrOwnerBootstrapClosed
+	}
+	if len(s.state.Tasks) != 0 {
+		return ownercredential.Receipt{}, ErrOwnerBootstrapClosed
+	}
+	next, err := copyCanonicalState(s.state)
+	if err != nil {
+		return ownercredential.Receipt{}, fmt.Errorf("copy canonical state: %w", err)
+	}
+	next.OwnerCredentials[principalID] = aggregate
+	if s.state.Revision == ^uint64(0) {
+		return ownercredential.Receipt{}, fmt.Errorf("canonical revision exhausted")
+	}
+	next.SchemaVersion = CanonicalSchemaVersion
+	next.Revision = s.state.Revision + 1
+	if err := ValidateCanonicalState(next); err != nil {
+		return ownercredential.Receipt{}, err
+	}
+	if err := ValidateCanonicalTransition(s.state, next); err != nil {
+		return ownercredential.Receipt{}, err
+	}
+	if err := s.validateAssignmentMode(next); err != nil {
+		return ownercredential.Receipt{}, err
+	}
+	committed, err := copyCanonicalState(next)
+	if err != nil {
+		return ownercredential.Receipt{}, fmt.Errorf("copy updated canonical state: %w", err)
+	}
+	if err := s.p.Save(committed); err != nil {
+		s.failed = fmt.Errorf("%w: %w", ErrPersistence, err)
+		return ownercredential.Receipt{}, s.failed
+	}
+	s.state = committed
+	return aggregate.Receipts[messageID], nil
+}
+
+// ApplyInboxCommand is a legacy generic Task command seam. It is disabled once
+// Owner credentials are enrolled; authenticated agent writes use ApplyAgentCommand,
+// while Owner writes use ApplyOwnerCredentialCommand so verification and effect
+// share one store lock and commit.
 func (s *CanonicalStore) ApplyInboxCommand(actorID, messageID string, taskID taskid.ID, expectedRevision uint64, apply func(*CanonicalState) (InboxReceipt, error)) (InboxReceipt, bool, error) {
 	if actorID == "" || strings.TrimSpace(actorID) != actorID || messageID == "" || strings.TrimSpace(messageID) != messageID || taskID.Validate() != nil || apply == nil {
 		return InboxReceipt{}, false, fmt.Errorf("valid command identity and handler are required")
@@ -742,9 +867,13 @@ func (s *CanonicalStore) applyInboxCommandLocked(actorID, messageID string, task
 	if err != nil {
 		return InboxReceipt{}, false, fmt.Errorf("copy canonical state: %w", err)
 	}
+	next.SchemaVersion = CanonicalSchemaVersion
 	receipt, err := apply(&next)
 	if err != nil {
 		return InboxReceipt{}, false, err
+	}
+	if !reflect.DeepEqual(s.state.OwnerCredentials, next.OwnerCredentials) {
+		return InboxReceipt{}, false, ErrOwnerCommandRequired
 	}
 	if !reflect.DeepEqual(next.Inbox, s.state.Inbox) {
 		return InboxReceipt{}, false, fmt.Errorf("command handler cannot mutate Inbox directly")
@@ -788,6 +917,9 @@ func (s *CanonicalStore) applyInboxCommandLocked(actorID, messageID string, task
 // ValidateCanonicalTransition enforces append-only history and monotonic Task
 // versions across commits. Snapshot validation alone cannot prove these rules.
 func ValidateCanonicalTransition(previous, next CanonicalState) error {
+	if previous.SchemaVersion != next.SchemaVersion && (previous.SchemaVersion != 3 || next.SchemaVersion != CanonicalSchemaVersion) {
+		return fmt.Errorf("canonical schema may only advance from 3 to %d", CanonicalSchemaVersion)
+	}
 	if err := assignment.ValidateTransition(previous.AssignmentLedger, next.AssignmentLedger); err != nil {
 		return err
 	}
@@ -796,6 +928,9 @@ func ValidateCanonicalTransition(previous, next CanonicalState) error {
 	}
 	previous = NormalizeCanonicalState(previous)
 	next = NormalizeCanonicalState(next)
+	if err := ownercredential.ValidateTransition(previous.OwnerCredentials, next.OwnerCredentials); err != nil {
+		return err
+	}
 	if err := externalaction.ValidateTransition(previous.Orchestration, next.Orchestration, next.Revision); err != nil {
 		return err
 	}
@@ -920,6 +1055,19 @@ func ValidateCanonicalTransition(previous, next CanonicalState) error {
 			added := newEvents[id]
 			if newTask.Revision != 1 || newTask.Fence != 0 || len(added) != 1 || added[0].Type != task.TaskCreated || added[0].TaskRevision != 1 {
 				return fmt.Errorf("new Task %q requires revision 1, fence 0 and one creation event in the same commit", id)
+			}
+			ownerReceiptFound := false
+			for key, receipt := range next.Inbox {
+				if _, wasPresent := previous.Inbox[key]; wasPresent || receipt.TaskID != id {
+					continue
+				}
+				if receipt.ActorID != newTask.OwnerID || receipt.OwnerCommandDigest == "" || receipt.OwnerNonce == "" || receipt.OwnerCredentialRevision == 0 {
+					return fmt.Errorf("new Task %q requires an authenticated Owner create receipt", id)
+				}
+				ownerReceiptFound = true
+			}
+			if !ownerReceiptFound {
+				return fmt.Errorf("new Task %q requires a same-commit authenticated Owner receipt", id)
 			}
 		}
 	}

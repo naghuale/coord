@@ -2092,8 +2092,7 @@ production write path и import не подключены; приёмка гра
   `TestCanonicalStateValidatesTaskEventAndRunRelations`).
 - Внутренний taskservice создаёт `task_<ULID>` и `TASK_CREATED` одной транзакцией
   canonical snapshot; столкновение с уже сохранённым ID повторяет генерацию
-  (`TestCreateTaskGeneratesCanonicalTaskID`,
-  `TestTaskIDCollisionRetriesBeforeCommit`). Public create API не добавлен (R52).
+  (`TestCreateTaskGeneratesCanonicalTaskID`). Public create API не добавлен (R52).
 - `fsm.Run.TaskID` отделён от прежнего `Run.Task`. Startup validation требует
   существующую Task, историю события Run, Task-wide active-writer uniqueness и
   согласованный Fence и целостную persisted Run FSM (`TestCanonicalStateRejectsMultipleActiveRunsPerTask`,

@@ -14,7 +14,7 @@ import (
 )
 
 func TestReviewResultIsStructuredAndTaskScoped(t *testing.T) {
-	p := &canonicalMemory{state: resultState(roles.Reviewer)}
+	p := &canonicalMemory{state: ownerEnrolledCanonicalState(t, resultState(roles.Reviewer))}
 	s, err := NewCanonical(p)
 	if err != nil {
 		t.Fatal(err)
@@ -42,7 +42,7 @@ func TestReviewResultIsStructuredAndTaskScoped(t *testing.T) {
 }
 
 func TestAuditResultIsStructuredAndTaskScoped(t *testing.T) {
-	p := &canonicalMemory{state: resultState(roles.Auditor)}
+	p := &canonicalMemory{state: ownerEnrolledCanonicalState(t, resultState(roles.Auditor))}
 	s, err := NewCanonical(p)
 	if err != nil {
 		t.Fatal(err)
@@ -845,7 +845,7 @@ func executorState() CanonicalState {
 }
 
 func TestExecutorResultIsStructuredAndTaskScoped(t *testing.T) {
-	p := &canonicalMemory{state: executorState()}
+	p := &canonicalMemory{state: ownerEnrolledCanonicalState(t, executorState())}
 	s, err := NewCanonical(p)
 	if err != nil {
 		t.Fatal(err)

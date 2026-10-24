@@ -66,6 +66,17 @@ func New(c *coord.Coordinator, cfg Config) (*Daemon, error) {
 		_ = controlLn.Close()
 		return nil, fmt.Errorf("listen metrics: %w", err)
 	}
+	_, controlPort, err := net.SplitHostPort(controlLn.Addr().String())
+	if err != nil {
+		_ = controlLn.Close()
+		_ = metricsLn.Close()
+		return nil, fmt.Errorf("resolve control listener port: %w", err)
+	}
+	if err := c.ConfigureOwnerWebAuthnPolicy("localhost", "http://localhost:"+controlPort); err != nil {
+		_ = controlLn.Close()
+		_ = metricsLn.Close()
+		return nil, fmt.Errorf("configure Owner WebAuthn policy: %w", err)
+	}
 	d := &Daemon{coordinator: c, config: cfg, controlLn: controlLn, metricsLn: metricsLn}
 	controlMux := http.NewServeMux()
 	controlMux.HandleFunc("/readyz", d.readyHandler)

@@ -2,8 +2,11 @@ package coord
 
 import (
 	"coord/fsm"
+	"coord/ownercredential"
+	"coord/store"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 )
@@ -16,6 +19,17 @@ type controlRequest struct {
 	Reason string `json:"reason"`
 }
 
+type ownerCommandBoundary interface {
+	IssueOwnerCommandChallenge(ownercredential.CommandRequest) (ownercredential.Command, error)
+	ApplyOwnerCredentialCommand(string, ownercredential.Command, ownercredential.Assertion) (ownercredential.Receipt, bool, error)
+}
+
+type ownerCommandRequest struct {
+	ChallengeID string                    `json:"challenge_id"`
+	Command     ownercredential.Command   `json:"command"`
+	Assertion   ownercredential.Assertion `json:"assertion"`
+}
+
 // ControlHandler exposes authenticated supervisor operations. Use TLS outside localhost.
 func (c *Coordinator) ControlHandler(token string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -24,6 +38,55 @@ func (c *Coordinator) ControlHandler(token string) http.Handler {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/owner/challenge" {
+			if r.Method != http.MethodPost {
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			boundary, ok := c.store.(ownerCommandBoundary)
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			var request ownercredential.CommandRequest
+			if err := decodeControlJSON(w, r, &request, 64<<10); err != nil {
+				http.Error(w, "invalid request", http.StatusBadRequest)
+				return
+			}
+			command, err := boundary.IssueOwnerCommandChallenge(request)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusConflict)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(command)
+			return
+		}
+		if r.URL.Path == "/owner/command" {
+			if r.Method != http.MethodPost {
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			boundary, ok := c.store.(ownerCommandBoundary)
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			var request ownerCommandRequest
+			if err := decodeControlJSON(w, r, &request, 128<<10); err != nil {
+				http.Error(w, "invalid request", http.StatusBadRequest)
+				return
+			}
+			receipt, replayed, err := boundary.ApplyOwnerCredentialCommand(request.ChallengeID, request.Command, request.Assertion)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusConflict)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(struct {
+				Receipt  ownercredential.Receipt `json:"receipt"`
+				Replayed bool                    `json:"replayed"`
+			}{receipt, replayed})
+			return
+		}
 		if r.URL.Path == "/runs" && r.Method == http.MethodGet {
 			out := []fsm.Run{}
 			for _, run := range c.store.All() {
@@ -39,15 +102,8 @@ func (c *Coordinator) ControlHandler(token string) http.Handler {
 			return
 		}
 		var req controlRequest
-		d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192))
-		d.DisallowUnknownFields()
-		if err := d.Decode(&req); err != nil {
-			http.Error(w, "invalid request", 400)
-			return
-		}
-		var trailing any
-		if err := d.Decode(&trailing); err != io.EOF {
-			http.Error(w, "invalid trailing JSON", http.StatusBadRequest)
+		if err := decodeControlJSON(w, r, &req, 8192); err != nil {
+			http.Error(w, "invalid request", http.StatusBadRequest)
 			return
 		}
 		var err error
@@ -71,3 +127,18 @@ func (c *Coordinator) ControlHandler(token string) http.Handler {
 		w.WriteHeader(http.StatusNoContent)
 	})
 }
+
+func decodeControlJSON(w http.ResponseWriter, r *http.Request, target any, maxBytes int64) error {
+	d := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBytes))
+	d.DisallowUnknownFields()
+	if err := d.Decode(target); err != nil {
+		return err
+	}
+	var trailing any
+	if err := d.Decode(&trailing); err != io.EOF {
+		return errors.New("invalid trailing JSON")
+	}
+	return nil
+}
+
+var _ ownerCommandBoundary = (*store.CanonicalStore)(nil)

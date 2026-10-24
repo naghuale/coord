@@ -18,13 +18,13 @@ import (
 
 var ErrUnsafeDowngrade = errors.New("unsafe canonical schema downgrade")
 
-// CheckSchemaTarget is also used by Save: callers cannot persist schema 2
-// over schema 3, even when the old action shape would otherwise be valid.
+// CheckSchemaTarget is also used by Save: callers cannot persist an older
+// canonical schema over a newer OwnerCredential-aware snapshot.
 func CheckSchemaTarget(current, target uint32) error {
 	if current >= 3 && target < current {
 		return ErrUnsafeDowngrade
 	}
-	if target != 3 {
+	if target != 3 && target != 4 {
 		return fmt.Errorf("unsupported target schema")
 	}
 	return nil
