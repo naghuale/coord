@@ -1201,7 +1201,7 @@ documents:
       - active task
       - next safe action
       - context readiness
-      - "location TRACKED_IN_OTHER_BRANCH: naghuale/coord branch ops/coord/project commit 08af0a7305df641468105f2471d8355d04c5dc52; stays active and optional until #97; OPS-BRANCH-DOCUMENT-LOCATION-01; semanticChange false"
+      - "location TRACKED_IN_OTHER_BRANCH: naghuale/coord branch ops/coord/project path operations/project/CURRENT.yaml; stays active and optional until #97; OPS-BRANCH-DOCUMENT-LOCATION-01; semanticChange false"
     usedBy:
       - COORDINATOR
       - REVIEWER
@@ -1234,7 +1234,7 @@ documents:
       - open work and blockers
       - owner-reserved decisions
       - milestone readiness
-      - "location TRACKED_IN_OTHER_BRANCH: naghuale/coord branch ops/coord/project commit 08af0a7305df641468105f2471d8355d04c5dc52; stays active and optional until #97; OPS-BRANCH-DOCUMENT-LOCATION-01; semanticChange false"
+      - "location TRACKED_IN_OTHER_BRANCH: naghuale/coord branch ops/coord/project path operations/project/OPEN-WORK.yaml; stays active and optional until #97; OPS-BRANCH-DOCUMENT-LOCATION-01; semanticChange false"
     usedBy:
       - COORDINATOR
       - REVIEWER
