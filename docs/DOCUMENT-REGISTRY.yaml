@@ -536,6 +536,7 @@ documents:
       - proposed bounded coordinator delegation and ordered succession
       - records OWNER model D plus S2 combined for drafting only
       - grant-defined succession is not generation inheritance; two loss paths; exact OwnerCredential retry matches #93a
+      - OWNER loss confirm mustNot list and OWNER_CREDENTIAL actor source are specified for #93b, not implemented
     usedBy:
       - COORDINATOR
       - REVIEWER
