@@ -1,5 +1,25 @@
 # История изменений
 
+## 2026-10-24 — ADR-0010 accepted (Refs #102)
+
+- OWNER принял ADR-0010 решением ADR-0010-ACCEPTANCE на ревизии e3b5908. Статус Accepted. Реализация NOT_IMPLEMENTED, production DISABLED, делегация не действует, cutover не разрешён. (документация)
+
+## 2026-10-24 — ADR-0010 OWNER loss confirm boundary (Refs #102)
+
+- Путь (b) `coordinator.loss.confirm` получил явный список mustNot, запрет второго действующего координатора при ещё зарегистрированной сессии и вид актора `AGENT_SESSION` или `OWNER_CREDENTIAL`. Расширение схемы названо для #93b и этим коммитом не добавляется. Статус остаётся Proposed. (документация)
+
+## 2026-10-24 — ADR-0010 loss paths and exact retry (Refs #102)
+
+- Смена поколения не наследует делегацию. Точные тройки и одна запись перезапуска — уже названное применение выдачи. Потерю записывает либо допустимая AgentSession по #90, либо будущая команда OWNER `coordinator.loss.confirm` в #93b. Точный повтор подписанной команды возвращает прежний receipt. Статус остаётся Proposed. (документация)
+
+## 2026-10-24 — ADR-0010 closed draft questions (Refs #102)
+
+- Видимость преемника требуется при выдаче и при захвате. Включение идёт по явному списку OWNER. У первичного координатора одна запись перезапуска по stableAgentId, и он не наблюдает собственную потерю. Делегированные EXPIRE и VOID строже правил хранилища #90 для команд OWNER. Принятие ADR делегацию не включает. Открытых вопросов модели не осталось. (документация)
+
+## 2026-10-24 — Proposed ADR-0010 bounded coordinator delegation (Refs #102)
+
+- Добавлен Proposed ADR-0010 и запись реестра со статусом proposed. Модель D и упорядоченный список преемников записаны как черновик по решению OWNER. Принятые ADR не изменены. Код, схема и действующий ручной процесс координатора не изменены. (документация)
+
 ## 2026-10-24 — Disable production orchestration pending acceptance (Refs #96)
 
 - Production coordd composes a read-only disabled workflow facade with `orchestrationEnabled = false`. Recovery/tick/adapter/projection execution stays off, with no environment, config or flag enablement. Production fixture requests are visibly rejected before locks/transport; explicit execution exists only in the `_test.go` harness. Both ADR acceptance and a ready authenticated single write path are required before a separate enablement change (`TestOrchestrationNoProductionEnablementConfig`, `TestOrchestrationExplicitTestHarnessStillExecutes`).
