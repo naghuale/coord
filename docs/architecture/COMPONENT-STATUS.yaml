@@ -4,7 +4,7 @@ kind: ArchitectureComponentRegistry
 metadata:
   projectId: coord
   registryVersion: 1
-  updatedFromCommit: 0c6eaf469024822a34fc501b5349ddcb68b70cc2
+  updatedFromCommit: 62f83e36d9fa5e589d19c8fe60ac9eb097df690b
   statusVocabulary:
     - implemented
     - partial
@@ -301,15 +301,17 @@ components:
       - canonical external actions, claims and durable dispatch-start
       - ambiguous action recovery with observation before redispatch
       - canonical session revocation and fake stop-proof-gated replacement intent
-      - revision-consistent rebuildable projections and existing coordd hooks
+      - revision-consistent rebuildable projections in the explicit test harness; production orchestration disabled (#96)
+      - read-only disabled facade preserves workflow Run fencing and snapshot data
     missing:
+      - accepted orchestration ADR AND ready authenticated single write path before any production enablement
       - qualified live adapters and production replacement Run binding
       - complete Issue Review Audit CI scheduler
       - CandidateDecision and accepted-norm evidence validation
     evidence:
       symbols: [EnqueueAction, RecoverActions, AcceptObservation, WorkflowRuntime]
-      tests: [TestCrashAfterDispatchBeforeResponseObservesBeforeRetry, TestConfirmedFenceAndStopProofPrecedeReplacement, TestCoorddPublishesCanonicalRevisionBundle]
-      issues: [49]
+      tests: [TestCrashAfterDispatchBeforeResponseObservesBeforeRetry, TestConfirmedFenceAndStopProofPrecedeReplacement, TestExplicitOrchestrationHarnessPublishesCanonicalRevisionBundle, TestOrchestrationDisabledTickAndRecoveryAreReadOnly, TestOrchestrationNormalStartAndRestartPreserveSnapshot, TestOrchestrationDisabledKeepsRunFencesAndOrdinaryRuns, TestOrchestrationNoProductionEnablementConfig]
+      issues: [49, 96]
     documents:
       currentAnchor: durable-orchestration-candidate
       targetAnchor: durable-orchestration-candidate

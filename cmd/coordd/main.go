@@ -138,6 +138,9 @@ func runWithWriterFactories(ctx context.Context, cfg coorddconfig.Config, factor
 	if err = cfg.Validate(); err != nil {
 		return err
 	}
+	if !orchestrationEnabled && len(cfg.GitHubObservationFixtures) != 0 {
+		return &coorddconfig.InvalidError{Section: "config", Reason: "orchestration DISABLE_PENDING_ACCEPTANCE: github_observation_fixtures are forbidden in production"}
+	}
 	if factory == nil {
 		return &coorddconfig.InvalidError{Section: "transport", Reason: "production agent transport factory required"}
 	}
@@ -210,16 +213,10 @@ func runWithWriterFactories(ctx context.Context, cfg coorddconfig.Config, factor
 		return &startupFailure{section: "runtime", ownership: "released", namespaceLock: "released", exitCode: 1, err: errors.Join(fmt.Errorf("create coordinator: %w", err), closeTransport(), registry.Close(), canonical.Close())}
 	}
 	coordinator.RoleRegistry = registry
-	// No live external-action adapter is qualified in this slice. Existing intents
-	// recover durably; an unavailable adapter fails closed without launching agents.
 	if canonicalStore, ok := canonical.(*store.CanonicalStore); ok {
-		adapter, adapterErr := configuredObservationAdapter(canonicalStore, cfg)
-		if adapterErr != nil {
-			return &startupFailure{section: "runtime", ownership: "released", namespaceLock: "released", exitCode: 1, err: errors.Join(adapterErr, closeTransport(), registry.Close(), canonical.Close())}
+		if err = configureOrchestration(coordinator, canonicalStore, cfg, stderr); err != nil {
+			return &startupFailure{section: "runtime", ownership: "released", namespaceLock: "released", exitCode: 1, err: errors.Join(err, closeTransport(), registry.Close(), canonical.Close())}
 		}
-		workflow := orchestration.New(canonicalStore, adapter, "coordd", time.Now)
-		workflow.Projector = &projection.Writer{Root: filepath.Join(cfg.StateDir, "operations")}
-		coordinator.Workflow = workflow
 	}
 	host, err := daemon.New(coordinator, daemon.Config{
 		ControlAddr: cfg.ControlAddr, MetricsAddr: cfg.MetricsAddr,
@@ -236,6 +233,57 @@ func runWithWriterFactories(ctx context.Context, cfg coorddconfig.Config, factor
 	}
 	return nil
 }
+
+// DISABLE_PENDING_ACCEPTANCE (#96): changing this requires BOTH an accepted
+// orchestration ADR and a ready authenticated single write path. This is not a
+// configuration option. Enabled fixtures live only in the explicit _test.go harness.
+const orchestrationEnabled = false
+
+func configureOrchestration(c *coord.Coordinator, s *store.CanonicalStore, cfg coorddconfig.Config, diagnostic io.Writer) error {
+	workflow := orchestration.New(s, nil, "coordd", time.Now)
+	c.Workflow = disabledOrchestration{runtime: workflow, diagnostic: diagnostic}
+	if orchestrationEnabled {
+		adapter, err := configuredObservationAdapter(s, cfg)
+		if err != nil {
+			return err
+		}
+		workflow.Adapter = adapter
+		workflow.Projector = &projection.Writer{Root: filepath.Join(cfg.StateDir, "operations")}
+		c.Workflow = workflow
+	}
+	return nil
+}
+
+// disabledOrchestration preserves the read-only Run ownership fence. Dropping
+// Workflow entirely would let legacy Handle/Tick mutate preserved workflow Runs.
+// No recovery, adapter, projection or canonical write runs through this facade.
+type disabledOrchestration struct {
+	runtime    *orchestration.Runtime
+	diagnostic io.Writer
+}
+
+func (d disabledOrchestration) Recover(ctx context.Context) error { return ctx.Err() }
+func (d disabledOrchestration) Tick(ctx context.Context) error    { return ctx.Err() }
+func (d disabledOrchestration) OwnsRun(id string) bool {
+	snapshot, err := d.runtime.Store.CanonicalSnapshot()
+	if err == nil {
+		err = externalaction.Validate(snapshot.Orchestration, snapshot.Revision)
+	}
+	if err != nil {
+		_, _ = fmt.Fprintf(d.diagnostic, "coordd: ORCHESTRATION_OWNERSHIP_INVALID: %v\n", err)
+		return true // Never hand corrupt or ambiguous ownership to legacy handling.
+	}
+	for _, action := range snapshot.Orchestration.Actions {
+		if action.Binding.RunID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// Dormant actions do not block unrelated daemon service readiness. This is not
+// a claim that those actions completed or that orchestration is qualified.
+func (d disabledOrchestration) Completion() error { return nil }
 
 // configuredObservationAdapter returns an in-memory, credential-free GitHub
 // adapter only when explicit fixtures are present. It has no live/network mode.

@@ -1,5 +1,11 @@
 # История изменений
 
+## 2026-10-24 — Disable production orchestration pending acceptance (Refs #96)
+
+- Production coordd composes a read-only disabled workflow facade with `orchestrationEnabled = false`. Recovery/tick/adapter/projection execution stays off, with no environment, config or flag enablement. Production fixture requests are visibly rejected before locks/transport; explicit execution exists only in the `_test.go` harness. Both ADR acceptance and a ready authenticated single write path are required before a separate enablement change (`TestOrchestrationNoProductionEnablementConfig`, `TestOrchestrationExplicitTestHarnessStillExecutes`).
+- Preserved orchestration Runs retain OwnsRun fencing against legacy messages/retries; ordinary Runs remain outside that fence. Normal startup/restart preserves canonical bytes and events, Task/Assignment reads remain available, and unsupported schemas fail closed (`TestOrchestrationDisabledTickAndRecoveryAreReadOnly`, `TestOrchestrationDisabledKeepsRunFencesAndOrdinaryRuns`, `TestOrchestrationNormalStartAndRestartPreserveSnapshot`, `TestOrchestrationDisabledPreservesTaskAndLedgerReads`, `TestOrchestrationDisabledStillRejectsUnsupportedSchema`).
+- Architecture/status/roadmap and Proposed ADR notes now describe actual disabled composition, retained data, and the two reopening prerequisites. Production no longer publishes the workflow revision bundle; its positive contract remains in `TestExplicitOrchestrationHarnessPublishesCanonicalRevisionBundle`, an intentional production-expectation inversion. No schema, canonical slice, writer or accepted ADR status change. (документация)
+
 ## 2026-10-24 — Action Map phrases are not authority (документация)
 
 - Запрет вопроса «что делать дальше» записан как правило этого `AGENTS.md`. `forbiddenActions: ask_owner_what_to_do_next` в proposed `ACTION-MAP.yaml` — только ненормативное зеркало. Правило R146 стоит само по себе; `SESSION_REPLACED` — имя ненормативного события в proposed `ACTION-MAP.yaml`. Документы выбираются по Document Registry и промежуточному порядку. Ссылка на Action Map в списке источников перехода явно будущая: она действует, только если карта позже будет отдельно принята как нормативный документ. Сейчас принятой карты нет. Новых переходов и новой нормы нет. (документация)
