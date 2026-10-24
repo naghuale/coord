@@ -107,6 +107,29 @@ func TestLoadValidatesCompleteTelepathyConfiguration(t *testing.T) {
 	}
 }
 
+func TestAssignmentLedgerModeConfiguration(t *testing.T) {
+	path, _ := validConfigFile(t)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var config map[string]any
+	if err := json.Unmarshal(raw, &config); err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []string{"LEDGER_FROZEN", "UNKNOWN_MODE"} {
+		config["assignment_ledger_mode"] = mode
+		data, _ := json.Marshal(config)
+		if err := os.WriteFile(path, data, 0600); err != nil {
+			t.Fatal(err)
+		}
+		_, err := Load(path)
+		if (err == nil) != (mode == "LEDGER_FROZEN") {
+			t.Fatalf("mode=%s err=%v", mode, err)
+		}
+	}
+}
+
 func TestLoadRejectsNonLoopbackAndMissingTransport(t *testing.T) {
 	if err := loopbackAddress("0.0.0.0:8000"); err == nil {
 		t.Fatal("non-loopback address accepted")

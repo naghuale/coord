@@ -30,6 +30,15 @@ func (f CanonicalFile) Load() (store.CanonicalState, error) {
 	if err != nil {
 		return store.CanonicalState{}, err
 	}
+	return DecodeCanonicalSnapshot(data)
+}
+
+// DecodeCanonicalSnapshot validates one atomic snapshot without acquiring
+// ownership, migration, creating an empty namespace, or writing any files.
+func DecodeCanonicalSnapshot(data []byte) (store.CanonicalState, error) {
+	if err := rejectDuplicateCanonicalFields(data); err != nil {
+		return store.CanonicalState{}, err
+	}
 
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(data, &fields); err != nil {
@@ -65,6 +74,61 @@ func (f CanonicalFile) Load() (store.CanonicalState, error) {
 		return store.CanonicalState{}, err
 	}
 	return state, nil
+}
+
+// A duplicate field must not hide ledger authority (e.g. a second null ledger)
+// or replace an identity/state while the decoder silently keeps the last value.
+func rejectDuplicateCanonicalFields(data []byte) error {
+	d := json.NewDecoder(bytes.NewReader(data))
+	var value func() error
+	value = func() error {
+		token, err := d.Token()
+		if err != nil {
+			return err
+		}
+		delim, ok := token.(json.Delim)
+		if !ok {
+			return nil
+		}
+		switch delim {
+		case '{':
+			seen := map[string]bool{}
+			for d.More() {
+				key, err := d.Token()
+				if err != nil {
+					return err
+				}
+				name, ok := key.(string)
+				if !ok {
+					return fmt.Errorf("invalid canonical JSON key")
+				}
+				if seen[name] {
+					return fmt.Errorf("duplicate canonical JSON field %q", name)
+				}
+				seen[name] = true
+				if err := value(); err != nil {
+					return err
+				}
+			}
+		case '[':
+			for d.More() {
+				if err := value(); err != nil {
+					return err
+				}
+			}
+		default:
+			return fmt.Errorf("invalid canonical JSON delimiter")
+		}
+		_, err = d.Token()
+		return err
+	}
+	if err := value(); err != nil {
+		return err
+	}
+	if _, err := d.Token(); err != io.EOF {
+		return fmt.Errorf("trailing canonical JSON")
+	}
+	return nil
 }
 
 func (f CanonicalFile) Save(state store.CanonicalState) error {

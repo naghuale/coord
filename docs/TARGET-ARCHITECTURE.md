@@ -295,3 +295,19 @@ This slice implements typed GitHub structural/semantic contracts and persistence
 <!-- run-recovery-command -->
 
 `ApplyRunRecoveryCommand` implements coordinator-driven recovery for orphaned Runs (TD-R2 class, WP-P03-02B). `MARK_INTERRUPTED` is the sole implemented transition: it commits Run→Failed, clears RecoveryNeeded and RecoveryClaim, emits RUN_RECOVERY_REQUESTED + RUN_STOP_PROOF_RECORDED + RUN_RECOVERY_BLOCKED atomically, and advances Task.Revision+1. KSC-C stop-proof validation requires Kind==Stop, Status==Completed, Stopped flag, StopMethod, full Binding fields matching the canonical Run, and a parent fence action with Completed status and FENCED outcome. Replay idempotency is enforced via inbox receipt matching. Four transitions (FENCE_ONLY, PREPARE_REPLACEMENT, COMPLETE_EXISTING, RESUME_OBSERVATION) are fail-closed. Seven specific violation codes remain distinct; TRANSITION_FORBIDDEN covers only admission/refusal boundaries. Target state: all five transitions implemented with TD-R2 coverage and independent Audit per transition. Tests: TestApplyRunRecoveryMarksInterruptedAtomically, TestRunRecoveryStopProofMutationMatrixFailsClosed, TestRunRecoveryDuplicateTransitionRejected.
+
+
+<!-- assignment-ledger -->
+## Assignment Ledger boundary (#90)
+
+The existing JSON canonical store now has an optional versioned append-only
+assignment authority ledger, exact state/TTL/session/generation preflight,
+standalone and optionally Run-bound atomic result gates, offline read-only status,
+and LEDGER_FROZEN launch rollback that retains data and existing service functions.
+The implementation is partial: production first-offer write authorization is
+BLOCKED_ON_WRITE_AUTHORITY until follow-up #93 resolves the existing command-boundary gap.
+No direct CLI write, legacy credential expansion, SQLite, provider mesh, R155/R156
+or automatic host/session/model verification is included. Old journals stay history;
+first explicit post-merge offer starts cutover, never a journal import.
+[Coverage](R153-COVERAGE-MATRIX.md) and [runbook](operations/ASSIGNMENT-LEDGER-CUTOVER.md)
+distinguish core tests from runtime admission/receiver enforcement still to come.

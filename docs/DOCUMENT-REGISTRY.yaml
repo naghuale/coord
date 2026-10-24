@@ -851,6 +851,45 @@ documents:
       reviewer: required
       auditor: conditional_if_authority_changes
       owner: only_for_class_R
+  - id: assignment-ledger
+    path: docs/operations/ASSIGNMENT-LEDGER.md
+    class: operations
+    status: active
+    purpose: [assignment authority state machine and read-only status]
+    usedBy: [COORDINATOR, EXECUTOR, REVIEWER, AUDITOR, OPERATOR]
+    readWhen: [IMPLEMENTATION, REVIEW, AUDIT, RUNTIME_START, MIGRATION]
+    updateWhen: [RUNTIME_BEHAVIOR_CHANGED, CLI_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: operational_projection
+    ownership: {creates: EXECUTOR, updates: EXECUTOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: required, owner: false}
+  - id: assignment-ledger-cutover
+    path: docs/operations/ASSIGNMENT-LEDGER-CUTOVER.md
+    class: operations
+    status: active
+    purpose: [cutover blocker and ledger frozen launch rollback]
+    usedBy: [COORDINATOR, EXECUTOR, REVIEWER, AUDITOR, OPERATOR]
+    readWhen: [IMPLEMENTATION, REVIEW, AUDIT, RUNTIME_START, MIGRATION]
+    updateWhen: [RUNTIME_BEHAVIOR_CHANGED, CLI_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: operational_projection
+    ownership: {creates: EXECUTOR, updates: EXECUTOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: required, owner: false}
+  - id: r153-coverage-matrix
+    path: docs/R153-COVERAGE-MATRIX.md
+    class: architecture_status
+    status: active
+    purpose: [WP-R153-04 and WP-R153-06 implementation coverage and limitations]
+    usedBy: [COORDINATOR, EXECUTOR, REVIEWER, AUDITOR, OPERATOR]
+    readWhen: [IMPLEMENTATION, REVIEW, AUDIT, RUNTIME_START, MIGRATION]
+    updateWhen: [RUNTIME_BEHAVIOR_CHANGED, CLI_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: operational_projection
+    ownership: {creates: EXECUTOR, updates: EXECUTOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: required, owner: false}
   - id: operations
     path: docs/OPERATIONS.md
     class: operations

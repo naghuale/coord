@@ -176,6 +176,13 @@ func runWithWriterFactories(ctx context.Context, cfg coorddconfig.Config, factor
 	if err != nil {
 		return runDiagnostic(ctx, cfg, stderr, "canonical state is not ready: "+err.Error())
 	}
+	if cfg.AssignmentLedgerMode == "LEDGER_FROZEN" {
+		freezer, ok := canonical.(interface{ FreezeAssignmentLedger() })
+		if !ok {
+			return errors.Join(fmt.Errorf("LEDGER_FROZEN requires canonical ledger support"), canonical.Close())
+		}
+		freezer.FreezeAssignmentLedger()
+	}
 	observeDaemonStartup(ctx, true)
 	registry, err := openRoles(filepath.Join(cfg.StateDir, "roles.json"))
 	if err != nil {

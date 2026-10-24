@@ -36,6 +36,7 @@ func FailureDetails(err error) (section, reason string, ok bool) {
 }
 
 type Config struct {
+	AssignmentLedgerMode      string                         `json:"assignment_ledger_mode,omitempty"`
 	SchemaVersion             int                            `json:"schema_version"`
 	StateDir                  string                         `json:"state_dir"`
 	ControlAddr               string                         `json:"control_addr"`
@@ -81,6 +82,9 @@ func Load(path string) (Config, error) {
 }
 
 func (c *Config) Validate() error {
+	if c.AssignmentLedgerMode != "" && c.AssignmentLedgerMode != "LEDGER_FROZEN" {
+		return invalid("assignment_ledger_mode must be empty or LEDGER_FROZEN")
+	}
 	if c.SchemaVersion != 1 {
 		return invalid("schema_version must be 1")
 	}
