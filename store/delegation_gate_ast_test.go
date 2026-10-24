@@ -15,6 +15,7 @@ func TestCoordinatorDelegationHasCompileTimeGate(t *testing.T) {
 	fset := token.NewFileSet()
 	constName := "CoordinatorDelegationEnabled"
 	declarations := 0
+	gateHelperFiles := map[string]bool{}
 
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -33,6 +34,30 @@ func TestCoordinatorDelegationHasCompileTimeGate(t *testing.T) {
 		if err != nil {
 			return err
 		}
+		// Identify gate-helper files: they declare CoordinatorDelegationEnabled
+		// or coordinatorDelegationActive / delegationHarnessEnabled.
+		base := filepath.Base(path)
+		for _, decl := range file.Decls {
+			switch d := decl.(type) {
+			case *ast.FuncDecl:
+				if d.Name != nil && d.Name.Name == "coordinatorDelegationActive" {
+					gateHelperFiles[base] = true
+				}
+			case *ast.GenDecl:
+				for _, spec := range d.Specs {
+					vs, ok := spec.(*ast.ValueSpec)
+					if !ok {
+						continue
+					}
+					for _, name := range vs.Names {
+						if name.Name == constName || name.Name == "delegationHarnessEnabled" {
+							gateHelperFiles[base] = true
+						}
+					}
+				}
+			}
+		}
+
 		ast.Inspect(file, func(node ast.Node) bool {
 			switch n := node.(type) {
 			case *ast.ValueSpec:
@@ -59,10 +84,13 @@ func TestCoordinatorDelegationHasCompileTimeGate(t *testing.T) {
 					}
 				}
 			case *ast.CallExpr:
+				if !gateHelperFiles[base] {
+					return true
+				}
 				if sel, ok := n.Fun.(*ast.SelectorExpr); ok {
 					if pkg, ok := sel.X.(*ast.Ident); ok && (pkg.Name == "os" || pkg.Name == "flag") {
-						// Gate helpers must not read env/flag; allow elsewhere.
-						_ = path
+						// F6: gate helpers must not read env/flag/config.
+						t.Errorf("gate helper %s must not call %s.%s", path, pkg.Name, sel.Sel.Name)
 					}
 				}
 			}
@@ -78,5 +106,8 @@ func TestCoordinatorDelegationHasCompileTimeGate(t *testing.T) {
 	}
 	if CoordinatorDelegationEnabled {
 		t.Fatal("const must be false")
+	}
+	if !gateHelperFiles["delegation_gate.go"] {
+		t.Fatal("expected delegation_gate.go to be identified as a gate helper file")
 	}
 }

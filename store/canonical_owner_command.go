@@ -126,6 +126,11 @@ func (s *CanonicalStore) ApplyOwnerCredentialCommand(challengeID string, submitt
 	if s.failed != nil {
 		return ownercredential.Receipt{}, false, fmt.Errorf("store requires reopen after durability failure: %w", s.failed)
 	}
+	// F4: for delegation kinds the disable gate runs BEFORE durable receipt
+	// replay so a prior success cannot be reported as accepted while disabled.
+	if ownercredential.IsDelegationCommand(submitted.Kind) && !coordinatorDelegationActive() {
+		return ownercredential.Receipt{}, false, ErrCoordinatorDelegationDisabled
+	}
 	// A durable exact retry can be recognized after daemon restart even though
 	// the in-memory challenge table was intentionally discarded. The receipt's
 	// digest binds every command field, including the original challenge ID.
@@ -161,7 +166,7 @@ func (s *CanonicalStore) ApplyOwnerCredentialCommand(challengeID string, submitt
 	if !ownercredential.SupportedCommandKind(challenge.Kind) {
 		return ownercredential.Receipt{}, false, ErrOwnerCommandInvalid
 	}
-	// G95-1 lesson: disable gate BEFORE anything route-specific.
+	// Defense in depth: disable gate also before route-specific write path.
 	if ownercredential.IsDelegationCommand(challenge.Kind) && !coordinatorDelegationActive() {
 		return ownercredential.Receipt{}, false, ErrCoordinatorDelegationDisabled
 	}

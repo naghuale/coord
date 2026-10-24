@@ -227,6 +227,12 @@ func ValidateCanonicalState(state CanonicalState) error {
 	if state.SchemaVersion < 6 && len(state.CoordinatorDelegations) != 0 {
 		return fmt.Errorf("schema %d cannot contain CoordinatorDelegations", state.SchemaVersion)
 	}
+	// F3: fail-closed before assignment replay so disabled snapshots carrying
+	// delegation records or OWNER_CREDENTIAL loss are rejected even when the
+	// assignment history itself is incomplete/forged.
+	if err := validateDelegationDisabledInvariants(state); err != nil {
+		return err
+	}
 	if err := validateAssignments(state); err != nil {
 		return err
 	}
@@ -784,6 +790,13 @@ func (s *CanonicalStore) UpdateCanonical(fn func(*CanonicalState) error) error {
 	if !reflect.DeepEqual(s.state.OwnerCredentials, next.OwnerCredentials) {
 		return ErrOwnerCommandRequired
 	}
+	// F2: generic writers must not mutate CoordinatorDelegations while the
+	// production gate is off. Grant/revoke/loss/visibility use the authenticated
+	// OwnerCredential command path. When the harness is on, handoff/primaryRestart
+	// may update acting/history/visibility through this seam.
+	if !reflect.DeepEqual(s.state.CoordinatorDelegations, next.CoordinatorDelegations) && !coordinatorDelegationActive() {
+		return ErrCoordinatorDelegationDisabled
+	}
 	next.SchemaVersion = CanonicalSchemaVersion
 	if reflect.DeepEqual(s.state, next) {
 		return nil
@@ -976,6 +989,11 @@ func ValidateCanonicalTransition(previous, next CanonicalState) error {
 	next = NormalizeCanonicalState(next)
 	if err := ownercredential.ValidateTransition(previous.OwnerCredentials, next.OwnerCredentials); err != nil {
 		return err
+	}
+	// F2: while delegation is disabled, CoordinatorDelegations must be byte-stable
+	// across transitions (no generic insert/edit/delete of the grant slice).
+	if !coordinatorDelegationActive() && !reflect.DeepEqual(previous.CoordinatorDelegations, next.CoordinatorDelegations) {
+		return fmt.Errorf("%w: CoordinatorDelegations immutable while delegation disabled", ErrCoordinatorDelegationDisabled)
 	}
 	if err := externalaction.ValidateTransition(previous.Orchestration, next.Orchestration, next.Revision); err != nil {
 		return err

@@ -199,15 +199,19 @@ func applyLossConfirm(state *CanonicalState, challenge ownercredential.Command, 
 	expBefore := rec.Validity.ExpiresAt
 	nbBefore := rec.Validity.NotBefore
 
-	// mustNot: no open delegated work for this exact triple (stale gen → no match).
+	// mustNot: no open delegated work for this exact triple inside this grant's
+	// repository/project + AllowedWorkItems scope (stale gen → no match).
 	if state.AssignmentLedger == nil || state.AssignmentLedger.Records == nil {
 		return fmt.Errorf("%w: no open delegated work", ErrCoordinatorDelegationInvalid)
+	}
+	inScope := func(r assignment.Record) bool {
+		return assignmentInGrantScope(rec, r) == nil
 	}
 	matched := 0
 	for id, r := range state.AssignmentLedger.Records {
 		coord := r.Coordinator()
 		sameTriple := coord.AgentID == named.StableAgentID && coord.SessionID == named.SessionID && coord.Generation == named.Generation
-		if !sameTriple {
+		if !sameTriple || !inScope(r) {
 			continue
 		}
 		if r.State.Terminal() {
@@ -221,9 +225,9 @@ func applyLossConfirm(state *CanonicalState, challenge ownercredential.Command, 
 	}
 	if matched == 0 {
 		// Distinguish stale generation (same agent/session, different gen on open work)
-		// from no open work at all.
+		// from no open work at all / out-of-scope work items only.
 		for _, r := range state.AssignmentLedger.Records {
-			if r.State.Terminal() || r.CoordinatorLost {
+			if r.State.Terminal() || r.CoordinatorLost || !inScope(r) {
 				continue
 			}
 			coord := r.Coordinator()
@@ -234,15 +238,15 @@ func applyLossConfirm(state *CanonicalState, challenge ownercredential.Command, 
 		return fmt.Errorf("%w: no open delegated work", ErrCoordinatorDelegationInvalid)
 	}
 
-	// Record COORDINATOR_LOST with OWNER_CREDENTIAL actor source on each matching assignment.
-	// Unrelated assignments (different coordinator) are not touched.
+	// Record COORDINATOR_LOST with OWNER_CREDENTIAL actor source on each matching
+	// in-scope assignment. Out-of-scope or unrelated coordinator assignments are not touched.
 	ownerActor := assignment.Principal{
 		SessionID:  "ownercredential:" + challenge.PrincipalID,
 		AgentID:    challenge.PrincipalID,
 		Generation: 1,
 	}
 	for id, r := range state.AssignmentLedger.Records {
-		if r.State.Terminal() || r.CoordinatorLost {
+		if r.State.Terminal() || r.CoordinatorLost || !inScope(r) {
 			continue
 		}
 		coord := r.Coordinator()
@@ -271,9 +275,22 @@ func applyLossConfirm(state *CanonicalState, challenge ownercredential.Command, 
 	if !rec.IsBarred(named) {
 		rec.BarredCoordinators = append(rec.BarredCoordinators, named)
 	}
+	// lossRecordID = challenge.MessageID; AssignmentID records one matched
+	// in-scope assignment for the F5 primaryRestart loss-identity bind.
+	lossAssignmentID := ""
+	for id, r := range state.AssignmentLedger.Records {
+		if !r.CoordinatorLost {
+			continue
+		}
+		coord := r.Coordinator()
+		if coord.AgentID == named.StableAgentID && coord.SessionID == named.SessionID && coord.Generation == named.Generation && inScope(r) {
+			lossAssignmentID = id
+			break
+		}
+	}
 	rec.History = append(rec.History, DelegationHistoryEntry{
 		Kind: DelegationHistoryLossRecorded, At: now, Actor: challenge.PrincipalID, Reason: payload.Reason,
-		From: &named, ReceiptID: challenge.MessageID, ReceiptDig: challenge.Digest,
+		AssignmentID: lossAssignmentID, From: &named, ReceiptID: challenge.MessageID, ReceiptDig: challenge.Digest,
 	})
 	if acting := rec.CurrentActing(); acting.Equal(named) {
 		rec.ActingCoordinator = nil

@@ -153,7 +153,7 @@ func TestDelegationRejectsBeforeNotBeforeAndAtExpiresAt(t *testing.T) {
 		Assignee:        "codex:worker", StableAgentID: "worker", SessionID: "codex:worker", AssigneeGeneration: 1,
 		Role: "IMPLEMENTER", SubjectSHA: strings.Repeat("c", 40),
 		IssuedAt: base.Add(-time.Minute), ValidUntil: base.Add(3 * time.Hour),
-		AdmissionBasis:     assignment.AdmissionBasis{Kind: "POOL", Reference: "p", TargetSessionID: "codex:worker", TargetAgentID: "worker", Role: "IMPLEMENTER", SubjectSHA: strings.Repeat("c", 40)},
+		AdmissionBasis:     assignment.AdmissionBasis{Kind: "POOL", Reference: "issue-93b", TargetSessionID: "codex:worker", TargetAgentID: "worker", Role: "IMPLEMENTER", SubjectSHA: strings.Repeat("c", 40)},
 		VisibilityEvidence: assignment.VisibilityEvidence{Reference: "v", SessionID: "codex:worker", ObservedAt: base.Add(-time.Minute)},
 		Revision:           1, UpdatedAt: base,
 	}
@@ -257,7 +257,7 @@ func TestDelegationExhaustionBlocksOfferAcceptAndAutoCapture(t *testing.T) {
 		Assignee:        "codex:worker", StableAgentID: "worker", SessionID: "codex:worker", AssigneeGeneration: 1,
 		Role: "IMPLEMENTER", SubjectSHA: strings.Repeat("d", 40),
 		IssuedAt: now.Add(-time.Minute), ValidUntil: now.Add(time.Hour),
-		AdmissionBasis:     assignment.AdmissionBasis{Kind: "POOL", Reference: "p", TargetSessionID: "codex:worker", TargetAgentID: "worker", Role: "IMPLEMENTER", SubjectSHA: strings.Repeat("d", 40)},
+		AdmissionBasis:     assignment.AdmissionBasis{Kind: "POOL", Reference: "issue-93b", TargetSessionID: "codex:worker", TargetAgentID: "worker", Role: "IMPLEMENTER", SubjectSHA: strings.Repeat("d", 40)},
 		VisibilityEvidence: assignment.VisibilityEvidence{Reference: "v", SessionID: "codex:worker", ObservedAt: now.Add(-time.Minute)},
 		Revision:           1, UpdatedAt: now,
 	}, "exhausted-offer"); err == nil {
@@ -824,7 +824,7 @@ func TestForgedOwnerCredentialActorWithoutReceiptRejected(t *testing.T) {
 		Assignee: "u", StableAgentID: "target", SessionID: "u", AssigneeGeneration: 1,
 		Role: "IMPLEMENTER", SubjectSHA: strings.Repeat("a", 40),
 		IssuedAt: now.Add(-time.Minute), ValidUntil: now.Add(time.Hour),
-		AdmissionBasis:     assignment.AdmissionBasis{Kind: "POOL", Reference: "r", TargetSessionID: "u", TargetAgentID: "target", Role: "IMPLEMENTER", SubjectSHA: strings.Repeat("a", 40)},
+		AdmissionBasis:     assignment.AdmissionBasis{Kind: "POOL", Reference: "w", TargetSessionID: "u", TargetAgentID: "target", Role: "IMPLEMENTER", SubjectSHA: strings.Repeat("a", 40)},
 		VisibilityEvidence: assignment.VisibilityEvidence{Reference: "v", SessionID: "u", ObservedAt: now.Add(-time.Minute)},
 		Revision:           2, UpdatedAt: now, AcknowledgedAt: now.Add(-time.Minute), WorkStartedAt: now.Add(-time.Minute),
 	}

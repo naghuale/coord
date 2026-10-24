@@ -84,6 +84,49 @@ func (s DelegationScope) AllowsAction(action string) bool {
 	return false
 }
 
+// AllowsWorkItem reports whether item is an explicit AllowedWorkItems entry.
+// AdmissionBasis.Reference is the assignment's work-item identity for ADR §3/§5.
+func (s DelegationScope) AllowsWorkItem(item string) bool {
+	if item == "" {
+		return false
+	}
+	for _, w := range s.AllowedWorkItems {
+		if w == item {
+			return true
+		}
+	}
+	return false
+}
+
+// MatchesRepositoryProject binds an operation to the grant's repository+project
+// identity (ADR §3). Empty values never match.
+func (s DelegationScope) MatchesRepositoryProject(repository, project string) bool {
+	return repository != "" && project != "" && s.Repository == repository && s.Project == project
+}
+
+// assignmentWorkItem returns the work-item id used for AllowedWorkItems checks.
+func assignmentWorkItem(r assignment.Record) string {
+	return r.AdmissionBasis.Reference
+}
+
+// assignmentInGrantScope requires work-item allowlist membership under the
+// covering grant's repository/project identity (ADR §3, §5, §9).
+func assignmentInGrantScope(grant DelegationRecord, record assignment.Record) error {
+	if grant.Scope.Repository == "" || grant.Scope.Project == "" {
+		return fmt.Errorf("%w: grant scope repository/project required", ErrCoordinatorDelegationInvalid)
+	}
+	// Touch MatchesRepositoryProject so repository/project participate in the
+	// runtime authorization path (not only grant-overlap checks).
+	if !grant.Scope.MatchesRepositoryProject(grant.Scope.Repository, grant.Scope.Project) {
+		return fmt.Errorf("%w: grant scope repository/project mismatch", ErrCoordinatorDelegationInvalid)
+	}
+	item := assignmentWorkItem(record)
+	if !grant.Scope.AllowsWorkItem(item) {
+		return fmt.Errorf("%w: work item %q outside allowedWorkItems for %s/%s", ErrCoordinatorDelegationInvalid, item, grant.Scope.Repository, grant.Scope.Project)
+	}
+	return nil
+}
+
 // DelegationValidity is immutable after grant (ADR §7 / §10).
 type DelegationValidity struct {
 	NotBefore time.Time `json:"notBefore"`
@@ -234,7 +277,30 @@ func (d *DelegationRecord) Validate() error {
 	return nil
 }
 
+// validateDelegationDisabledInvariants rejects delegation records and
+// OWNER_CREDENTIAL loss events while the production const and harness are off.
+func validateDelegationDisabledInvariants(state CanonicalState) error {
+	if coordinatorDelegationActive() {
+		return nil
+	}
+	if len(state.CoordinatorDelegations) != 0 {
+		return fmt.Errorf("%w: CoordinatorDelegations present while delegation disabled", ErrCoordinatorDelegationDisabled)
+	}
+	if state.AssignmentLedger != nil {
+		for _, e := range state.AssignmentLedger.Events {
+			if e.Kind == "COORDINATOR_LOST" && e.EffectiveActorSource() == assignment.ActorSourceOwnerCredential {
+				return fmt.Errorf("%w: OWNER_CREDENTIAL loss present while delegation disabled", ErrCoordinatorDelegationDisabled)
+			}
+		}
+	}
+	return nil
+}
+
 func validateDelegations(state CanonicalState) error {
+	if !coordinatorDelegationActive() {
+		// Disabled invariants already enforced by validateDelegationDisabledInvariants.
+		return nil
+	}
 	if state.CoordinatorDelegations == nil {
 		return nil
 	}
@@ -446,6 +512,37 @@ func (d DelegationRecord) lossAlreadyRecorded(p DelegationPrincipal) bool {
 	return false
 }
 
+// primaryRestartConsumedLoss reports whether lossRecordID was already used by a
+// PRIMARY_RESTART (OWNER F5: at most once per distinct loss event).
+func (d DelegationRecord) primaryRestartConsumedLoss(lossRecordID string) bool {
+	if lossRecordID == "" {
+		return false
+	}
+	for _, h := range d.History {
+		if h.Kind == DelegationHistoryPrimaryRestart && h.ReceiptID == lossRecordID {
+			return true
+		}
+	}
+	return false
+}
+
+// latestUnconsumedLoss returns the newest LOSS_RECORDED entry whose ReceiptID
+// has not yet been bound to a PRIMARY_RESTART. lossRecordID is the OWNER
+// loss.confirm message id stored on the history entry.
+func (d DelegationRecord) latestUnconsumedLoss() (DelegationHistoryEntry, bool) {
+	for i := len(d.History) - 1; i >= 0; i-- {
+		h := d.History[i]
+		if h.Kind != DelegationHistoryLossRecorded || h.ReceiptID == "" {
+			continue
+		}
+		if d.primaryRestartConsumedLoss(h.ReceiptID) {
+			continue
+		}
+		return h, true
+	}
+	return DelegationHistoryEntry{}, false
+}
+
 // enforceDelegatedMutation gates Offer/Change/Accept under an active grant.
 // When no grant covers the actor, the #90 path is unchanged (ADR §14/#18).
 func findAnyGrantCoveringCoordinator(state CanonicalState, coord assignment.Principal) (DelegationRecord, bool) {
@@ -497,6 +594,9 @@ func enforceDelegatedMutation(state CanonicalState, actor assignment.Principal, 
 	}
 	if !grant.Scope.AllowsAction(action) {
 		return fmt.Errorf("%w: action %s outside allowedActions", ErrCoordinatorDelegationInvalid, action)
+	}
+	if err := assignmentInGrantScope(grant, record); err != nil {
+		return err
 	}
 	switch action {
 	case DelegatedActionVoid:
@@ -659,7 +759,11 @@ func enforceDelegatedOfferOrAccept(state CanonicalState, actor assignment.Princi
 }
 
 // ApplyPrimaryRestart activates a fresh primary session after recorded loss
-// (ADR §8). Requires fresh visibility, new session/generation, no dual acting.
+// (ADR §8 / OWNER F5). primaryRestart is not globally consumable; it may be
+// applied at most once per distinct loss event. The success history entry binds
+// lossRecordID (ReceiptID), replacement session/generation (To), and the
+// consumed visibility confirmation id (Reason carries evidence; visibility
+// ConsumedBy records the bind).
 func (s *CanonicalStore) ApplyPrimaryRestart(delegationID string, newSession assignment.Principal, evidence string) error {
 	if !coordinatorDelegationActive() {
 		return ErrCoordinatorDelegationDisabled
@@ -687,9 +791,17 @@ func (s *CanonicalStore) ApplyPrimaryRestart(delegationID string, newSession ass
 			// Predecessor still acting — no dual coordinators.
 			return fmt.Errorf("%w: predecessor still acting", ErrCoordinatorDelegationInvalid)
 		}
-		// Prior primary must be barred / loss recorded.
-		if !rec.IsBarred(rec.PrimaryCoordinator) && !rec.lossAlreadyRecorded(rec.PrimaryCoordinator) {
-			return fmt.Errorf("%w: predecessor loss not recorded", ErrCoordinatorDelegationInvalid)
+		// F5: require a distinct unconsumed loss event (lossRecordID = loss receipt id).
+		lossEntry, ok := rec.latestUnconsumedLoss()
+		if !ok {
+			return fmt.Errorf("%w: predecessor loss not recorded or already consumed by primaryRestart", ErrCoordinatorDelegationInvalid)
+		}
+		if rec.primaryRestartConsumedLoss(lossEntry.ReceiptID) {
+			return fmt.Errorf("%w: primaryRestart already applied for lossRecordID %s", ErrCoordinatorDelegationInvalid, lossEntry.ReceiptID)
+		}
+		// Prior primary / lost triple must be barred.
+		if lossEntry.From != nil && !rec.IsBarred(*lossEntry.From) {
+			return fmt.Errorf("%w: lost coordinator not barred", ErrCoordinatorDelegationInvalid)
 		}
 		if err := assignmentPrincipal(*state, newSession); err != nil {
 			return fmt.Errorf("%w: fresh session registration required", ErrCoordinatorDelegationInvalid)
@@ -711,10 +823,16 @@ func (s *CanonicalStore) ApplyPrimaryRestart(delegationID string, newSession ass
 		}
 		acting := principalFromAssignment(newSession)
 		from := rec.PrimaryCoordinator
+		if lossEntry.From != nil {
+			from = *lossEntry.From
+		}
 		rec.ActingCoordinator = &acting
 		rec.History = append(rec.History, DelegationHistoryEntry{
 			Kind: DelegationHistoryPrimaryRestart, At: now, Actor: newSession.SessionID,
 			Reason: evidence, From: &from, To: &acting,
+			AssignmentID: lossEntry.AssignmentID,
+			ReceiptID:    lossEntry.ReceiptID, // bind success to lossRecordID
+			ReceiptDig:   vis.MessageID,       // bind success to visibility confirmation id
 		})
 		state.CoordinatorDelegations[delegationID] = rec
 		return nil

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"coord/assignment"
 	"coord/ownercredential"
+	"coord/task"
 	"crypto/ed25519"
 	"encoding/json"
 	"errors"
@@ -246,6 +247,77 @@ func TestG93b2_ConstFalseParitySuite(t *testing.T) {
 		p := assignment.Principal{SessionID: "parity:sess", AgentID: "parity-agent", Generation: 1}
 		if err := f.s.RegisterAgentSession(p.SessionID, p.AgentID, ed25519.PublicKey(strings.Repeat("p", 32))); err != nil {
 			t.Fatal(err)
+		}
+	})
+
+	// F7: full #93a/#90 parity dimensions at const=false — register/revoke,
+	// task.create, receipts, revision/sequence, and no delegation records.
+	t.Run("owner_register_revoke_task_create_receipts_no_delegation", func(t *testing.T) {
+		f := newOwnerCommandFixture(t)
+		beforeRev := f.s.state.OwnerCredentials["owner-1"].CredentialRevision
+		beforeSeq := f.s.state.OwnerCredentials["owner-1"].CommandSequence
+		beforeCanonRev := f.s.state.Revision
+
+		pub, _, err := ed25519.GenerateKey(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		regPayload := registerPayload(t, "owner-parity-third", edDSACOSE(pub))
+		reg := f.command(ownercredential.CommandRegisterCredential, "parity-register", "owner-primary", beforeRev, regPayload)
+		regReceipt, replayed, err := f.s.ApplyOwnerCredentialCommand(reg.ChallengeID, reg, assertionFor(reg, f.private["owner-primary"], 1))
+		if err != nil || replayed || regReceipt.MessageID != reg.MessageID {
+			t.Fatalf("register err=%v replayed=%v", err, replayed)
+		}
+		agg := f.s.state.OwnerCredentials["owner-1"]
+		if agg.CredentialRevision != beforeRev+1 || agg.CommandSequence != beforeSeq+1 {
+			t.Fatalf("register revision/sequence=%d/%d want %d/%d", agg.CredentialRevision, agg.CommandSequence, beforeRev+1, beforeSeq+1)
+		}
+		if _, ok := agg.Receipts[reg.MessageID]; !ok {
+			t.Fatal("register receipt missing")
+		}
+		if f.s.state.CoordinatorDelegations != nil {
+			t.Fatal("register introduced CoordinatorDelegations")
+		}
+
+		revokePayload, _ := json.Marshal(ownercredential.RevokeCredentialPayload{CredentialID: "owner-parity-third"})
+		rev := f.command(ownercredential.CommandRevokeCredential, "parity-revoke", "owner-primary", agg.CredentialRevision, revokePayload)
+		sign := agg.Credentials["owner-primary"].SignCount + 1
+		revReceipt, replayed, err := f.s.ApplyOwnerCredentialCommand(rev.ChallengeID, rev, assertionFor(rev, f.private["owner-primary"], sign))
+		if err != nil || replayed || revReceipt.MessageID != rev.MessageID {
+			t.Fatalf("revoke err=%v replayed=%v", err, replayed)
+		}
+		agg = f.s.state.OwnerCredentials["owner-1"]
+		if agg.Credentials["owner-parity-third"].RevokedAt.IsZero() {
+			t.Fatal("credential not revoked")
+		}
+		if _, ok := agg.Receipts[rev.MessageID]; !ok {
+			t.Fatal("revoke receipt missing")
+		}
+
+		taskPayload, _ := json.Marshal(ownercredential.CreateTaskPayload{
+			Title: "parity-task", StagePlan: task.StagePlan{Stages: []task.Stage{task.Execution}, PolicyVersion: task.StagePlanPolicyVersion},
+		})
+		create := f.command(ownercredential.CommandCreateTask, "parity-create-task", "owner-primary", agg.CredentialRevision, taskPayload)
+		sign = agg.Credentials["owner-primary"].SignCount + 1
+		createReceipt, replayed, err := f.s.ApplyOwnerCredentialCommand(create.ChallengeID, create, assertionFor(create, f.private["owner-primary"], sign))
+		if err != nil || replayed || createReceipt.TaskID == "" {
+			t.Fatalf("create task err=%v replayed=%v receipt=%+v", err, replayed, createReceipt)
+		}
+		if f.s.state.Revision <= beforeCanonRev {
+			t.Fatal("canonical revision did not advance")
+		}
+		if f.s.state.CoordinatorDelegations != nil {
+			t.Fatal("task create introduced CoordinatorDelegations")
+		}
+		if len(f.s.state.OwnerCredentials["owner-1"].Receipts) < 3 {
+			t.Fatalf("expected register+revoke+create receipts, got %d", len(f.s.state.OwnerCredentials["owner-1"].Receipts))
+		}
+
+		// Exact retry of create returns prior receipt, no second effect.
+		saves := f.p.saveCalls
+		retry, replayed, err := f.s.ApplyOwnerCredentialCommand(create.ChallengeID, create, assertionFor(create, f.private["owner-primary"], sign))
+		if err != nil || !replayed || retry.MessageID != createReceipt.MessageID || f.p.saveCalls != saves {
+			t.Fatalf("create retry err=%v replayed=%v saves=%d", err, replayed, f.p.saveCalls-saves)
 		}
 	})
 }

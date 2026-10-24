@@ -212,7 +212,7 @@ func TestSnapshotReloadRejectsOwnerCredentialLossWithoutReceipt(t *testing.T) {
 		Assignee: "u", StableAgentID: "target", SessionID: "u", AssigneeGeneration: 1,
 		Role: "IMPLEMENTER", SubjectSHA: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		IssuedAt: time.Now().UTC().Add(-time.Minute), ValidUntil: time.Now().UTC().Add(time.Hour),
-		AdmissionBasis:     assignment.AdmissionBasis{Kind: "POOL", Reference: "r", TargetSessionID: "u", TargetAgentID: "target", Role: "IMPLEMENTER", SubjectSHA: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+		AdmissionBasis:     assignment.AdmissionBasis{Kind: "POOL", Reference: "w", TargetSessionID: "u", TargetAgentID: "target", Role: "IMPLEMENTER", SubjectSHA: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
 		VisibilityEvidence: assignment.VisibilityEvidence{Reference: "v", SessionID: "u", ObservedAt: time.Now().UTC().Add(-time.Minute)},
 		Revision:           2, UpdatedAt: time.Now().UTC(), AcknowledgedAt: time.Now().UTC().Add(-time.Minute), WorkStartedAt: time.Now().UTC().Add(-time.Minute),
 	}
@@ -282,7 +282,7 @@ func seedDelegatedAssignment(t *testing.T, f *ownerCommandFixture, id string, co
 			Assignee:        target.SessionID, StableAgentID: target.AgentID, SessionID: target.SessionID, AssigneeGeneration: target.Generation,
 			Role: "IMPLEMENTER", SubjectSHA: sha,
 			IssuedAt: now.Add(-time.Minute), ValidUntil: now.Add(time.Hour),
-			AdmissionBasis:     assignment.AdmissionBasis{Kind: "POOL", Reference: "pool", TargetSessionID: target.SessionID, TargetAgentID: target.AgentID, Role: "IMPLEMENTER", SubjectSHA: sha},
+			AdmissionBasis:     assignment.AdmissionBasis{Kind: "POOL", Reference: "issue-93b", TargetSessionID: target.SessionID, TargetAgentID: target.AgentID, Role: "IMPLEMENTER", SubjectSHA: sha},
 			VisibilityEvidence: assignment.VisibilityEvidence{Reference: "vis", SessionID: target.SessionID, ObservedAt: now.Add(-time.Minute)},
 			Revision:           1, UpdatedAt: now.Add(-time.Minute),
 		}
