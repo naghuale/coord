@@ -252,7 +252,7 @@ func configureAuthenticatedAgentIngress(tp transport.Transport, canonical store.
 		ConfigureAgentSessionIngress(transport.KeyResolver) error
 	})
 	if !ok {
-		return nil
+		return fmt.Errorf("authenticated AgentSession ingress is enabled but transport cannot configure it")
 	}
 	canonicalStore, ok := canonical.(*store.CanonicalStore)
 	if !ok {

@@ -174,9 +174,15 @@ type ingressTestByteClient struct{ incoming chan []byte }
 func (c *ingressTestByteClient) Send(context.Context, string, []byte) error { return nil }
 func (c *ingressTestByteClient) Incoming(context.Context) <-chan []byte     { return c.incoming }
 
-type ingressTestKeyResolver struct{ key transport.VerificationKey }
+type ingressTestKeyResolver struct {
+	key   transport.VerificationKey
+	calls *int
+}
 
 func (r ingressTestKeyResolver) ResolveVerificationKey(context.Context, string) (transport.VerificationKey, error) {
+	if r.calls != nil {
+		*r.calls++
+	}
 	return r.key, nil
 }
 
@@ -188,11 +194,15 @@ type ingressTestTransport struct {
 	legacyReads int
 	authReads   int
 	authInbox   <-chan transport.AuthenticatedFrame
+	legacyRead  func(context.Context) <-chan envelope.Envelope
 }
 
 func (t *ingressTestTransport) WhoAmI() string { return t.session }
 func (t *ingressTestTransport) Receive(ctx context.Context) <-chan envelope.Envelope {
 	t.legacyReads++
+	if t.legacyRead != nil {
+		return t.legacyRead(ctx)
+	}
 	return t.fakeTransport.Receive(ctx)
 }
 func (t *ingressTestTransport) AuthenticatedIngressConfigured() bool { return t.configured }
@@ -207,6 +217,7 @@ func (t *ingressTestTransport) ReceiveAuthenticated(ctx context.Context) <-chan 
 func newAuthenticatedReviewFixture(t *testing.T) (*store.CanonicalStore, *canonicalAgentEnvelope, ed25519.PrivateKey) {
 	t.Helper()
 	state := store.EmptyCanonicalState()
+	state.SchemaVersion = 4 // First AgentSession write exercises v4-to-v5 migration.
 	id := taskid.ID("task_01ARZ3NDEKTSV4RRFFQ69G5FAV")
 	now := time.Unix(100, 0).UTC()
 	stagePlan := task.StagePlan{Stages: []task.Stage{task.Execution, task.Review}, PolicyVersion: task.StagePlanPolicyVersion}
@@ -372,14 +383,31 @@ func TestRunWithReadinessKeepsLegacyReceiverWhenAuthenticatedIngressIsOff(t *tes
 func TestRunWithReadinessProcessesLegacyV1ResultAsBefore(t *testing.T) {
 	f := setup(t)
 	f.assign(t)
-	probe := &ingressTestTransport{fakeTransport: f.tp, session: "coord", configured: true, authInbox: make(chan transport.AuthenticatedFrame)}
-	f.c.tp = probe
-	f.tp.in <- f.ack()
-	f.tp.in <- f.heartbeat("STARTED")
-	f.tp.in <- f.heartbeat("RESULT_READY")
+	private := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{0x27}, ed25519.SeedSize))
+	peer := private.Public().(ed25519.PublicKey)
+	bytesIn := &ingressTestByteClient{incoming: make(chan []byte, 4)}
 	result := f.reply(envelope.Result)
 	result.ResultPayload = &envelope.ResultPayload{Outcome: "SUCCESS", Artifacts: []string{"blob://legacy-result"}}
-	f.tp.in <- result
+	for _, e := range []envelope.Envelope{f.ack(), f.heartbeat("STARTED"), f.heartbeat("RESULT_READY"), result} {
+		raw, err := envelope.Sign(e, private)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bytesIn.incoming <- raw
+	}
+	close(bytesIn.incoming)
+	resolverCalls := 0
+	signed := &transport.SignedClient{
+		Client: bytesIn, Peers: map[string]ed25519.PublicKey{"exec": peer},
+		Resolver: ingressTestKeyResolver{key: transport.VerificationKey{PublicKey: peer, Generation: 1}, calls: &resolverCalls},
+	}
+	legacyAdapter := &transport.Adapter{Client: signed, Session: "coord"}
+	authenticatedAdapter := &transport.AuthenticatedAdapter{Client: signed, Session: "coord"}
+	probe := &ingressTestTransport{
+		fakeTransport: f.tp, receiver: authenticatedAdapter, session: "coord", configured: true,
+		legacyRead: legacyAdapter.Receive, authInbox: make(chan transport.AuthenticatedFrame),
+	}
+	f.c.tp = probe
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- f.c.RunWithReadiness(ctx, nil) }()
@@ -396,11 +424,157 @@ func TestRunWithReadinessProcessesLegacyV1ResultAsBefore(t *testing.T) {
 		case <-time.After(time.Millisecond):
 		}
 	}
+	if err := <-done; !errors.Is(err, context.Canceled) && !errors.Is(err, ErrTransportClosed) {
+		t.Fatalf("RunWithReadiness error=%v", err)
+	}
+	if probe.legacyReads != 1 || probe.authReads != 0 || resolverCalls != 0 {
+		t.Fatalf("receiver selection legacy=%d authenticated=%d AgentSession resolver=%d", probe.legacyReads, probe.authReads, resolverCalls)
+	}
+}
+
+func TestSchemaFourMigrationKeepsLegacyIngressAndDoesNotEnableAgentIngress(t *testing.T) {
+	f := setup(t)
+	f.assign(t)
+	f.handle(t, f.ack())
+	f.handle(t, f.heartbeat("STARTED"))
+	f.handle(t, f.heartbeat("RESULT_READY"))
+	legacyRun, ok := f.s.Get("run")
+	if !ok {
+		t.Fatal("legacy Run fixture missing")
+	}
+	state := store.EmptyCanonicalState()
+	state.SchemaVersion = 4
+	state.Runs = map[string]fsm.Run{"run": legacyRun}
+	persistence := &ingressTestPersistence{state: state}
+	canonical, err := store.NewCanonicalWithClock(persistence, func() time.Time { return *f.now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = canonical.Close() })
+	key := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{0x5a}, ed25519.SeedSize))
+	if err := canonical.RegisterAgentSession("registered-agent", "registered-agent-id", key.Public().(ed25519.PublicKey)); err != nil {
+		t.Fatal(err)
+	}
+	before, err := canonical.CanonicalSnapshot()
+	if err != nil || before.SchemaVersion != 5 || !before.AgentSessions["registered-agent"].Active() {
+		t.Fatalf("fixture did not migrate to schema 5 with active AgentSession: schema=%d err=%v", before.SchemaVersion, err)
+	}
+	probe := &ingressTestTransport{
+		fakeTransport: &fakeTransport{in: make(chan envelope.Envelope, 1)}, session: "coord",
+		configured: true, authInbox: make(chan transport.AuthenticatedFrame),
+	}
+	cfg := DefaultConfig()
+	cfg.Now = func() time.Time { return *f.now }
+	c, err := New(probe, canonical, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := f.reply(envelope.Result)
+	result.ResultPayload = &envelope.ResultPayload{Outcome: "SUCCESS", Artifacts: []string{"blob://legacy"}}
+	probe.in <- result
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- c.RunWithReadiness(ctx, nil) }()
+	deadline := time.After(time.Second)
+	for {
+		if run, exists := canonical.Get("run"); exists && run.Status == fsm.Done {
+			cancel()
+			break
+		}
+		select {
+		case <-deadline:
+			cancel()
+			t.Fatal("legacy v1 result failed after schema 4 to 5 migration")
+		case <-time.After(time.Millisecond):
+		}
+	}
 	if err := <-done; !errors.Is(err, context.Canceled) {
 		t.Fatalf("RunWithReadiness error=%v", err)
 	}
-	if probe.legacyReads != 1 || probe.authReads != 0 {
-		t.Fatalf("receiver selection legacy=%d authenticated=%d", probe.legacyReads, probe.authReads)
+	after, err := canonical.CanonicalSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.SchemaVersion != 5 || len(after.Inbox) != 0 || probe.legacyReads != 1 || probe.authReads != 0 {
+		t.Fatalf("migration enabled/changed ingress: schema=%d inbox=%v legacy=%d authenticated=%d", after.SchemaVersion, after.Inbox, probe.legacyReads, probe.authReads)
+	}
+	if len(probe.sent) != 1 || probe.sent[0].SchemaVersion != envelope.SchemaVersionLegacyAgent || probe.sent[0].Kind != envelope.ResultAck || probe.sent[0].ResultAckPayload.AssignmentID != "" || probe.sent[0].ResultAckPayload.Disposition != "" {
+		t.Fatalf("legacy receipt changed after migration: %+v", probe.sent)
+	}
+}
+
+func TestLegacyPeerReceiveRejectsV2WithoutApplyingCanonicalCommand(t *testing.T) {
+	canonical, fixture, private := newAuthenticatedReviewFixture(t)
+	before, err := canonical.CanonicalSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := envelope.Envelope{
+		SchemaVersion: envelope.SchemaVersionAgentResult, MessageID: "v2-on-legacy-peer-path",
+		Timestamp: fixture.Now, From: fixture.Session, To: fixture.Assignment.CurrentCoordinator,
+		Kind: envelope.Result, InReplyTo: "task-delivery", Task: fixture.Task.String(),
+		Run: fixture.Assignment.RunBinding.RunID, Attempt: fixture.Assignment.RunBinding.Attempt,
+		TargetSHA: fixture.SHA, Fence: fixture.Assignment.RunBinding.Fence,
+		AgentResultPayload: &envelope.AgentResultPayload{
+			AssignmentID: fixture.Assignment.AssignmentID, Issuer: fixture.Assignment.Issuer,
+			CoordinatorGeneration: fixture.Assignment.CoordinatorGeneration,
+			ExpectedRevision:      before.Tasks[fixture.Task].Revision,
+			Verdict:               "REVIEW_ACCEPTED", Summary: "review complete",
+			Findings: []envelope.AgentFinding{}, InputArtifactRefs: []string{}, OutputArtifactRefs: []string{},
+		},
+	}
+	raw, err := envelope.Sign(command, private)
+	if err != nil {
+		t.Fatal(err)
+	}
+	incoming := make(chan []byte, 1)
+	incoming <- raw
+	close(incoming)
+	resolverCalls := 0
+	public := private.Public().(ed25519.PublicKey)
+	signed := &transport.SignedClient{
+		Client: &ingressTestByteClient{incoming: incoming},
+		Peers:  map[string]ed25519.PublicKey{fixture.Session: public},
+		Resolver: ingressTestKeyResolver{
+			key: transport.VerificationKey{PublicKey: public, Generation: 1}, calls: &resolverCalls,
+		},
+	}
+	legacyAdapter := &transport.Adapter{Client: signed, Session: fixture.Assignment.CurrentCoordinator}
+	authenticatedAdapter := &transport.AuthenticatedAdapter{Client: signed, Session: fixture.Assignment.CurrentCoordinator}
+	tp := &ingressTestTransport{
+		fakeTransport: &fakeTransport{in: make(chan envelope.Envelope)},
+		receiver:      authenticatedAdapter, session: fixture.Assignment.CurrentCoordinator,
+		configured: true, legacyRead: legacyAdapter.Receive,
+	}
+	cfg := DefaultConfig()
+	cfg.Now = func() time.Time { return fixture.Now.Add(time.Minute) }
+	c, err := New(tp, canonical, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := c.Handle(ctx, command); !errors.Is(err, ErrUnsupportedLegacyEnvelopeSchema) {
+		t.Fatalf("v2 envelope direct legacy path error=%v", err)
+	}
+	if err := c.RunWithReadiness(ctx, nil); !errors.Is(err, ErrTransportClosed) {
+		t.Fatalf("legacy peer stream error=%v", err)
+	}
+	after, err := canonical.CanonicalSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolverCalls != 0 || tp.legacyReads != 1 || tp.authReads != 0 {
+		t.Fatalf("routing called resolver=%d legacy=%d authenticated=%d", resolverCalls, tp.legacyReads, tp.authReads)
+	}
+	c.Metrics.mu.Lock()
+	rejected := c.Metrics.counters["rejected_messages_total"]
+	c.Metrics.mu.Unlock()
+	if rejected != 1 {
+		t.Fatalf("legacy peer-signed v2 envelope was not explicitly rejected: rejected=%d", rejected)
+	}
+	if !reflect.DeepEqual(before, after) || len(after.Inbox) != 0 || after.AssignmentLedger.Records[fixture.Assignment.AssignmentID].State != assignment.Active {
+		t.Fatal("v2 frame on default peer path changed canonical state")
 	}
 }
 

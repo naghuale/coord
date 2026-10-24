@@ -21,6 +21,7 @@ import (
 
 var ErrTransportClosed = errors.New("transport closed")
 var ErrStale = errors.New("noncanonical identity")
+var ErrUnsupportedLegacyEnvelopeSchema = errors.New("legacy coordinator path does not support envelope schema")
 
 // ErrDeadlineExceeded rejects application events after the absolute run deadline.
 var ErrDeadlineExceeded = errors.New("task deadline exceeded")
@@ -254,6 +255,9 @@ func contains(ids []string, id string) bool {
 func (c *Coordinator) Handle(ctx context.Context, e envelope.Envelope) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if e.SchemaVersion != envelope.SchemaVersionLegacyAgent {
+		return ErrUnsupportedLegacyEnvelopeSchema
+	}
 	if err := e.Validate(); err != nil {
 		c.Metrics.Inc("malformed_messages_total")
 		return err
@@ -719,14 +723,15 @@ func (c *Coordinator) RunWithReadiness(ctx context.Context, onReady func()) erro
 	var inbox <-chan envelope.Envelope
 	var authenticatedInbox <-chan transport.AuthenticatedFrame
 	if AuthenticatedAgentIngressEnabled {
-		if receiver, ok := c.tp.(transport.ConfiguredAuthenticatedReceiver); ok && receiver.AuthenticatedIngressConfigured() {
-			authenticatedInbox = receiver.ReceiveAuthenticated(ctx)
-			if authenticatedInbox == nil {
-				return fmt.Errorf("authenticated transport receive returned nil channel")
-			}
+		receiver, ok := c.tp.(transport.ConfiguredAuthenticatedReceiver)
+		if !ok || !receiver.AuthenticatedIngressConfigured() {
+			return fmt.Errorf("authenticated AgentSession ingress is enabled but not configured")
 		}
-	}
-	if authenticatedInbox == nil {
+		authenticatedInbox = receiver.ReceiveAuthenticated(ctx)
+		if authenticatedInbox == nil {
+			return fmt.Errorf("authenticated transport receive returned nil channel")
+		}
+	} else {
 		inbox = c.tp.Receive(ctx)
 		if inbox == nil {
 			return fmt.Errorf("transport receive returned nil channel")
@@ -751,6 +756,10 @@ func (c *Coordinator) RunWithReadiness(ctx context.Context, onReady func()) erro
 			if !ok {
 				return ErrTransportClosed
 			}
+			if !AuthenticatedAgentIngressEnabled && e.SchemaVersion != envelope.SchemaVersionLegacyAgent {
+				c.Metrics.Inc("rejected_messages_total")
+				continue
+			}
 			if err := c.Handle(ctx, e); err != nil {
 				if errors.Is(err, store.ErrPersistence) || errors.Is(err, roles.ErrPersistence) {
 					return err
@@ -763,11 +772,6 @@ func (c *Coordinator) RunWithReadiness(ctx context.Context, onReady func()) erro
 		case frame, ok := <-authenticatedInbox:
 			if !ok {
 				return ErrTransportClosed
-			}
-			e := frame.Envelope()
-			if e.SchemaVersion == envelope.SchemaVersionAgentResult && !AuthenticatedAgentIngressEnabled {
-				c.Metrics.Inc("rejected_messages_total")
-				continue
 			}
 			if err := c.handleAuthenticatedFrame(ctx, frame); err != nil {
 				if errors.Is(err, store.ErrPersistence) || errors.Is(err, roles.ErrPersistence) {
