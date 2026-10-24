@@ -169,6 +169,9 @@ func (s *CanonicalStore) OfferAssignment(actor assignment.Principal, r assignmen
 		if err := enforceDelegatedOfferOrAccept(*state, actor, DelegatedActionOffer, now); err != nil {
 			return err
 		}
+		if err := bindAssignmentScopeFromGrant(*state, actor, &r, now); err != nil {
+			return err
+		}
 		if err := enforceDelegatedMutation(*state, actor, DelegatedActionOffer, r, now); err != nil {
 			return err
 		}
@@ -182,6 +185,21 @@ func (s *CanonicalStore) OfferAssignment(actor assignment.Principal, r assignmen
 // ChangeAssignment handles only explicit coordinator commands or a verified
 // exact ACK. Transport receipt/delivery is never an activation command.
 func (s *CanonicalStore) ChangeAssignment(actor assignment.Principal, id string, revision uint64, kind, evidence string) error {
+	return s.changeAssignment(actor, id, revision, kind, evidence, scopeClaim{})
+}
+
+// scopeClaim is a command-supplied grant binding. It is never written onto
+// the assignment. When set, it must equal the persisted binding.
+type scopeClaim struct {
+	grantID         string
+	grantGeneration uint64
+	repository      string
+	project         string
+	workItem        string
+	set             bool
+}
+
+func (s *CanonicalStore) changeAssignment(actor assignment.Principal, id string, revision uint64, kind, evidence string, claim scopeClaim) error {
 	return s.UpdateCanonical(func(state *CanonicalState) error {
 		r, err := assignmentRecord(*state, id, revision)
 		if err != nil {
@@ -192,6 +210,14 @@ func (s *CanonicalStore) ChangeAssignment(actor assignment.Principal, id string,
 		}
 		if err := assignmentPrincipal(*state, r.Coordinator()); err != nil {
 			return err
+		}
+		if claim.set {
+			b := r.DelegationBinding
+			if b == nil || claim.grantID != b.GrantID || claim.grantGeneration != b.GrantGeneration ||
+				claim.repository != b.Repository || claim.project != b.Project ||
+				(claim.workItem != "" && claim.workItem != b.AllowedWorkItem) {
+				return fmt.Errorf("%w: command grant binding differs from persisted assignment", ErrCoordinatorDelegationInvalid)
+			}
 		}
 		next := r
 		now := s.now().UTC()

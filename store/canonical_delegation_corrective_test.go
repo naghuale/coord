@@ -35,6 +35,7 @@ func TestF1_OutOfScopeWorkItemRejectedOnMutation(t *testing.T) {
 			Role: "IMPLEMENTER", SubjectSHA: sha,
 			IssuedAt: now.Add(-time.Minute), ValidUntil: now.Add(time.Hour),
 			AdmissionBasis:     assignment.AdmissionBasis{Kind: "POOL", Reference: "other-issue", TargetSessionID: target.SessionID, TargetAgentID: target.AgentID, Role: "IMPLEMENTER", SubjectSHA: sha},
+			DelegationBinding:  &assignment.DelegationBinding{GrantID: "del-f1-mut", GrantGeneration: 1, Repository: "naghuale/coord", Project: "coord", AllowedWorkItem: "other-issue"},
 			VisibilityEvidence: assignment.VisibilityEvidence{Reference: "vis", SessionID: target.SessionID, ObservedAt: now.Add(-time.Minute)},
 			Revision:           1, UpdatedAt: now,
 		}
@@ -79,6 +80,7 @@ func TestF1_LossConfirmIgnoresOutOfScopeAssignments(t *testing.T) {
 			Role: "IMPLEMENTER", SubjectSHA: sha,
 			IssuedAt: now.Add(-time.Minute), ValidUntil: now.Add(time.Hour),
 			AdmissionBasis:     assignment.AdmissionBasis{Kind: "POOL", Reference: "other-issue", TargetSessionID: target.SessionID, TargetAgentID: target.AgentID, Role: "IMPLEMENTER", SubjectSHA: sha},
+			DelegationBinding:  &assignment.DelegationBinding{GrantID: "del-f1-loss", GrantGeneration: 1, Repository: "naghuale/coord", Project: "coord", AllowedWorkItem: "other-issue"},
 			VisibilityEvidence: assignment.VisibilityEvidence{Reference: "vis", SessionID: target.SessionID, ObservedAt: now.Add(-time.Minute)},
 			Revision:           1, UpdatedAt: now.Add(-time.Minute),
 		}
@@ -469,6 +471,371 @@ func TestF5_PrimaryRestartOncePerLossEvent(t *testing.T) {
 		}
 		if !bound {
 			t.Fatal("second restart not bound to new lossRecordID")
+		}
+	})
+}
+
+func TestF1_ExactGrantBinding(t *testing.T) {
+	enableDelegationHarness(t)
+	f := newOwnerCommandFixture(t)
+	now := f.s.now().UTC()
+	grantDelegation(t, f, "del-a", now)
+	seedDelegatedAssignment(t, f, "asg-a", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now)
+	actor := assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}
+
+	t.Run("positive_exact_grant", func(t *testing.T) {
+		target := assignment.Principal{SessionID: "codex:worker", AgentID: "worker", Generation: 1}
+		sha := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+		offer := assignment.Record{
+			AssignmentID: "asg-pos", State: assignment.Offered,
+			Issuer: actor.SessionID, IssuerAgentID: actor.AgentID, IssuerGeneration: 1,
+			CurrentCoordinator: actor.SessionID, CoordinatorAgentID: actor.AgentID, CoordinatorGeneration: 1,
+			HandoffEvidence: []assignment.Handoff{},
+			Assignee:        target.SessionID, StableAgentID: target.AgentID, SessionID: target.SessionID, AssigneeGeneration: 1,
+			Role: "IMPLEMENTER", SubjectSHA: sha,
+			IssuedAt: now.Add(-time.Minute), ValidUntil: now.Add(time.Hour),
+			AdmissionBasis:     assignment.AdmissionBasis{Kind: "POOL", Reference: "issue-93b", TargetSessionID: target.SessionID, TargetAgentID: target.AgentID, Role: "IMPLEMENTER", SubjectSHA: sha},
+			VisibilityEvidence: assignment.VisibilityEvidence{Reference: "vis", SessionID: target.SessionID, ObservedAt: now.Add(-time.Minute)},
+			Revision:           1, UpdatedAt: now.Add(-time.Minute),
+		}
+		if err := f.s.OfferAssignment(actor, offer, "offer-pos"); err != nil {
+			t.Fatal(err)
+		}
+		rec := f.s.state.AssignmentLedger.Records["asg-pos"]
+		b := rec.DelegationBinding
+		if b == nil || b.GrantID != "del-a" || b.GrantGeneration != 1 || b.Repository != "naghuale/coord" || b.Project != "coord" || b.AllowedWorkItem != "issue-93b" {
+			t.Fatalf("binding: %+v", b)
+		}
+		if err := f.s.ChangeAssignment(actor, "asg-pos", rec.Revision, "VOID", "ok"); err != nil {
+			t.Fatal(err)
+		}
+		if f.s.state.AssignmentLedger.Records["asg-pos"].State != assignment.Void {
+			t.Fatal("exact grant did not void")
+		}
+	})
+
+	t.Run("item_allowed_only_by_other_grant", func(t *testing.T) {
+		before := ownerStateBytes(t, f.s)
+		err := f.s.UpdateCanonical(func(state *CanonicalState) error {
+			other := state.CoordinatorDelegations["del-a"]
+			other.DelegationID = "del-b"
+			other.Scope.AllowedWorkItems = []string{"only-b"}
+			state.CoordinatorDelegations["del-b"] = other
+			r := state.AssignmentLedger.Records["asg-a"]
+			r.AdmissionBasis.Reference = "only-b"
+			r.DelegationBinding.AllowedWorkItem = "only-b"
+			if _, err := assignmentBoundGrant(*state, r); err == nil {
+				return errors.New("item allowed only by another grant was accepted")
+			}
+			return errors.New("rejected")
+		})
+		if err == nil || !bytes.Equal(before, ownerStateBytes(t, f.s)) {
+			t.Fatalf("err=%v state changed", err)
+		}
+	})
+
+	t.Run("supplied_grant_b", func(t *testing.T) {
+		f2 := newOwnerCommandFixture(t)
+		now2 := f2.s.now().UTC()
+		grantDelegation(t, f2, "del-a", now2)
+		seedDelegatedAssignment(t, f2, "asg-a", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now2)
+		rec := f2.s.state.AssignmentLedger.Records["asg-a"]
+		before := ownerStateBytes(t, f2.s)
+		err := f2.s.changeAssignment(actor, "asg-a", rec.Revision, "VOID", "claim-b", scopeClaim{
+			grantID: "del-b", grantGeneration: 1, repository: "naghuale/coord", project: "coord", workItem: "issue-93b", set: true,
+		})
+		if err == nil || !bytes.Equal(before, ownerStateBytes(t, f2.s)) {
+			t.Fatalf("supplied grant B err=%v", err)
+		}
+	})
+
+	t.Run("grant_generation_changed", func(t *testing.T) {
+		f2 := newOwnerCommandFixture(t)
+		now2 := f2.s.now().UTC()
+		grantDelegation(t, f2, "del-a", now2)
+		seedDelegatedAssignment(t, f2, "asg-a", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now2)
+		before := ownerStateBytes(t, f2.s)
+		err := f2.s.UpdateCanonical(func(state *CanonicalState) error {
+			g := state.CoordinatorDelegations["del-a"]
+			g.Generation = 2
+			state.CoordinatorDelegations["del-a"] = g
+			_, err := assignmentBoundGrant(*state, state.AssignmentLedger.Records["asg-a"])
+			if err == nil {
+				return errors.New("changed generation accepted")
+			}
+			return err
+		})
+		if err == nil || !bytes.Equal(before, ownerStateBytes(t, f2.s)) {
+			t.Fatalf("generation err=%v", err)
+		}
+	})
+
+	t.Run("revoked_grant_replacement_ignored", func(t *testing.T) {
+		f2 := newOwnerCommandFixture(t)
+		now2 := f2.s.now().UTC()
+		grantDelegation(t, f2, "del-a", now2)
+		seedDelegatedAssignment(t, f2, "asg-a", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now2)
+		rev, _ := json.Marshal(ownercredential.DelegationRevokePayload{DelegationID: "del-a", Reason: "rotate"})
+		revCmd := f2.command(ownercredential.CommandDelegationRevoke, "revoke-a", "owner-primary", f2.s.state.OwnerCredentials["owner-1"].CredentialRevision, rev)
+		sign := f2.s.state.OwnerCredentials["owner-1"].Credentials["owner-primary"].SignCount + 1
+		if _, _, err := f2.s.ApplyOwnerCredentialCommand(revCmd.ChallengeID, revCmd, assertionFor(revCmd, f2.private["owner-primary"], sign)); err != nil {
+			t.Fatal(err)
+		}
+		grantDelegation(t, f2, "del-b", now2)
+		rec := f2.s.state.AssignmentLedger.Records["asg-a"]
+		before := append([]byte(nil), mustJSON(t, rec)...)
+		if err := f2.s.ChangeAssignment(actor, "asg-a", rec.Revision, "VOID", "via-replacement"); err == nil {
+			t.Fatal("revoked grant accepted via replacement")
+		}
+		if !bytes.Equal(before, mustJSON(t, f2.s.state.AssignmentLedger.Records["asg-a"])) {
+			t.Fatal("assignment bytes changed")
+		}
+	})
+
+	t.Run("replay_substitutes_grant_id", func(t *testing.T) {
+		f2 := newOwnerCommandFixture(t)
+		now2 := f2.s.now().UTC()
+		grantDelegation(t, f2, "del-a", now2)
+		seedDelegatedAssignment(t, f2, "asg-a", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now2)
+		payload, _ := json.Marshal(ownercredential.LossConfirmPayload{
+			DelegationID: "del-a", GrantID: "del-b",
+			Coordinator: ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1},
+			Reason:      "lost", ObservedAt: now2,
+		})
+		cmd := f2.command(ownercredential.CommandLossConfirm, "loss-sub", "owner-primary", f2.s.state.OwnerCredentials["owner-1"].CredentialRevision, payload)
+		sign := f2.s.state.OwnerCredentials["owner-1"].Credentials["owner-primary"].SignCount + 1
+		before := ownerStateBytes(t, f2.s)
+		assertOwnerCommandRejectedWithoutWrite(t, f2, cmd, assertionFor(cmd, f2.private["owner-primary"], sign), ErrCoordinatorDelegationInvalid)
+		if !bytes.Equal(before, ownerStateBytes(t, f2.s)) {
+			t.Fatal("replay substitution wrote state")
+		}
+	})
+
+	t.Run("snapshot_substitutes_grant_binding", func(t *testing.T) {
+		f2 := newOwnerCommandFixture(t)
+		now2 := f2.s.now().UTC()
+		grantDelegation(t, f2, "del-a", now2)
+		seedDelegatedAssignment(t, f2, "asg-a", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now2)
+		snap := f2.s.state
+		ledger := *f2.s.state.AssignmentLedger
+		records := map[string]assignment.Record{}
+		for id, rec := range ledger.Records {
+			records[id] = rec
+		}
+		rec := records["asg-a"]
+		binding := *rec.DelegationBinding
+		binding.GrantID = "del-b"
+		rec.DelegationBinding = &binding
+		records["asg-a"] = rec
+		ledger.Records = records
+		snap.AssignmentLedger = &ledger
+		if err := ValidateCanonicalState(snap); err == nil {
+			t.Fatal("substituted grant binding accepted")
+		}
+	})
+
+	t.Run("missing_binding", func(t *testing.T) {
+		f2 := newOwnerCommandFixture(t)
+		now2 := f2.s.now().UTC()
+		grantDelegation(t, f2, "del-a", now2)
+		seedDelegatedAssignment(t, f2, "asg-a", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now2)
+		before := ownerStateBytes(t, f2.s)
+		err := f2.s.UpdateCanonical(func(state *CanonicalState) error {
+			r := state.AssignmentLedger.Records["asg-a"]
+			r.DelegationBinding = nil
+			if _, err := assignmentBoundGrant(*state, r); err == nil {
+				return errors.New("missing binding accepted")
+			}
+			return errors.New("rejected")
+		})
+		if err == nil || !bytes.Equal(before, ownerStateBytes(t, f2.s)) {
+			t.Fatalf("missing binding err=%v", err)
+		}
+	})
+
+	t.Run("loss_batch_boundary", func(t *testing.T) {
+		f2 := newOwnerCommandFixture(t)
+		now2 := f2.s.now().UTC()
+		grantDelegation(t, f2, "del-a", now2)
+		seedDelegatedAssignment(t, f2, "asg-in", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now2)
+		other := assignment.Principal{SessionID: "other:1", AgentID: "other-agent", Generation: 1}
+		registerSession(t, f2, "other:1", "other-agent")
+		seedDelegatedAssignment(t, f2, "asg-out", other, now2)
+		beforeOut := mustJSON(t, f2.s.state.AssignmentLedger.Records["asg-out"])
+		lossConfirm(t, f2, "del-a", "loss-batch", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1}, now2)
+		if !f2.s.state.AssignmentLedger.Records["asg-in"].CoordinatorLost {
+			t.Fatal("in-scope assignment not marked")
+		}
+		if !bytes.Equal(beforeOut, mustJSON(t, f2.s.state.AssignmentLedger.Records["asg-out"])) {
+			t.Fatal("out-of-scope assignment bytes changed")
+		}
+		// Zero matches: a second loss of the same triple has no open in-scope work.
+		payload, _ := json.Marshal(ownercredential.LossConfirmPayload{
+			DelegationID: "del-a",
+			Coordinator:  ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1},
+			Reason:       "again", ObservedAt: now2,
+		})
+		cmd := f2.command(ownercredential.CommandLossConfirm, "loss-zero", "owner-primary", f2.s.state.OwnerCredentials["owner-1"].CredentialRevision, payload)
+		sign := f2.s.state.OwnerCredentials["owner-1"].Credentials["owner-primary"].SignCount + 1
+		before := ownerStateBytes(t, f2.s)
+		assertOwnerCommandRejectedWithoutWrite(t, f2, cmd, assertionFor(cmd, f2.private["owner-primary"], sign), ErrCoordinatorDelegationInvalid)
+		if !bytes.Equal(before, ownerStateBytes(t, f2.s)) {
+			t.Fatal("zero-match loss wrote state")
+		}
+	})
+
+	t.Run("loss_poison_rejects_whole_batch", func(t *testing.T) {
+		f2 := newOwnerCommandFixture(t)
+		now2 := f2.s.now().UTC()
+		grantDelegation(t, f2, "del-a", now2)
+		coord := assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}
+		seedDelegatedAssignment(t, f2, "asg-ok", coord, now2)
+		seedDelegatedAssignment(t, f2, "asg-bad", coord, now2)
+		liveBefore := ownerStateBytes(t, f2.s)
+
+		state := f2.s.state
+		ledger := *f2.s.state.AssignmentLedger
+		ledger.Events = append([]assignment.Event(nil), ledger.Events...)
+		records := map[string]assignment.Record{}
+		for id, rec := range ledger.Records {
+			copied := rec
+			if rec.DelegationBinding != nil {
+				b := *rec.DelegationBinding
+				copied.DelegationBinding = &b
+			}
+			records[id] = copied
+		}
+		bad := records["asg-bad"]
+		bad.DelegationBinding.GrantGeneration = 9
+		records["asg-bad"] = bad
+		ledger.Records = records
+		state.AssignmentLedger = &ledger
+		dels := map[string]DelegationRecord{}
+		for id, d := range f2.s.state.CoordinatorDelegations {
+			dels[id] = d
+		}
+		state.CoordinatorDelegations = dels
+
+		beforeOK := mustJSON(t, records["asg-ok"])
+		beforeBad := mustJSON(t, records["asg-bad"])
+		payload, _ := json.Marshal(ownercredential.LossConfirmPayload{
+			DelegationID: "del-a",
+			Coordinator:  ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1},
+			Reason:       "lost", ObservedAt: now2,
+		})
+		err := applyLossConfirm(&state, ownercredential.Command{
+			Kind: ownercredential.CommandLossConfirm, MessageID: "loss-poison",
+			PrincipalID: "owner-primary", CredentialID: "owner-primary",
+			Payload: payload, Digest: "digest-poison",
+		}, now2)
+		if err == nil {
+			t.Fatal("poisoned batch accepted")
+		}
+		if !bytes.Equal(beforeOK, mustJSON(t, state.AssignmentLedger.Records["asg-ok"])) ||
+			!bytes.Equal(beforeBad, mustJSON(t, state.AssignmentLedger.Records["asg-bad"])) {
+			t.Fatal("poisoned batch wrote an assignment")
+		}
+		if !bytes.Equal(liveBefore, ownerStateBytes(t, f2.s)) {
+			t.Fatal("live state changed")
+		}
+	})
+
+	rejectBound := func(t *testing.T, mutate func(*assignment.DelegationBinding)) {
+		t.Helper()
+		f2 := newOwnerCommandFixture(t)
+		now2 := f2.s.now().UTC()
+		grantDelegation(t, f2, "del-a", now2)
+		seedDelegatedAssignment(t, f2, "asg-a", actor, now2)
+		before := ownerStateBytes(t, f2.s)
+		err := f2.s.UpdateCanonical(func(state *CanonicalState) error {
+			r := state.AssignmentLedger.Records["asg-a"]
+			b := *r.DelegationBinding
+			mutate(&b)
+			r.DelegationBinding = &b
+			if _, err := assignmentBoundGrant(*state, r); err == nil {
+				return errors.New("mutated binding accepted")
+			}
+			return errors.New("rejected")
+		})
+		if err == nil || !bytes.Equal(before, ownerStateBytes(t, f2.s)) {
+			t.Fatalf("err=%v", err)
+		}
+	}
+	t.Run("same_item_wrong_repo", func(t *testing.T) {
+		rejectBound(t, func(b *assignment.DelegationBinding) { b.Repository = "other/repo" })
+	})
+	t.Run("same_item_wrong_project", func(t *testing.T) {
+		rejectBound(t, func(b *assignment.DelegationBinding) { b.Project = "other" })
+	})
+	t.Run("missing_persisted_repo", func(t *testing.T) {
+		rejectBound(t, func(b *assignment.DelegationBinding) { b.Repository = "" })
+	})
+	t.Run("missing_persisted_project", func(t *testing.T) {
+		rejectBound(t, func(b *assignment.DelegationBinding) { b.Project = "" })
+	})
+
+	rejectClaim := func(t *testing.T, claim scopeClaim) {
+		t.Helper()
+		f2 := newOwnerCommandFixture(t)
+		now2 := f2.s.now().UTC()
+		grantDelegation(t, f2, "del-a", now2)
+		seedDelegatedAssignment(t, f2, "asg-a", actor, now2)
+		rec := f2.s.state.AssignmentLedger.Records["asg-a"]
+		before := ownerStateBytes(t, f2.s)
+		err := f2.s.changeAssignment(actor, "asg-a", rec.Revision, "VOID", "claim", claim)
+		if err == nil || !strings.Contains(err.Error(), "command grant binding differs") || !bytes.Equal(before, ownerStateBytes(t, f2.s)) {
+			t.Fatalf("err=%v", err)
+		}
+	}
+	t.Run("command_repo_differs", func(t *testing.T) {
+		rejectClaim(t, scopeClaim{grantID: "del-a", grantGeneration: 1, repository: "other/repo", project: "coord", workItem: "issue-93b", set: true})
+	})
+	t.Run("command_project_differs", func(t *testing.T) {
+		rejectClaim(t, scopeClaim{grantID: "del-a", grantGeneration: 1, repository: "naghuale/coord", project: "other", workItem: "issue-93b", set: true})
+	})
+
+	t.Run("replay_scope_substitution", func(t *testing.T) {
+		f2 := newOwnerCommandFixture(t)
+		now2 := f2.s.now().UTC()
+		grantDelegation(t, f2, "del-a", now2)
+		seedDelegatedAssignment(t, f2, "asg-a", actor, now2)
+		payload, _ := json.Marshal(ownercredential.LossConfirmPayload{
+			DelegationID: "del-a", Repository: "other/repo", Project: "coord",
+			Coordinator: ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1},
+			Reason:      "lost", ObservedAt: now2,
+		})
+		cmd := f2.command(ownercredential.CommandLossConfirm, "loss-scope", "owner-primary", f2.s.state.OwnerCredentials["owner-1"].CredentialRevision, payload)
+		sign := f2.s.state.OwnerCredentials["owner-1"].Credentials["owner-primary"].SignCount + 1
+		before := ownerStateBytes(t, f2.s)
+		assertOwnerCommandRejectedWithoutWrite(t, f2, cmd, assertionFor(cmd, f2.private["owner-primary"], sign), ErrCoordinatorDelegationInvalid)
+		if !bytes.Equal(before, ownerStateBytes(t, f2.s)) {
+			t.Fatal("replay scope substitution wrote state")
+		}
+	})
+
+	t.Run("snapshot_scope_substitution", func(t *testing.T) {
+		f2 := newOwnerCommandFixture(t)
+		now2 := f2.s.now().UTC()
+		grantDelegation(t, f2, "del-a", now2)
+		seedDelegatedAssignment(t, f2, "asg-a", actor, now2)
+		snap := f2.s.state
+		ledger := *snap.AssignmentLedger
+		records := map[string]assignment.Record{}
+		for id, rec := range ledger.Records {
+			copied := rec
+			if rec.DelegationBinding != nil {
+				b := *rec.DelegationBinding
+				copied.DelegationBinding = &b
+			}
+			records[id] = copied
+		}
+		rec := records["asg-a"]
+		rec.DelegationBinding.Repository = "other/repo"
+		records["asg-a"] = rec
+		ledger.Records = records
+		snap.AssignmentLedger = &ledger
+		if err := ValidateCanonicalState(snap); err == nil {
+			t.Fatal("substituted snapshot repository accepted")
 		}
 	})
 }

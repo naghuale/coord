@@ -40,6 +40,17 @@ type Principal struct {
 	Generation uint64 `json:"generation"`
 }
 
+// DelegationBinding names the exact grant that issued the assignment.
+// Authority checks resolve only this grant. They do not search for another
+// grant with the same repository and project.
+type DelegationBinding struct {
+	GrantID         string `json:"grantId"`
+	GrantGeneration uint64 `json:"grantGeneration"`
+	Repository      string `json:"repository"`
+	Project         string `json:"project"`
+	AllowedWorkItem string `json:"allowedWorkItem"`
+}
+
 type AdmissionBasis struct {
 	Kind            string `json:"kind"`
 	Reference       string `json:"reference"`
@@ -85,32 +96,35 @@ type Result struct {
 }
 
 type Record struct {
-	AssignmentID          string             `json:"assignmentId"`
-	State                 State              `json:"state"`
-	Issuer                string             `json:"issuer"`
-	IssuerAgentID         string             `json:"issuerAgentId"`
-	IssuerGeneration      uint64             `json:"issuerGeneration"`
-	CurrentCoordinator    string             `json:"currentCoordinator"`
-	CoordinatorAgentID    string             `json:"coordinatorAgentId"`
-	CoordinatorGeneration uint64             `json:"coordinatorGeneration"`
-	HandoffEvidence       []Handoff          `json:"handoffEvidence"`
-	CoordinatorLost       bool               `json:"coordinatorLost"`
-	Assignee              string             `json:"assignee"`
-	StableAgentID         string             `json:"stableAgentId"`
-	SessionID             string             `json:"sessionId"`
-	AssigneeGeneration    uint64             `json:"assigneeGeneration"`
-	Role                  string             `json:"role"`
-	SubjectSHA            string             `json:"subjectSha"`
-	IssuedAt              time.Time          `json:"issuedAt"`
-	ValidUntil            time.Time          `json:"validUntil"`
-	AdmissionBasis        AdmissionBasis     `json:"admissionBasis"`
-	VisibilityEvidence    VisibilityEvidence `json:"visibilityEvidence"`
-	RunBinding            *RunBinding        `json:"runBinding,omitempty"`
-	Revision              uint64             `json:"revision"`
-	UpdatedAt             time.Time          `json:"updatedAt"`
-	WorkStartedAt         time.Time          `json:"workStartedAt,omitempty"`
-	AcknowledgedAt        time.Time          `json:"acknowledgedAt,omitempty"`
-	AcceptedResult        *Result            `json:"acceptedResult,omitempty"`
+	AssignmentID          string    `json:"assignmentId"`
+	State                 State     `json:"state"`
+	Issuer                string    `json:"issuer"`
+	IssuerAgentID         string    `json:"issuerAgentId"`
+	IssuerGeneration      uint64    `json:"issuerGeneration"`
+	CurrentCoordinator    string    `json:"currentCoordinator"`
+	CoordinatorAgentID    string    `json:"coordinatorAgentId"`
+	CoordinatorGeneration uint64    `json:"coordinatorGeneration"`
+	HandoffEvidence       []Handoff `json:"handoffEvidence"`
+	CoordinatorLost       bool      `json:"coordinatorLost"`
+	Assignee              string    `json:"assignee"`
+	StableAgentID         string    `json:"stableAgentId"`
+	SessionID             string    `json:"sessionId"`
+	AssigneeGeneration    uint64    `json:"assigneeGeneration"`
+	Role                  string    `json:"role"`
+	SubjectSHA            string    `json:"subjectSha"`
+	// DelegationBinding is the immutable issuing-grant identity (schema v6).
+	// Nil when the assignment is not under a grant. Later events cannot change it.
+	DelegationBinding  *DelegationBinding `json:"delegationBinding,omitempty"`
+	IssuedAt           time.Time          `json:"issuedAt"`
+	ValidUntil         time.Time          `json:"validUntil"`
+	AdmissionBasis     AdmissionBasis     `json:"admissionBasis"`
+	VisibilityEvidence VisibilityEvidence `json:"visibilityEvidence"`
+	RunBinding         *RunBinding        `json:"runBinding,omitempty"`
+	Revision           uint64             `json:"revision"`
+	UpdatedAt          time.Time          `json:"updatedAt"`
+	WorkStartedAt      time.Time          `json:"workStartedAt,omitempty"`
+	AcknowledgedAt     time.Time          `json:"acknowledgedAt,omitempty"`
+	AcceptedResult     *Result            `json:"acceptedResult,omitempty"`
 }
 
 func (r Record) Coordinator() Principal {

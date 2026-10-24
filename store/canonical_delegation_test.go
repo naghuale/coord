@@ -274,6 +274,7 @@ func seedDelegatedAssignment(t *testing.T, f *ownerCommandFixture, id string, co
 		if state.AssignmentLedger == nil {
 			state.AssignmentLedger = assignment.Empty()
 		}
+		grant, underGrant := findGrantForActingCoordinator(*state, coordinator, now)
 		offered := assignment.Record{
 			AssignmentID: id, State: assignment.Offered,
 			Issuer: coordinator.SessionID, IssuerAgentID: coordinator.AgentID, IssuerGeneration: coordinator.Generation,
@@ -282,7 +283,13 @@ func seedDelegatedAssignment(t *testing.T, f *ownerCommandFixture, id string, co
 			Assignee:        target.SessionID, StableAgentID: target.AgentID, SessionID: target.SessionID, AssigneeGeneration: target.Generation,
 			Role: "IMPLEMENTER", SubjectSHA: sha,
 			IssuedAt: now.Add(-time.Minute), ValidUntil: now.Add(time.Hour),
-			AdmissionBasis:     assignment.AdmissionBasis{Kind: "POOL", Reference: "issue-93b", TargetSessionID: target.SessionID, TargetAgentID: target.AgentID, Role: "IMPLEMENTER", SubjectSHA: sha},
+			AdmissionBasis: assignment.AdmissionBasis{Kind: "POOL", Reference: "issue-93b", TargetSessionID: target.SessionID, TargetAgentID: target.AgentID, Role: "IMPLEMENTER", SubjectSHA: sha},
+			DelegationBinding: func() *assignment.DelegationBinding {
+				if !underGrant {
+					return nil
+				}
+				return &assignment.DelegationBinding{GrantID: grant.DelegationID, GrantGeneration: grant.Generation, Repository: grant.Scope.Repository, Project: grant.Scope.Project, AllowedWorkItem: "issue-93b"}
+			}(),
 			VisibilityEvidence: assignment.VisibilityEvidence{Reference: "vis", SessionID: target.SessionID, ObservedAt: now.Add(-time.Minute)},
 			Revision:           1, UpdatedAt: now.Add(-time.Minute),
 		}

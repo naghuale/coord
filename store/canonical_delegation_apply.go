@@ -114,6 +114,7 @@ func applyDelegationGrant(state *CanonicalState, challenge ownercredential.Comma
 		Validity:             DelegationValidity{NotBefore: payload.Validity.NotBefore.UTC(), ExpiresAt: payload.Validity.ExpiresAt.UTC()},
 		Successors:           successors,
 		Evidence:             DelegationEvidence{OwnerDecisionRef: payload.Evidence.OwnerDecisionRef, VisibilityEvidence: payload.Evidence.VisibilityEvidence},
+		Generation:           1,
 		CutoverAssignmentIDs: append([]string{}, payload.CutoverAssignmentIDs...),
 		History: []DelegationHistoryEntry{{
 			Kind: DelegationHistoryGrant, At: now, Actor: challenge.PrincipalID,
@@ -179,6 +180,9 @@ func applyLossConfirm(state *CanonicalState, challenge ownercredential.Command, 
 	if payload.DelegationID == "" || strings.TrimSpace(payload.Reason) == "" || payload.ObservedAt.IsZero() {
 		return fmt.Errorf("%w: loss.confirm requires delegationId, reason, observedAt", ErrCoordinatorDelegationInvalid)
 	}
+	if (payload.Repository != "" || payload.Project != "") && (payload.Repository == "" || payload.Project == "") {
+		return fmt.Errorf("%w: loss.confirm repository and project must both be set", ErrCoordinatorDelegationInvalid)
+	}
 	rec, ok := state.CoordinatorDelegations[payload.DelegationID]
 	if !ok || !rec.Active(now) {
 		return fmt.Errorf("%w: delegation missing, expired or revoked", ErrCoordinatorDelegationInvalid)
@@ -186,6 +190,17 @@ func applyLossConfirm(state *CanonicalState, challenge ownercredential.Command, 
 	named := principalFromPayload(payload.Coordinator)
 	if !named.Valid() {
 		return fmt.Errorf("%w: invalid coordinator triple", ErrCoordinatorDelegationInvalid)
+	}
+	if payload.GrantID != "" && payload.GrantID != rec.DelegationID {
+		return fmt.Errorf("%w: command grant id differs from delegation", ErrCoordinatorDelegationInvalid)
+	}
+	if payload.GrantGeneration != 0 && payload.GrantGeneration != rec.Generation {
+		return fmt.Errorf("%w: command grant generation differs from delegation", ErrCoordinatorDelegationInvalid)
+	}
+	if payload.Repository != "" || payload.Project != "" {
+		if payload.Repository != rec.Scope.Repository || payload.Project != rec.Scope.Project {
+			return fmt.Errorf("%w: command repository/project differs from delegation scope", ErrCoordinatorDelegationInvalid)
+		}
 	}
 
 	// mustNot: duplicate open/closed loss for this triple (ADR §9).
@@ -204,30 +219,41 @@ func applyLossConfirm(state *CanonicalState, challenge ownercredential.Command, 
 	if state.AssignmentLedger == nil || state.AssignmentLedger.Records == nil {
 		return fmt.Errorf("%w: no open delegated work", ErrCoordinatorDelegationInvalid)
 	}
-	inScope := func(r assignment.Record) bool {
-		return assignmentInGrantScope(rec, r) == nil
+	// Select only assignments bound to this exact grant. A binding that names
+	// this grant but disagrees on generation or repository/project poisons the
+	// batch. Other grants and unbound records are out of scope and untouched.
+	type lossHit struct {
+		id  string
+		rec assignment.Record
 	}
-	matched := 0
+	var hits []lossHit
 	for id, r := range state.AssignmentLedger.Records {
+		if r.State.Terminal() {
+			continue
+		}
+		b := r.DelegationBinding
+		if b == nil || b.GrantID != rec.DelegationID {
+			continue
+		}
+		if b.GrantGeneration != rec.Generation || b.Repository != rec.Scope.Repository || b.Project != rec.Scope.Project || b.AllowedWorkItem != assignmentWorkItem(r) {
+			return fmt.Errorf("%w: assignment %s grant binding invalid for %s", ErrCoordinatorDelegationInvalid, id, rec.DelegationID)
+		}
 		coord := r.Coordinator()
 		sameTriple := coord.AgentID == named.StableAgentID && coord.SessionID == named.SessionID && coord.Generation == named.Generation
-		if !sameTriple || !inScope(r) {
+		if !sameTriple || !rec.Scope.AllowsWorkItem(b.AllowedWorkItem) {
 			continue
 		}
-		if r.State.Terminal() {
-			// mustNot: revive terminal — refuse the whole command if only terminals match.
-			continue
-		}
-		matched++
 		if r.CoordinatorLost {
 			return fmt.Errorf("%w: duplicate/closed loss for %s", ErrCoordinatorDelegationInvalid, id)
 		}
+		hits = append(hits, lossHit{id: id, rec: r})
 	}
+	matched := len(hits)
 	if matched == 0 {
 		// Distinguish stale generation (same agent/session, different gen on open work)
 		// from no open work at all / out-of-scope work items only.
 		for _, r := range state.AssignmentLedger.Records {
-			if r.State.Terminal() || r.CoordinatorLost || !inScope(r) {
+			if r.State.Terminal() || r.CoordinatorLost || r.DelegationBinding == nil || r.DelegationBinding.GrantID != rec.DelegationID || !rec.Scope.AllowsWorkItem(r.DelegationBinding.AllowedWorkItem) {
 				continue
 			}
 			coord := r.Coordinator()
@@ -245,14 +271,8 @@ func applyLossConfirm(state *CanonicalState, challenge ownercredential.Command, 
 		AgentID:    challenge.PrincipalID,
 		Generation: 1,
 	}
-	for id, r := range state.AssignmentLedger.Records {
-		if r.State.Terminal() || r.CoordinatorLost || !inScope(r) {
-			continue
-		}
-		coord := r.Coordinator()
-		if coord.AgentID != named.StableAgentID || coord.SessionID != named.SessionID || coord.Generation != named.Generation {
-			continue
-		}
+	for _, hit := range hits {
+		id, r := hit.id, hit.rec
 		nextRec := r
 		nextRec.Revision++
 		nextRec.UpdatedAt = now
@@ -283,7 +303,7 @@ func applyLossConfirm(state *CanonicalState, challenge ownercredential.Command, 
 			continue
 		}
 		coord := r.Coordinator()
-		if coord.AgentID == named.StableAgentID && coord.SessionID == named.SessionID && coord.Generation == named.Generation && inScope(r) {
+		if coord.AgentID == named.StableAgentID && coord.SessionID == named.SessionID && coord.Generation == named.Generation && r.DelegationBinding != nil && r.DelegationBinding.GrantID == rec.DelegationID {
 			lossAssignmentID = id
 			break
 		}

@@ -239,6 +239,9 @@ func ValidateCanonicalState(state CanonicalState) error {
 	if err := validateDelegations(state); err != nil {
 		return err
 	}
+	if err := validateAssignmentDelegationScope(state); err != nil {
+		return err
+	}
 	if err := validateSchemaMigrations(state); err != nil {
 		return err
 	}

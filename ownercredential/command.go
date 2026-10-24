@@ -100,6 +100,12 @@ type LossConfirmPayload struct {
 	Coordinator  DelegationPrincipalPayload `json:"coordinator"`
 	Reason       string                     `json:"reason"`
 	ObservedAt   time.Time                  `json:"observedAt"`
+	// Optional command claim. Compared to the named grant. Never copied onto
+	// an assignment. Empty means "no claim".
+	GrantID         string `json:"grantId,omitempty"`
+	GrantGeneration uint64 `json:"grantGeneration,omitempty"`
+	Repository      string `json:"repository,omitempty"`
+	Project         string `json:"project,omitempty"`
 }
 
 // VisibilityConfirmPayload is the transitional OWNER visibility carrier.

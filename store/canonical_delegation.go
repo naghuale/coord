@@ -109,20 +109,93 @@ func assignmentWorkItem(r assignment.Record) string {
 	return r.AdmissionBasis.Reference
 }
 
-// assignmentInGrantScope requires work-item allowlist membership under the
-// covering grant's repository/project identity (ADR §3, §5, §9).
-func assignmentInGrantScope(grant DelegationRecord, record assignment.Record) error {
-	if grant.Scope.Repository == "" || grant.Scope.Project == "" {
-		return fmt.Errorf("%w: grant scope repository/project required", ErrCoordinatorDelegationInvalid)
+// assignmentBoundGrant resolves only the grant named by the assignment.
+// It does not search for another grant with the same repository and project.
+func assignmentBoundGrant(state CanonicalState, record assignment.Record) (DelegationRecord, error) {
+	b := record.DelegationBinding
+	if b == nil || b.GrantID == "" || b.Repository == "" || b.Project == "" || b.AllowedWorkItem == "" {
+		return DelegationRecord{}, fmt.Errorf("%w: persisted assignment grant binding required", ErrCoordinatorDelegationInvalid)
 	}
-	// Touch MatchesRepositoryProject so repository/project participate in the
-	// runtime authorization path (not only grant-overlap checks).
-	if !grant.Scope.MatchesRepositoryProject(grant.Scope.Repository, grant.Scope.Project) {
-		return fmt.Errorf("%w: grant scope repository/project mismatch", ErrCoordinatorDelegationInvalid)
+	if b.AllowedWorkItem != assignmentWorkItem(record) {
+		return DelegationRecord{}, fmt.Errorf("%w: allowedWorkItem differs from admission reference", ErrCoordinatorDelegationInvalid)
 	}
-	item := assignmentWorkItem(record)
+	grant, ok := state.CoordinatorDelegations[b.GrantID]
+	if !ok || grant.DelegationID != b.GrantID {
+		return DelegationRecord{}, fmt.Errorf("%w: originating grant %s missing", ErrCoordinatorDelegationInvalid, b.GrantID)
+	}
+	if !grant.RevokedAt.IsZero() {
+		return DelegationRecord{}, fmt.Errorf("%w: originating grant %s revoked", ErrCoordinatorDelegationInvalid, b.GrantID)
+	}
+	if grant.Generation != b.GrantGeneration {
+		return DelegationRecord{}, fmt.Errorf("%w: originating grant %s generation mismatch", ErrCoordinatorDelegationInvalid, b.GrantID)
+	}
+	if grant.Scope.Repository != b.Repository || grant.Scope.Project != b.Project {
+		return DelegationRecord{}, fmt.Errorf("%w: originating grant %s repository/project mismatch", ErrCoordinatorDelegationInvalid, b.GrantID)
+	}
+	if !grant.Scope.AllowsWorkItem(b.AllowedWorkItem) {
+		return DelegationRecord{}, fmt.Errorf("%w: work item %q outside allowedWorkItems of grant %s", ErrCoordinatorDelegationInvalid, b.AllowedWorkItem, b.GrantID)
+	}
+	return grant, nil
+}
+
+// bindAssignmentScopeFromGrant stamps the issuing grant onto a new assignment.
+// A command binding that names a different grant, generation, or scope fails closed.
+func bindAssignmentScopeFromGrant(state CanonicalState, actor assignment.Principal, record *assignment.Record, now time.Time) error {
+	if !coordinatorDelegationActive() || record == nil {
+		return nil
+	}
+	grant, ok := findGrantForActingCoordinator(state, actor, now)
+	if !ok {
+		return nil
+	}
+	item := assignmentWorkItem(*record)
 	if !grant.Scope.AllowsWorkItem(item) {
-		return fmt.Errorf("%w: work item %q outside allowedWorkItems for %s/%s", ErrCoordinatorDelegationInvalid, item, grant.Scope.Repository, grant.Scope.Project)
+		return fmt.Errorf("%w: work item %q outside allowedWorkItems of issuing grant %s", ErrCoordinatorDelegationInvalid, item, grant.DelegationID)
+	}
+	want := &assignment.DelegationBinding{
+		GrantID: grant.DelegationID, GrantGeneration: grant.Generation,
+		Repository: grant.Scope.Repository, Project: grant.Scope.Project, AllowedWorkItem: item,
+	}
+	if record.DelegationBinding != nil && !delegationBindingEqual(record.DelegationBinding, want) {
+		return fmt.Errorf("%w: command grant binding differs from issuing grant %s", ErrCoordinatorDelegationInvalid, grant.DelegationID)
+	}
+	record.DelegationBinding = want
+	return nil
+}
+
+func delegationBindingEqual(a, b *assignment.DelegationBinding) bool {
+	return a != nil && b != nil && a.GrantID == b.GrantID && a.GrantGeneration == b.GrantGeneration &&
+		a.Repository == b.Repository && a.Project == b.Project && a.AllowedWorkItem == b.AllowedWorkItem
+}
+
+// validateAssignmentDelegationScope checks each persisted binding against the
+// exact grant id. A covered coordinator with no binding cannot load. A work
+// item outside the allowlist still loads and is refused at mutation and loss.
+func validateAssignmentDelegationScope(state CanonicalState) error {
+	if !coordinatorDelegationActive() || len(state.CoordinatorDelegations) == 0 || state.AssignmentLedger == nil {
+		return nil
+	}
+	for id, r := range state.AssignmentLedger.Records {
+		if r.DelegationBinding == nil {
+			if _, covered := findAnyGrantCoveringCoordinator(state, r.Coordinator()); covered {
+				return fmt.Errorf("%w: assignment %s missing persisted grant binding", ErrCoordinatorDelegationInvalid, id)
+			}
+			continue
+		}
+		b := r.DelegationBinding
+		grant, ok := state.CoordinatorDelegations[b.GrantID]
+		if !ok || grant.DelegationID != b.GrantID {
+			return fmt.Errorf("%w: assignment %s grant %s missing", ErrCoordinatorDelegationInvalid, id, b.GrantID)
+		}
+		if b.Repository == "" || b.Project == "" || b.AllowedWorkItem == "" {
+			return fmt.Errorf("%w: assignment %s missing persisted repository/project/work item", ErrCoordinatorDelegationInvalid, id)
+		}
+		if grant.Generation != b.GrantGeneration || grant.Scope.Repository != b.Repository || grant.Scope.Project != b.Project {
+			return fmt.Errorf("%w: assignment %s grant binding does not match grant %s", ErrCoordinatorDelegationInvalid, id, b.GrantID)
+		}
+		if b.AllowedWorkItem != assignmentWorkItem(r) {
+			return fmt.Errorf("%w: assignment %s allowedWorkItem drifted from admission reference", ErrCoordinatorDelegationInvalid, id)
+		}
 	}
 	return nil
 }
@@ -190,20 +263,24 @@ type DelegationHistoryEntry struct {
 // Assignment field. cutoverAssignmentIds is OWNER-only and inert while the
 // production const is false.
 type DelegationRecord struct {
-	DelegationID         string                    `json:"delegationId"`
-	Scope                DelegationScope           `json:"scope"`
-	PrimaryCoordinator   DelegationPrincipal       `json:"primaryCoordinator"`
-	Validity             DelegationValidity        `json:"validity"`
-	Successors           []DelegationPrincipal     `json:"successors"`
-	PrimaryRestart       *DelegationPrimaryRestart `json:"primaryRestart,omitempty"`
-	RevokedAt            time.Time                 `json:"revokedAt,omitempty"`
-	RevokedBy            string                    `json:"revokedBy,omitempty"`
-	Evidence             DelegationEvidence        `json:"evidence"`
-	History              []DelegationHistoryEntry  `json:"history"`
-	CutoverAssignmentIDs []string                  `json:"cutoverAssignmentIds,omitempty"`
-	BarredCoordinators   []DelegationPrincipal     `json:"barredCoordinators,omitempty"`
-	VisibilityReceipts   []VisibilityConfirmation  `json:"visibilityReceipts,omitempty"`
-	ActingCoordinator    *DelegationPrincipal      `json:"actingCoordinator,omitempty"`
+	DelegationID       string                    `json:"delegationId"`
+	Scope              DelegationScope           `json:"scope"`
+	PrimaryCoordinator DelegationPrincipal       `json:"primaryCoordinator"`
+	Validity           DelegationValidity        `json:"validity"`
+	Successors         []DelegationPrincipal     `json:"successors"`
+	PrimaryRestart     *DelegationPrimaryRestart `json:"primaryRestart,omitempty"`
+	RevokedAt          time.Time                 `json:"revokedAt,omitempty"`
+	RevokedBy          string                    `json:"revokedBy,omitempty"`
+	Evidence           DelegationEvidence        `json:"evidence"`
+	// Generation is the grant's own generation, set to 1 at issue. It is not
+	// the coordinator session generation. Reissue is a new DelegationID.
+	// A later change of this value invalidates assignments bound to the old one.
+	Generation           uint64                   `json:"generation,omitempty"`
+	History              []DelegationHistoryEntry `json:"history"`
+	CutoverAssignmentIDs []string                 `json:"cutoverAssignmentIds,omitempty"`
+	BarredCoordinators   []DelegationPrincipal    `json:"barredCoordinators,omitempty"`
+	VisibilityReceipts   []VisibilityConfirmation `json:"visibilityReceipts,omitempty"`
+	ActingCoordinator    *DelegationPrincipal     `json:"actingCoordinator,omitempty"`
 }
 
 func (d DelegationRecord) Active(now time.Time) bool {
@@ -623,8 +700,12 @@ func enforceDelegatedMutation(state CanonicalState, actor assignment.Principal, 
 	if !grant.Scope.AllowsAction(action) {
 		return fmt.Errorf("%w: action %s outside allowedActions", ErrCoordinatorDelegationInvalid, action)
 	}
-	if err := assignmentInGrantScope(grant, record); err != nil {
+	bound, err := assignmentBoundGrant(state, record)
+	if err != nil {
 		return err
+	}
+	if bound.DelegationID != grant.DelegationID {
+		return fmt.Errorf("%w: assignment bound to grant %s, not actor grant %s", ErrCoordinatorDelegationInvalid, bound.DelegationID, grant.DelegationID)
 	}
 	switch action {
 	case DelegatedActionVoid:
