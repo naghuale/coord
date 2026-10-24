@@ -10,6 +10,9 @@
   `TestAssignmentLossRecoveryWithRotatedCoordinator`)
 - Preflight and work-started validate the expected immutable issuer.
   (`TestAssignmentPreflightAndWorkStartedRequireIssuer`)
+- Prove and document frozen-mode transitions for all assignment states, including
+  existing OFFERED/ACKED activation without automatic cancellation.
+  (`TestAssignmentFrozenStateTable`)
 - Narrow stale-restart coverage to preflight simulation, correct loss/handoff test
   references, and clarify existing ACTIVATE/WORK_STARTED in LEDGER_FROZEN.
   (документация)

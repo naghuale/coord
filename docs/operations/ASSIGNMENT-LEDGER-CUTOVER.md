@@ -63,17 +63,27 @@ This is an additional field of the complete config, not a replacement config.
 Keep existing transport/token/key/path settings unchanged and private. Start
 `coordd -config <config>` through the existing launch procedure. Frozen mode is
 applied before runtime processing. Existing assignment queries, validation,
-terminal-state enforcement and handoffs remain operational. Two cases must be
-separated:
+terminal-state enforcement and handoffs remain operational.
 
-- Assignments already ACTIVE can continue with WORK_STARTED, result processing
-  and terminal transitions, subject to the existing authority/TTL checks.
-- Existing OFFERED/ACKED assignments can still reach ACTIVE in the current code:
-  OFFERED first requires ACK, and ACKED can be explicitly ACTIVATED. They may then
-  record WORK_STARTED. This is a description of current behaviour, not a policy
-  approval. OWNER's position is "preserve existing work, forbid new work";
-  whether this second case fits it is pending with OWNER. No frozen-mode code
-  change is made by the coordinator-authority correction.
+Ledger Freeze Mode preserves in-flight work. Freeze does not imply automatic
+cancellation of ACKED or OFFERED assignments.
+
+| State / operation | LEDGER_FROZEN current behaviour | Test evidence |
+|---|---|---|
+| ACTIVE | allowed (work/result/terminal) | TestAssignmentFrozenStateTable/ACTIVE, /ACTIVE_VOID, /ACTIVE_EXPIRE |
+| ACKED | allowedToActivate (explicit ACTIVATE, then work/result) | TestAssignmentFrozenStateTable/ACKED |
+| OFFERED | allowedToActivate (exact ACK first, then explicit ACTIVATE; direct ACTIVATE is rejected) | TestAssignmentFrozenStateTable/OFFERED |
+| NEW_OFFER | rejected | TestAssignmentFrozenStateTable/NEW_OFFER; TestAssignmentLedgerRollbackFrozenMode |
+| COMPLETED | unchanged; activation/work/result rejected | TestAssignmentFrozenStateTable/COMPLETED |
+| VOID | unchanged; activation/work/result rejected | TestAssignmentFrozenStateTable/VOID |
+| EXPIRED | unchanged; activation/work/result rejected | TestAssignmentFrozenStateTable/EXPIRED |
+| SUSPENDED with prior ACK | work denied until RECONCILE to ACKED, then explicit ACTIVATE | TestAssignmentFrozenStateTable/SUSPENDED_WITH_ACK |
+| SUSPENDED without prior ACK | work denied until RECONCILE to OFFERED, exact ACK, explicit ACTIVATE | TestAssignmentFrozenStateTable/SUSPENDED_WITHOUT_ACK |
+
+The table records current behaviour accepted for documentation by OWNER option 1;
+no new freeze-mode policy or production-code change is introduced. Freezing alone
+does not transition or cancel existing records. Read-only status remains an
+observation; all guards still apply to the later command.
 
 All existing state, issuer, session, generation, TTL and coordinator checks
 remain in force as applicable. Non-ledger service functions remain available.
