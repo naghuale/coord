@@ -15,8 +15,8 @@ Status applies to this slice; Review/Audit on the frozen SHA still required.
 | WP-R153-06 R154 incident/fallback/escalation journal | NOT_IMPLEMENTED | immutable validUntil/issuer; handoff cannot reset them | Incident clock computation and full R148/R154 incident journal belong to later work; no changed intervals or automatic clock inference |
 | WP-R153-06 same-store read/compatibility/frozen rollback | IMPLEMENTED | coord assignment status; TestAssignmentStatusReadOnlyAndFailClosed, TestAssignmentStatusUnknownUnavailableCorruptAreDistinct, TestAssignmentStatusLaunchRollbackPreservesLedger, TestAssignmentLedgerRollbackFrozenMode, TestAssignmentFrozenStateTable | Old binary writable downgrade not supported; new binary frozen mode preserves service/data |
 
-Operational cutover: BLOCKED_ON_WRITE_AUTHORITY, deliberately deferred by OWNER
-option (a) to follow-up #93 (COMMAND-BOUNDARY §3.2).
+Operational cutover: the ledger is merged (PR #98, `0c6eaf469024822a34fc501b5349ddcb68b70cc2`) and is not active. Cutover remains BLOCKED_ON_WRITE_AUTHORITY, deliberately deferred by OWNER
+option (a) to follow-up #93 (COMMAND-BOUNDARY §3.2). #95 is the agent command ingress.
 No direct canonical write CLI or legacy credential reuse is authorized.
 
 Overall WP-R153-04: PARTIALLY_IMPLEMENTED. Overall WP-R153-06:

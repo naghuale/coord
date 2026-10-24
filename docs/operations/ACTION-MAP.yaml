@@ -3,9 +3,12 @@ kind: ActionMap
 metadata:
   status: proposed
   note: >
-    Machine-readable projection of docs/operations/ACTION-MAP.md.
-    Both must be kept in sync (Architecture Sync process).
-    readWhen values in DOCUMENT-REGISTRY.yaml will be aligned as part of AIAG-03.
+    Standalone reconstructed proposal. Not a projection of
+    docs/operations/ACTION-MAP.md and not kept in sync with it.
+    Provenance: legacy ACTION-MAP.md sha256
+    19f1c49875c2b96cc55ed3eb039e23f7c88a0967a13921867e38f61ef3460029
+    (actionmap-recon-grok-a17, ACTION-MAP-STATUS-01).
+    metadata.status stays proposed; this document is not normative.
 
 events:
   SESSION_STARTED:

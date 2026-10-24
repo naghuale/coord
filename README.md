@@ -6,7 +6,7 @@
 Самостоятельный Telepathy host/worker: `make build`, затем `bin/coord-telepathy -help`.
 Настройка, подписи и проверка: [TELEPATHY_HOST.md](docs/TELEPATHY_HOST.md).
 
-[Текущая рабочая версия и её проверки](docs/CURRENT_VERSION.md).
+[Исторический снимок рабочей версии на 2026-10-07 и его проверки](docs/CURRENT_VERSION.md). Текущее состояние — [ARCHITECTURE.md](docs/ARCHITECTURE.md), [ROADMAP.md](docs/ROADMAP.md) и [COMPONENT-STATUS.yaml](docs/architecture/COMPONENT-STATUS.yaml).
 
 ## Ролевые сессии
 
@@ -170,7 +170,9 @@ AUDITOR выполняет независимую проверку. В кано�
 прежних владельцев после recovery. Без независимого кандидата назначение
 отклоняется (`NO_INDEPENDENT_REVIEWER`, `NO_INDEPENDENT_AUDITOR`). Обратное
 направление — когда бывший REVIEWER или AUDITOR становится EXECUTOR той же
-задачи — каноническая модель не запрещает; это вопрос отдельного решения OWNER.
+задачи — запрещено уже принятым правилом хранилища `EXECUTOR_ROLE_HISTORY_CONFLICT`
+(ADR-0001 CM-02a, R133; `TestFormerReviewerOrAuditorCannotLaterBecomeExecutor`).
+Это не новая политика независимости.
 Это проверка identities; для организационной независимости нужен дополнительный
 policy layer.
 

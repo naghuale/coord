@@ -404,7 +404,9 @@ new fields rather than discarding ledger data. See
 [cutover/rollback](operations/ASSIGNMENT-LEDGER-CUTOVER.md), and
 [R153 coverage](R153-COVERAGE-MATRIX.md).
 
-Maturity is partial: authenticated production first-offer write exposure remains
+Maturity is partial: the implementation is merged (PR #98,
+`0c6eaf469024822a34fc501b5349ddcb68b70cc2`) and is not an active cutover.
+Authenticated production first-offer write exposure remains
 BLOCKED_ON_WRITE_AUTHORITY; no legacy owner/supervisor credential is silently
 expanded. Physical liveness detection, universal receiver/pre-tool enforcement,
 full model/eligibility registry and incident clock orchestration remain outside

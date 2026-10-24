@@ -260,7 +260,7 @@ P0-1 daemon runtime skeleton остаётся частично принятым.
 `TaskIDReference` и `AgentIDPresence` — единственные допустимые факты;
 ложные равенства `room participant = Run`, `room message = DomainEvent` и
 `room state = Task lifecycle` отклоняются явно (12 тестов + мутации).
-Приёмка границы этапа остаётся открытой (#42).
+Приёмка границы этапа остаётся открытой (#42). Приёмка P0-3 — ACCEPTED_WITH_LIMITATIONS (2026-10-23) и не открывает production write path. Пять измерений остаются NOT_EVALUATED в #89: liveRestart, crashDeduplication, roleIndependence, rationale, readiness.
 
 После этого следует P0-3: production CLI и Telepathy write paths через daemon к
 canonical Task. Затем P0-4 executor lifecycle и P0-5 supervisor, deployment и
@@ -279,7 +279,7 @@ OS isolation. Точный порядок и статус сверяются с 
 
 <!-- durable-orchestration-candidate -->
 
-Existing coordd now has an isolated deterministic action-dispatch/recovery hook backed by CanonicalState schema v2. Typed actions, Task events, Inbox acceptance and acknowledgement intents share canonical commits. Revision-bound operations projections are rebuildable. This candidate is partial: no live adapters, production replacement Run/session binding, full project scheduler, or LLM authority path. See [implementation boundaries](plans/durable-orchestration/IMPLEMENTATION.md) and the unnumbered [Proposed ADR](plans/durable-orchestration/ADR-PROPOSED.md); the Proposed design is not normative authority. Existing canonical command, ownership and role independence boundaries remain applicable.
+Existing coordd now has an isolated deterministic action-dispatch/recovery hook backed by CanonicalState schema v2. Typed actions, Task events, Inbox acceptance and acknowledgement intents share canonical commits. Revision-bound operations projections are rebuildable. This candidate is partial: no live adapters, production replacement Run/session binding, full project scheduler, or LLM authority path. See [implementation boundaries](plans/durable-orchestration/IMPLEMENTATION.md) and the unnumbered [Proposed ADR](plans/durable-orchestration/ADR-PROPOSED.md); the Proposed design is not normative authority. Existing canonical command, ownership and role independence boundaries remain applicable. OWNER 2026-10-24 решил отключить durable orchestration до принятия ADR (#96). До посадки #96 fixture-only runtime всё ещё подключён в `coordd`. Эта фраза не меняет код и не принимает ADR. Аутентифицированный production write path — #93 и #95.
 
 
 ## ExternalAction contract schema 3 (Issue #63)
@@ -304,10 +304,12 @@ The existing JSON canonical store now has an optional versioned append-only
 assignment authority ledger, exact state/TTL/session/generation preflight,
 standalone and optionally Run-bound atomic result gates, offline read-only status,
 and LEDGER_FROZEN launch rollback that retains data and existing service functions.
-The implementation is partial: production first-offer write authorization is
-BLOCKED_ON_WRITE_AUTHORITY until follow-up #93 resolves the existing command-boundary gap.
+The implementation is merged (PR #98, `0c6eaf469024822a34fc501b5349ddcb68b70cc2`)
+and is not active. Production first-offer write authorization is
+BLOCKED_ON_WRITE_AUTHORITY until follow-up #93 resolves the existing command-boundary gap;
+#95 is the agent command ingress.
 No direct CLI write, legacy credential expansion, SQLite, provider mesh, R155/R156
 or automatic host/session/model verification is included. Old journals stay history;
-first explicit post-merge offer starts cutover, never a journal import.
+the first explicit offer after an authenticated write path exists starts cutover, never a journal import.
 [Coverage](R153-COVERAGE-MATRIX.md) and [runbook](operations/ASSIGNMENT-LEDGER-CUTOVER.md)
 distinguish core tests from runtime admission/receiver enforcement still to come.

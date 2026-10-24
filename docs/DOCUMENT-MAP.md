@@ -2,8 +2,12 @@
 
 Этот навигатор подсказывает, что читать и обновлять для конкретной роли или
 события. Полный перечень документов, владельцы и условия обновления находятся
-в [`DOCUMENT-REGISTRY.yaml`](DOCUMENT-REGISTRY.yaml); последовательность действий
-для событий — в [`operations/ACTION-MAP.md`](operations/ACTION-MAP.md).
+в [`DOCUMENT-REGISTRY.yaml`](DOCUMENT-REGISTRY.yaml). Пока принятая карта действий
+не опубликована как отслеживаемый авторитетный артефакт, событие сверяется по
+промежуточному порядку в [`AGENTS.md`](../AGENTS.md): сам `AGENTS.md`, Coordinator
+State Machine, Document Registry и применимые принятые ADR и решения R.
+[`operations/ACTION-MAP.md`](operations/ACTION-MAP.md) — историческое свидетельство
+отсутствующего корпуса, а не обязательная последовательность.
 
 ## Если вы…
 
@@ -21,7 +25,8 @@
 
 Coordinator получает наблюдаемое process event или подтверждённое изменение
 состояния из активной записи, инструмента или события State Machine; затем
-вручную классифицирует его по Action Map.
+вручную классифицирует его по промежуточному порядку в `AGENTS.md`. Прежний
+`operations/ACTION-MAP.md` — историческое свидетельство, не текущая последовательность.
 
 Coordinator восстанавливает минимальный контекст из `.coord/project.yaml`,
 `AGENTS.md`, `.coord/CONTEXT-INDEX.yaml`,
@@ -29,8 +34,8 @@ Coordinator восстанавливает минимальный контекс
 assignment активной задачи. Проверяются ProjectID, HEAD, активная задача,
 blockers, следующий безопасный переход, OWNER boundary и доступность evidence.
 Только затем загружаются owning нормы текущей работы. Сейчас Coordinator вручную
-определяет применимые документы по `readWhen`, `status`, `authority` и `startupPaths` в
-Registry/Action Map; программный
+определяет применимые документы по `readWhen`, `status`, `authority` и `startupPaths`
+Document Registry, сверяя событие с промежуточным порядком в `AGENTS.md`. Программный
 resolver и launcher admission не подключены. Для Executor, Reviewer и Auditor
 наборы указаны в `startupPaths` реестра.
 
@@ -105,20 +110,21 @@ subject revision и ограничения переносимости с тек�
 | `historical` | Что было проверено на конкретной версии? | `CURRENT_VERSION.md`, `UX_AUDIT.md`, старые reports/incidents/Completion Reports |
 | `design` | Как реализовать решение в пределах действующих норм? | design documents, plans |
 
-RFC-0002, `AGENT-BOOTSTRAP-TEMPLATE.md` и весь каталог `docs/ai-agents/`
-зарегистрированы как `proposed`. Они описывают будущий процесс, политики и
-шаблон, но не являются действующей нормой, обязательным launcher contract или
-основанием запускать агента. Читайте их при планировании оценки или
-рассмотрении RFC; действующие правила по-прежнему задаются `AGENTS.md`,
-State Machine и принятыми процессными нормами.
+RFC-0002 и `AGENT-BOOTSTRAP-TEMPLATE.md` — только историческое свидетельство
+в манифесте. Файлы в этом дереве не восстановлены и не являются `proposed`.
+Каталог `docs/ai-agents/` остаётся `proposed` там, где так записано в реестре.
+Ни историческое свидетельство, ни `proposed`-материалы не являются действующей
+нормой, обязательным launcher contract или основанием запускать агента.
+Действующие правила по-прежнему задаются `AGENTS.md`, State Machine и принятыми
+процессными нормами.
 
-- [RFC-0002: Управляемая разработка с генеративными AI-агентами](rfc/RFC-0002-AI-AGENT-ENGINEERING-GOVERNANCE.md)
-- [Proposed Agent Bootstrap Template](templates/AGENT-BOOTSTRAP-TEMPLATE.md)
+- [RFC-0002: Управляемая разработка с генеративными AI-агентами](rfc/RFC-0002-AI-AGENT-ENGINEERING-GOVERNANCE.md) — manifest-only historical evidence; файл отсутствует, не `proposed`
+- [Agent Bootstrap Template](templates/AGENT-BOOTSTRAP-TEMPLATE.md) — manifest-only historical evidence; файл отсутствует, не `proposed`
 - [AI Agent Governance: Implementation Status](ai-agents/IMPLEMENTATION-STATUS.yaml) — и другие политики в `docs/ai-agents/` (adapter-registry, evaluation-profiles, context-budgets, retention, hidden-case, baseline-acceptance, cost-model, model-adapter-standard; все `proposed`)
 - [ActionContext Schema](schemas/action-context.schema.yaml), [EvidenceRecord Schema](schemas/evidence-record.schema.yaml) — JSON Schema (proposed)
 - [AI Agent Governance Work Plan](plans/ai-agent-governance/GITLAB-WORK-PLAN.md) — initiative, milestones, AIAG-01..AIAG-18, dependency graph, board columns (`proposed`); issues в `docs/plans/ai-agent-governance/issues/`
 - [Priority and Estimation](plans/ai-agent-governance/PRIORITY-AND-ESTIMATION.md) — priority rules and relative complexity estimates for AIAG issues (`proposed`)
-- [ActionContext Resolver + Launcher](operations/ACTION-MAP.yaml) — машиночитаемая YAML-проекция ACTION-MAP.md (`proposed`); используется `scripts/resolve-action-context` и `scripts/launch-agent`
+- [ActionContext Resolver + Launcher](operations/ACTION-MAP.yaml) — самостоятельный `proposed` артефакт с provenance (actionmap-recon-grok-a17), не проекция отсутствующего ACTION-MAP.md. Ненормативный checklist и источник кандидатов для будущего решения; не основание production-перехода. Скрипты `scripts/resolve-action-context` и `scripts/launch-agent` могут его читать, но чтение не делает его авторитетом перехода.
 - [OS Sandbox Profiles](../config/SANDBOX-PROFILES.yaml) — профили Bubblewrap sandbox (evaluation-linux, production-linux) для `scripts/sandbox_exec.py` (`proposed`)
 - [AgentSession Registry Contract](../config/SESSION-REGISTRY-CONTRACT.yaml) — контракт адаптера registry: операции, поля ответа, политика launcher (`proposed`)
 - [Security Boundary](SECURITY-BOUNDARY.md) — граница OS sandbox и AgentSession Registry; Linux backend, статус macOS/Windows, ограничения (`proposed`)

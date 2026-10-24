@@ -1,5 +1,22 @@
 # История изменений
 
+## 2026-10-24 — Action Map phrases are not authority (документация)
+
+- Запрет вопроса «что делать дальше» записан как правило этого `AGENTS.md`. `forbiddenActions: ask_owner_what_to_do_next` в proposed `ACTION-MAP.yaml` — только ненормативное зеркало. Правило R146 стоит само по себе; `SESSION_REPLACED` — имя ненормативного события в proposed `ACTION-MAP.yaml`. Документы выбираются по Document Registry и промежуточному порядку. Ссылка на Action Map в списке источников перехода явно будущая: она действует, только если карта позже будет отдельно принята как нормативный документ. Сейчас принятой карты нет. Новых переходов и новой нормы нет. (документация)
+
+## 2026-10-24 — Interim action-map procedure (документация)
+
+- Пока принятая карта действий не опубликована как отслеживаемый авторитетный артефакт, событие сверяется с `AGENTS.md`, Coordinator State Machine, Document Registry и принятыми ADR/R. Отсутствующий `ACTION-MAP.md` не читается и не дополняется. `ACTION-MAP.yaml` остаётся ненормативным checklist и не задаёт production-переход. Новых переходов нет. (документация)
+
+## 2026-10-24 — Documentation reconciliation with accepted reality (Refs #89, #90, #93, #95, #96)
+
+- README больше не называет снимок 2026-10-07 текущей рабочей версией. Обратное направление ролей указывает на уже принятое правило `EXECUTOR_ROLE_HISTORY_CONFLICT` (ADR-0001 CM-02a; `TestFormerReviewerOrAuditorCannotLaterBecomeExecutor`). (документация)
+- Порядок реализации в ADR-0001, ROADMAP и TARGET-ARCHITECTURE записывает уже сделанную Shadow Validation, приёмку P0-3 ACCEPTED_WITH_LIMITATIONS и пять измерений NOT_EVALUATED (#89). Assignment Ledger записан как влитый (PR #98, `0c6eaf4`) и неактивный: cutover BLOCKED_ON_WRITE_AUTHORITY (#93, #95). (документация)
+- Заголовок ORCHESTRATOR и формулировка «в роли Orchestrator» в ROLE_PROMPTS сохранены и помечены как историческая терминология (D9). Имена COORDINATOR и ORCHESTRATOR не сливаются. (документация)
+- Durable orchestration остаётся Proposed. OWNER 2026-10-24 решил отключить её до принятия ADR (#96); до посадки #96 fixture-only runtime всё ещё подключён в coordd. Пометка не меняет код и не принимает ADR. (документация)
+- ACTION-MAP.yaml остаётся proposed и ненормативным. Это самостоятельное восстановленное предложение, а не проекция ACTION-MAP.md. (документация)
+- В реестре отсутствующие legacy-записи action-map, CI и GitLab, а также RFC-0002 и AGENT-BOOTSTRAP-TEMPLATE, стали historical. Файлы не восстановлены. `currentOperationalAuthority: false` — следствие статуса historical. CURRENT.yaml и OPEN-WORK.yaml остаются active и optional; они лежат в ветке ops/coord/project. (документация)
+
 ## 2026-10-24 — Assignment loss and recovery separation (Refs #90)
 
 - Reject self-interested loss observations, including a whole loss batch when an

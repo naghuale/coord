@@ -4,7 +4,7 @@ kind: ArchitectureComponentRegistry
 metadata:
   projectId: coord
   registryVersion: 1
-  updatedFromCommit: <integration-head-sha>
+  updatedFromCommit: 0c6eaf469024822a34fc501b5349ddcb68b70cc2
   statusVocabulary:
     - implemented
     - partial
@@ -391,7 +391,7 @@ components:
       - atomic standalone and typed Run result completion before Inbox replay
       - read-only canonical assignment status and LEDGER_FROZEN rollback
     missing:
-      - authenticated production first-offer write boundary (BLOCKED_ON_WRITE_AUTHORITY)
+      - authenticated production first-offer write boundary (BLOCKED_ON_WRITE_AUTHORITY); merge PR #98 at 0c6eaf469024822a34fc501b5349ddcb68b70cc2 does not activate cutover
       - physical host/coordinator loss detection and universal pre-tool receiver guard
       - full R153 model/eligibility/incident-clock enforcement
     evidence:
