@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"coord/assignment"
 	"coord/ownercredential"
+	"coord/task"
+	"coord/taskid"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -1274,4 +1276,64 @@ func TestF11_PrimaryRestartSeamRejectsUnvalidatedActingDelta(t *testing.T) {
 		})
 		assertReject(t, err, before, "visibility receipt generation mismatch")
 	})
+}
+
+func TestF11_ApplyInboxCommandCannotReplaceActingCoordinator(t *testing.T) {
+	enableDelegationHarness(t)
+	f := newOwnerCommandFixture(t)
+	now := f.s.now().UTC()
+	grantDelegation(t, f, "del-f11-inbox", now)
+	payload, _ := json.Marshal(ownercredential.CreateTaskPayload{
+		Title: "f11-inbox", StagePlan: task.StagePlan{Stages: []task.Stage{task.Execution}, PolicyVersion: task.StagePlanPolicyVersion},
+	})
+	rev := f.s.state.OwnerCredentials["owner-1"].CredentialRevision
+	create := f.command(ownercredential.CommandCreateTask, "create-f11-inbox", "owner-primary", rev, payload)
+	sign := f.s.state.OwnerCredentials["owner-1"].Credentials["owner-primary"].SignCount + 1
+	created, _, err := f.s.ApplyOwnerCredentialCommand(create.ChallengeID, create, assertionFor(create, f.private["owner-primary"], sign))
+	if err != nil || created.TaskID == "" {
+		t.Fatalf("create task err=%v receipt=%+v", err, created)
+	}
+	id := taskid.ID(created.TaskID)
+	current := f.s.state.Tasks[id]
+	attacker := DelegationPrincipal{StableAgentID: "attacker", SessionID: "codex:attacker", Generation: 1}
+	before := ownerStateBytes(t, f.s)
+	canonRev := f.s.state.Revision
+	seq := f.s.state.OwnerCredentials["owner-1"].CommandSequence
+	events := len(f.s.state.Events)
+	_, _, err = f.s.ApplyInboxCommand("agent-f11", "msg-f11-inbox", id, current.Revision, func(state *CanonicalState) (InboxReceipt, error) {
+		value := state.Tasks[id]
+		value.Revision++
+		value.LastEventSeq++
+		value.UpdatedAt = now.Add(time.Second)
+		state.Tasks[id] = value
+		event := task.DomainEvent{
+			ID: task.EventID(id, value.LastEventSeq), TaskID: id, EventSeq: value.LastEventSeq,
+			TaskRevision: value.Revision, Type: "OWNER_DECISION", ActorID: "agent-f11", CreatedAt: value.UpdatedAt,
+		}
+		state.Events = append(state.Events, event)
+		rec := state.CoordinatorDelegations["del-f11-inbox"]
+		rec.ActingCoordinator = &attacker
+		rec.Scope.AllowedWorkItems = append(append([]string{}, rec.Scope.AllowedWorkItems...), "issue-outside-original-grant")
+		state.CoordinatorDelegations["del-f11-inbox"] = rec
+		return InboxReceipt{
+			ActorID: "agent-f11", MessageID: "msg-f11-inbox", TaskID: id,
+			EventIDs: []string{event.ID}, ExpectedRevision: current.Revision, CommittedRevision: value.Revision,
+			RecordedAt: value.UpdatedAt,
+		}, nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "grant authority is immutable via generic writer") {
+		t.Fatalf("inbox writer err=%v", err)
+	}
+	if !bytes.Equal(before, ownerStateBytes(t, f.s)) {
+		t.Fatal("canonical bytes changed")
+	}
+	if f.s.state.Revision != canonRev || f.s.state.OwnerCredentials["owner-1"].CommandSequence != seq || len(f.s.state.Events) != events {
+		t.Fatal("revision, sequence, or event written")
+	}
+	if f.s.state.CoordinatorDelegations["del-f11-inbox"].Generation != 1 {
+		t.Fatal("grant generation changed")
+	}
+	if acting := f.s.state.CoordinatorDelegations["del-f11-inbox"].CurrentActing(); acting.StableAgentID == "attacker" {
+		t.Fatal("acting coordinator replaced")
+	}
 }

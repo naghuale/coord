@@ -287,6 +287,9 @@ func (s *CanonicalStore) ApplyOwnerCredentialCommand(challengeID string, submitt
 	}
 	next.OwnerCredentials[challenge.PrincipalID] = aggregate
 	next.SchemaVersion = CanonicalSchemaVersion
+	if err := rejectUnauthorizedGrantMutation(s.state, next); err != nil {
+		return ownercredential.Receipt{}, false, err
+	}
 	if s.state.Revision == ^uint64(0) {
 		return ownercredential.Receipt{}, false, errors.New("canonical revision exhausted")
 	}
@@ -368,6 +371,9 @@ func (s *CanonicalStore) applyOwnerTaskCreateLocked(challenge ownercredential.Co
 	next.Events = append(next.Events, event)
 	next.Inbox[InboxKey(challenge.PrincipalID, challenge.MessageID)] = InboxReceipt{ActorID: challenge.PrincipalID, MessageID: challenge.MessageID, OwnerCommandDigest: challenge.Digest, OwnerNonce: challenge.Nonce, OwnerCredentialRevision: challenge.ExpectedCredentialRevision, TaskID: id, EventIDs: []string{event.ID}, ExpectedRevision: 0, CommittedRevision: 1, RecordedAt: now}
 	next.SchemaVersion = CanonicalSchemaVersion
+	if err := rejectUnauthorizedGrantMutation(s.state, next); err != nil {
+		return ownercredential.Receipt{}, false, err
+	}
 	next.Revision = s.state.Revision + 1
 	if err := ValidateCanonicalState(next); err != nil {
 		return ownercredential.Receipt{}, false, err

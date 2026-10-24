@@ -641,6 +641,19 @@ func changedGrants(prev, next map[string]DelegationRecord) ([]string, error) {
 	return ids, nil
 }
 
+// rejectUnauthorizedGrantMutation is the F11 generic-writer gate for every
+// canonical Save path that is not the handoff/primaryRestart seam or the
+// OwnerCredential grant/revoke/loss/visibility command.
+func rejectUnauthorizedGrantMutation(prev, next CanonicalState) error {
+	if reflect.DeepEqual(prev.CoordinatorDelegations, next.CoordinatorDelegations) {
+		return nil
+	}
+	if !coordinatorDelegationActive() {
+		return ErrCoordinatorDelegationDisabled
+	}
+	return fmt.Errorf("%w: grant authority is immutable via generic writer", ErrCoordinatorDelegationInvalid)
+}
+
 // validateDelegatedWriterDelta is the F8/F11 grant-writer gate.
 // Generic UpdateCanonical cannot mutate CoordinatorDelegations at all.
 // Handoff and primaryRestart permits still freeze grant authority and require

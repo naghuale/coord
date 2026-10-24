@@ -419,6 +419,9 @@ func (s *CanonicalStore) recordAgentNoAcceptanceLocked(actorID string, e envelop
 		EventIDs: []string{}, ExpectedRevision: expectedRevision, CommittedRevision: expectedRevision, RecordedAt: now,
 	}
 	next.Inbox[key] = receipt
+	if err := rejectUnauthorizedGrantMutation(s.state, next); err != nil {
+		return InboxReceipt{}, false, err
+	}
 	if s.state.Revision == ^uint64(0) {
 		return InboxReceipt{}, false, fmt.Errorf("canonical revision exhausted")
 	}
