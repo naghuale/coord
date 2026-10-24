@@ -793,12 +793,17 @@ func (s *CanonicalStore) UpdateCanonical(fn func(*CanonicalState) error) error {
 	if !reflect.DeepEqual(s.state.OwnerCredentials, next.OwnerCredentials) {
 		return ErrOwnerCommandRequired
 	}
-	// F2: generic writers must not mutate CoordinatorDelegations while the
-	// production gate is off. Grant/revoke/loss/visibility use the authenticated
-	// OwnerCredential command path. When the harness is on, handoff/primaryRestart
-	// may update acting/history/visibility through this seam.
-	if !reflect.DeepEqual(s.state.CoordinatorDelegations, next.CoordinatorDelegations) && !coordinatorDelegationActive() {
-		return ErrCoordinatorDelegationDisabled
+	// F2/F8: generic writers never insert, revoke, or rewrite grant authority.
+	// Grant/revoke/loss/visibility use the authenticated OwnerCredential path.
+	// Handoff/primaryRestart may only append acting/history/barred/consumed
+	// visibility while the feature is active.
+	if !reflect.DeepEqual(s.state.CoordinatorDelegations, next.CoordinatorDelegations) {
+		if !coordinatorDelegationActive() {
+			return ErrCoordinatorDelegationDisabled
+		}
+		if err := validateGenericDelegationWriterDelta(s.state.CoordinatorDelegations, next.CoordinatorDelegations); err != nil {
+			return err
+		}
 	}
 	next.SchemaVersion = CanonicalSchemaVersion
 	if reflect.DeepEqual(s.state, next) {

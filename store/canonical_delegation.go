@@ -4,6 +4,7 @@ import (
 	"coord/assignment"
 	ownercredential "coord/ownercredential"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -139,14 +140,32 @@ func assignmentBoundGrant(state CanonicalState, record assignment.Record) (Deleg
 }
 
 // bindAssignmentScopeFromGrant stamps the issuing grant onto a new assignment.
-// A command binding that names a different grant, generation, or scope fails closed.
+// A command GrantID selects that grant. Other binding fields are claims only.
+// If GrantID is absent and more than one acting grant applies, the offer fails.
 func bindAssignmentScopeFromGrant(state CanonicalState, actor assignment.Principal, record *assignment.Record, now time.Time) error {
 	if !coordinatorDelegationActive() || record == nil {
 		return nil
 	}
-	grant, ok := findGrantForActingCoordinator(state, actor, now)
-	if !ok {
-		return nil
+	actorP := principalFromAssignment(actor)
+	var grant DelegationRecord
+	if record.DelegationBinding != nil && record.DelegationBinding.GrantID != "" {
+		claimed, ok := state.CoordinatorDelegations[record.DelegationBinding.GrantID]
+		if !ok || claimed.DelegationID != record.DelegationBinding.GrantID {
+			return fmt.Errorf("%w: originating grant %s missing", ErrCoordinatorDelegationInvalid, record.DelegationBinding.GrantID)
+		}
+		if !claimed.Active(now) || claimed.IsBarred(actorP) || !claimed.CurrentActing().Equal(actorP) {
+			return fmt.Errorf("%w: actor is not acting coordinator under grant %s", ErrCoordinatorDelegationInvalid, claimed.DelegationID)
+		}
+		grant = claimed
+	} else {
+		matches := actingGrantsFor(state, actor, now)
+		if len(matches) == 0 {
+			return nil
+		}
+		if len(matches) > 1 {
+			return fmt.Errorf("%w: actor covered by multiple grants; grantId required", ErrCoordinatorDelegationInvalid)
+		}
+		grant = matches[0]
 	}
 	item := assignmentWorkItem(*record)
 	if !grant.Scope.AllowsWorkItem(item) {
@@ -156,21 +175,31 @@ func bindAssignmentScopeFromGrant(state CanonicalState, actor assignment.Princip
 		GrantID: grant.DelegationID, GrantGeneration: grant.Generation,
 		Repository: grant.Scope.Repository, Project: grant.Scope.Project, AllowedWorkItem: item,
 	}
-	if record.DelegationBinding != nil && !delegationBindingEqual(record.DelegationBinding, want) {
-		return fmt.Errorf("%w: command grant binding differs from issuing grant %s", ErrCoordinatorDelegationInvalid, grant.DelegationID)
+	if record.DelegationBinding != nil {
+		b := record.DelegationBinding
+		if b.GrantID != "" && b.GrantID != want.GrantID {
+			return fmt.Errorf("%w: command grant binding differs from issuing grant %s", ErrCoordinatorDelegationInvalid, grant.DelegationID)
+		}
+		if b.GrantGeneration != 0 && b.GrantGeneration != want.GrantGeneration {
+			return fmt.Errorf("%w: command grant binding differs from issuing grant %s", ErrCoordinatorDelegationInvalid, grant.DelegationID)
+		}
+		if b.Repository != "" && b.Repository != want.Repository {
+			return fmt.Errorf("%w: command grant binding differs from issuing grant %s", ErrCoordinatorDelegationInvalid, grant.DelegationID)
+		}
+		if b.Project != "" && b.Project != want.Project {
+			return fmt.Errorf("%w: command grant binding differs from issuing grant %s", ErrCoordinatorDelegationInvalid, grant.DelegationID)
+		}
+		if b.AllowedWorkItem != "" && b.AllowedWorkItem != want.AllowedWorkItem {
+			return fmt.Errorf("%w: command grant binding differs from issuing grant %s", ErrCoordinatorDelegationInvalid, grant.DelegationID)
+		}
 	}
 	record.DelegationBinding = want
 	return nil
 }
 
-func delegationBindingEqual(a, b *assignment.DelegationBinding) bool {
-	return a != nil && b != nil && a.GrantID == b.GrantID && a.GrantGeneration == b.GrantGeneration &&
-		a.Repository == b.Repository && a.Project == b.Project && a.AllowedWorkItem == b.AllowedWorkItem
-}
-
 // validateAssignmentDelegationScope checks each persisted binding against the
-// exact grant id. A covered coordinator with no binding cannot load. A work
-// item outside the allowlist still loads and is refused at mutation and loss.
+// exact grant id, including AllowedWorkItems. A covered coordinator with no
+// binding cannot load.
 func validateAssignmentDelegationScope(state CanonicalState) error {
 	if !coordinatorDelegationActive() || len(state.CoordinatorDelegations) == 0 || state.AssignmentLedger == nil {
 		return nil
@@ -195,6 +224,9 @@ func validateAssignmentDelegationScope(state CanonicalState) error {
 		}
 		if b.AllowedWorkItem != assignmentWorkItem(r) {
 			return fmt.Errorf("%w: assignment %s allowedWorkItem drifted from admission reference", ErrCoordinatorDelegationInvalid, id)
+		}
+		if !grant.Scope.AllowsWorkItem(b.AllowedWorkItem) {
+			return fmt.Errorf("%w: assignment %s work item %q outside allowedWorkItems of grant %s", ErrCoordinatorDelegationInvalid, id, b.AllowedWorkItem, b.GrantID)
 		}
 	}
 	return nil
@@ -502,19 +534,80 @@ func principalFromAssignment(p assignment.Principal) DelegationPrincipal {
 
 // findGrantForActingCoordinator returns the active grant whose acting triple matches.
 func findGrantForActingCoordinator(state CanonicalState, actor assignment.Principal, now time.Time) (DelegationRecord, bool) {
-	if !coordinatorDelegationActive() || state.CoordinatorDelegations == nil {
+	matches := actingGrantsFor(state, actor, now)
+	if len(matches) != 1 {
 		return DelegationRecord{}, false
 	}
+	return matches[0], true
+}
+
+func actingGrantsFor(state CanonicalState, actor assignment.Principal, now time.Time) []DelegationRecord {
+	if !coordinatorDelegationActive() || state.CoordinatorDelegations == nil {
+		return nil
+	}
 	want := principalFromAssignment(actor)
+	var out []DelegationRecord
 	for _, d := range state.CoordinatorDelegations {
 		if !d.Active(now) || d.IsBarred(want) {
 			continue
 		}
 		if d.CurrentActing().Equal(want) {
-			return d, true
+			out = append(out, d)
 		}
 	}
-	return DelegationRecord{}, false
+	return out
+}
+
+// validateGenericDelegationWriterDelta allows only handoff/primaryRestart
+// deltas: acting coordinator, append-only history/barred list, and consumed
+// visibility. Scope, validity, successors, identity, and revocation stay
+// on the OwnerCredential command path.
+func validateGenericDelegationWriterDelta(prev, next map[string]DelegationRecord) error {
+	if len(prev) != len(next) {
+		return fmt.Errorf("%w: generic writer cannot insert or delete grants", ErrCoordinatorDelegationInvalid)
+	}
+	for id, before := range prev {
+		after, ok := next[id]
+		if !ok || after.DelegationID != before.DelegationID {
+			return fmt.Errorf("%w: generic writer cannot insert or delete grants", ErrCoordinatorDelegationInvalid)
+		}
+		if before.Generation != after.Generation || !bytesEqualScope(before.Scope, after.Scope) ||
+			!before.Validity.NotBefore.Equal(after.Validity.NotBefore) || !before.Validity.ExpiresAt.Equal(after.Validity.ExpiresAt) ||
+			!before.PrimaryCoordinator.Equal(after.PrimaryCoordinator) || !reflect.DeepEqual(before.Successors, after.Successors) ||
+			!reflect.DeepEqual(before.PrimaryRestart, after.PrimaryRestart) || before.Evidence != after.Evidence ||
+			!reflect.DeepEqual(before.CutoverAssignmentIDs, after.CutoverAssignmentIDs) ||
+			!before.RevokedAt.Equal(after.RevokedAt) || before.RevokedBy != after.RevokedBy {
+			return fmt.Errorf("%w: grant authority is immutable via generic writer", ErrCoordinatorDelegationInvalid)
+		}
+		if len(after.History) < len(before.History) {
+			return fmt.Errorf("%w: grant history cannot shrink", ErrCoordinatorDelegationInvalid)
+		}
+		for i := range before.History {
+			if !reflect.DeepEqual(before.History[i], after.History[i]) {
+				return fmt.Errorf("%w: grant history is append-only", ErrCoordinatorDelegationInvalid)
+			}
+		}
+		if len(after.BarredCoordinators) < len(before.BarredCoordinators) {
+			return fmt.Errorf("%w: barred coordinators cannot shrink", ErrCoordinatorDelegationInvalid)
+		}
+		for i := range before.BarredCoordinators {
+			if !before.BarredCoordinators[i].Equal(after.BarredCoordinators[i]) {
+				return fmt.Errorf("%w: barred coordinators are append-only", ErrCoordinatorDelegationInvalid)
+			}
+		}
+		if len(before.VisibilityReceipts) != len(after.VisibilityReceipts) {
+			return fmt.Errorf("%w: visibility receipts are owner-command only", ErrCoordinatorDelegationInvalid)
+		}
+		for i := range before.VisibilityReceipts {
+			p, n := before.VisibilityReceipts[i], after.VisibilityReceipts[i]
+			if p.MessageID != n.MessageID || p.Digest != n.Digest || p.DelegationID != n.DelegationID ||
+				p.StableAgentID != n.StableAgentID || !p.IssuedAt.Equal(n.IssuedAt) || !p.ExpiresAt.Equal(n.ExpiresAt) ||
+				!reflect.DeepEqual(p.Successor, n.Successor) {
+				return fmt.Errorf("%w: visibility receipt identity is immutable", ErrCoordinatorDelegationInvalid)
+			}
+		}
+	}
+	return nil
 }
 
 // findGrantCoveringCoordinator finds an active grant that named the triple as
@@ -674,38 +767,27 @@ func enforceDelegatedMutation(state CanonicalState, actor assignment.Principal, 
 			return fmt.Errorf("%w: exhausted, revoked, expired or barred", ErrCoordinatorDelegationExhausted)
 		}
 	}
-	grant, underGrant := findGrantForActingCoordinator(state, actor, now)
-	covering, covered := findGrantCoveringCoordinator(state, record.Coordinator(), now)
-	if !underGrant && !covered {
-		return nil
-	}
-	// Assignment under a grant requires the exact acting triple (ADR §4).
-	if covered {
-		acting := covering.CurrentActing()
-		if covering.IsBarred(actorP) || !acting.Equal(actorP) {
-			return fmt.Errorf("%w: binding requires exact acting triple", ErrCoordinatorDelegationInvalid)
+	if record.DelegationBinding == nil {
+		if _, covered := findAnyGrantCoveringCoordinator(state, record.Coordinator()); covered {
+			return fmt.Errorf("%w: persisted assignment grant binding required", ErrCoordinatorDelegationInvalid)
 		}
-		grant = covering
-		underGrant = true
-	}
-	if !underGrant {
-		return fmt.Errorf("%w: actor is not acting coordinator under grant", ErrCoordinatorDelegationInvalid)
-	}
-	if grant.IsBarred(actorP) {
-		return fmt.Errorf("%w: barred coordinator until handoff", ErrCoordinatorDelegationInvalid)
-	}
-	if delegatedForbiddenActions[action] {
-		return fmt.Errorf("%w: action %s forbidden under delegation", ErrCoordinatorDelegationInvalid, action)
-	}
-	if !grant.Scope.AllowsAction(action) {
-		return fmt.Errorf("%w: action %s outside allowedActions", ErrCoordinatorDelegationInvalid, action)
+		return nil
 	}
 	bound, err := assignmentBoundGrant(state, record)
 	if err != nil {
 		return err
 	}
-	if bound.DelegationID != grant.DelegationID {
-		return fmt.Errorf("%w: assignment bound to grant %s, not actor grant %s", ErrCoordinatorDelegationInvalid, bound.DelegationID, grant.DelegationID)
+	if !bound.Active(now) {
+		return fmt.Errorf("%w: exhausted, revoked, expired or barred", ErrCoordinatorDelegationExhausted)
+	}
+	if bound.IsBarred(actorP) || !bound.CurrentActing().Equal(actorP) {
+		return fmt.Errorf("%w: binding requires exact acting triple", ErrCoordinatorDelegationInvalid)
+	}
+	if delegatedForbiddenActions[action] {
+		return fmt.Errorf("%w: action %s forbidden under delegation", ErrCoordinatorDelegationInvalid, action)
+	}
+	if !bound.Scope.AllowsAction(action) {
+		return fmt.Errorf("%w: action %s outside allowedActions", ErrCoordinatorDelegationInvalid, action)
 	}
 	switch action {
 	case DelegatedActionVoid:
