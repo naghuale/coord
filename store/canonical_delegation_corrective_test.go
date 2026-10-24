@@ -283,18 +283,15 @@ func TestF5_PrimaryRestartOncePerLossEvent(t *testing.T) {
 
 	clearActing := func(t *testing.T, store *CanonicalStore, delID, sessionID string) {
 		t.Helper()
-		if err := store.UpdateCanonical(func(state *CanonicalState) error {
-			r := state.CoordinatorDelegations[delID]
-			acting := DelegationPrincipal{StableAgentID: "agent-a", SessionID: sessionID, Generation: 2}
-			if !r.IsBarred(acting) {
-				r.BarredCoordinators = append(r.BarredCoordinators, acting)
-			}
-			r.ActingCoordinator = nil
-			state.CoordinatorDelegations[delID] = r
-			return nil
-		}); err != nil {
-			t.Fatal(err)
+		store.mu.Lock()
+		defer store.mu.Unlock()
+		r := store.state.CoordinatorDelegations[delID]
+		acting := DelegationPrincipal{StableAgentID: "agent-a", SessionID: sessionID, Generation: 2}
+		if !r.IsBarred(acting) {
+			r.BarredCoordinators = append(r.BarredCoordinators, acting)
 		}
+		r.ActingCoordinator = nil
+		store.state.CoordinatorDelegations[delID] = r
 	}
 
 	t.Run("same_loss_second_application", func(t *testing.T) {
@@ -950,4 +947,331 @@ func TestF10_OfferBindsExplicitGrantWhenActorHasTwo(t *testing.T) {
 	if b := f.s.state.AssignmentLedger.Records["asg-b"].DelegationBinding; b == nil || b.GrantID != "del-b" || b.Repository != "other/repo" || b.Project != "other" {
 		t.Fatalf("del-b binding: %+v", f.s.state.AssignmentLedger.Records["asg-b"].DelegationBinding)
 	}
+}
+
+func TestF11_GenericWriterCannotReplaceActingCoordinator(t *testing.T) {
+	enableDelegationHarness(t)
+	f := newOwnerCommandFixture(t)
+	now := f.s.now().UTC()
+	grantDelegation(t, f, "del-f11", now)
+	seedDelegatedAssignment(t, f, "asg-f11", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now)
+	succ := ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-b", SessionID: "codex:b", Generation: 1}
+	confirmVisibility(t, f, "del-f11", "vis-f11-b", succ, now)
+	registerSession(t, f, "codex:b", "agent-b")
+	registerSession(t, f, "codex:attacker", "attacker")
+
+	attacker := DelegationPrincipal{StableAgentID: "attacker", SessionID: "codex:attacker", Generation: 1}
+	successor := DelegationPrincipal{StableAgentID: "agent-b", SessionID: "codex:b", Generation: 1}
+
+	assertReject := func(t *testing.T, err error, before []byte, rev, seq, credRev uint64, events int, grantGen uint64, want string) {
+		t.Helper()
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Fatalf("err=%v want containing %q", err, want)
+		}
+		if !bytes.Equal(before, ownerStateBytes(t, f.s)) {
+			t.Fatal("canonical bytes changed")
+		}
+		if f.s.state.Revision != rev {
+			t.Fatalf("revision %d -> %d", rev, f.s.state.Revision)
+		}
+		agg := f.s.state.OwnerCredentials["owner-1"]
+		if agg.CommandSequence != seq || agg.CredentialRevision != credRev {
+			t.Fatalf("sequence/revision changed seq=%d/%d cred=%d/%d", agg.CommandSequence, seq, agg.CredentialRevision, credRev)
+		}
+		n := 0
+		if f.s.state.AssignmentLedger != nil {
+			n = len(f.s.state.AssignmentLedger.Events)
+		}
+		if n != events {
+			t.Fatalf("events %d -> %d", events, n)
+		}
+		if f.s.state.CoordinatorDelegations["del-f11"].Generation != grantGen {
+			t.Fatal("grant generation changed")
+		}
+	}
+	snap := func(t *testing.T) ([]byte, uint64, uint64, uint64, int, uint64) {
+		t.Helper()
+		agg := f.s.state.OwnerCredentials["owner-1"]
+		n := 0
+		if f.s.state.AssignmentLedger != nil {
+			n = len(f.s.state.AssignmentLedger.Events)
+		}
+		return ownerStateBytes(t, f.s), f.s.state.Revision, agg.CommandSequence, agg.CredentialRevision, n, f.s.state.CoordinatorDelegations["del-f11"].Generation
+	}
+	setActing := func(p DelegationPrincipal) func(*CanonicalState) error {
+		return func(state *CanonicalState) error {
+			rec := state.CoordinatorDelegations["del-f11"]
+			rec.ActingCoordinator = &p
+			state.CoordinatorDelegations["del-f11"] = rec
+			return nil
+		}
+	}
+
+	t.Run("generic_arbitrary_acting", func(t *testing.T) {
+		before, rev, seq, cred, events, gen := snap(t)
+		err := f.s.UpdateCanonical(setActing(attacker))
+		assertReject(t, err, before, rev, seq, cred, events, gen, "grant authority is immutable via generic writer")
+	})
+	t.Run("generic_successor_without_handoff", func(t *testing.T) {
+		before, rev, seq, cred, events, gen := snap(t)
+		err := f.s.UpdateCanonical(setActing(successor))
+		assertReject(t, err, before, rev, seq, cred, events, gen, "grant authority is immutable via generic writer")
+	})
+	t.Run("generic_restart_without_history", func(t *testing.T) {
+		restart := DelegationPrincipal{StableAgentID: "agent-a", SessionID: "claude:a2", Generation: 2}
+		before, rev, seq, cred, events, gen := snap(t)
+		err := f.s.UpdateCanonical(setActing(restart))
+		assertReject(t, err, before, rev, seq, cred, events, gen, "grant authority is immutable via generic writer")
+	})
+	t.Run("generic_no_visibility_receipt", func(t *testing.T) {
+		before, rev, seq, cred, events, gen := snap(t)
+		err := f.s.UpdateCanonical(func(state *CanonicalState) error {
+			rec := state.CoordinatorDelegations["del-f11"]
+			rec.ActingCoordinator = &successor
+			from := rec.PrimaryCoordinator
+			rec.History = append(rec.History, DelegationHistoryEntry{
+				Kind: DelegationHistoryHandoff, At: now, AssignmentID: "asg-f11", From: &from, To: &successor,
+			})
+			state.CoordinatorDelegations["del-f11"] = rec
+			return nil
+		})
+		assertReject(t, err, before, rev, seq, cred, events, gen, "grant authority is immutable via generic writer")
+	})
+	t.Run("generic_reset_consumed_visibility", func(t *testing.T) {
+		lossConfirm(t, f, "del-f11", "loss-f11", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1}, now)
+		prev := assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}
+		next := assignment.Principal{SessionID: "codex:b", AgentID: "agent-b", Generation: 1}
+		revAsg := f.s.state.AssignmentLedger.Records["asg-f11"].Revision
+		if err := f.s.HandoffAssignment(prev, next, "asg-f11", revAsg, "f11-pos-handoff"); err != nil {
+			t.Fatal(err)
+		}
+		before, rev, seq, cred, events, gen := snap(t)
+		err := f.s.UpdateCanonical(func(state *CanonicalState) error {
+			rec := state.CoordinatorDelegations["del-f11"]
+			for i := range rec.VisibilityReceipts {
+				rec.VisibilityReceipts[i].ConsumedAt = time.Time{}
+				rec.VisibilityReceipts[i].ConsumedBy = ""
+			}
+			state.CoordinatorDelegations["del-f11"] = rec
+			return nil
+		})
+		assertReject(t, err, before, rev, seq, cred, events, gen, "grant authority is immutable via generic writer")
+	})
+}
+
+func TestF11_HandoffSeamRejectsUnvalidatedActingDelta(t *testing.T) {
+	enableDelegationHarness(t)
+	f := newOwnerCommandFixture(t)
+	now := f.s.now().UTC()
+	grantDelegation(t, f, "del-f11s", now)
+	seedDelegatedAssignment(t, f, "asg-f11s", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now)
+	confirmVisibility(t, f, "del-f11s", "vis-f11s-b", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-b", SessionID: "codex:b", Generation: 1}, now)
+	registerSession(t, f, "claude:a2", "agent-a")
+	bumpSessionGeneration(t, f, "claude:a2", 2)
+	confirmVisibility(t, f, "del-f11s", "vis-f11s-pr", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a2", Generation: 2}, now)
+	registerSession(t, f, "codex:b", "agent-b")
+	lossConfirm(t, f, "del-f11s", "loss-f11s", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1}, now)
+
+	successor := DelegationPrincipal{StableAgentID: "agent-b", SessionID: "codex:b", Generation: 1}
+	from := DelegationPrincipal{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1}
+	consume := func(rec *DelegationRecord, msgID, consumedBy string) {
+		for i := range rec.VisibilityReceipts {
+			if rec.VisibilityReceipts[i].MessageID == msgID {
+				rec.VisibilityReceipts[i].ConsumedAt = now
+				rec.VisibilityReceipts[i].ConsumedBy = consumedBy
+			}
+		}
+	}
+	assertReject := func(t *testing.T, err error, before []byte, rev, seq uint64, events int, want string) {
+		t.Helper()
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Fatalf("err=%v want containing %q", err, want)
+		}
+		if !bytes.Equal(before, ownerStateBytes(t, f.s)) {
+			t.Fatal("canonical bytes changed")
+		}
+		if f.s.state.Revision != rev {
+			t.Fatal("revision changed")
+		}
+		if f.s.state.OwnerCredentials["owner-1"].CommandSequence != seq {
+			t.Fatal("sequence changed")
+		}
+		if len(f.s.state.AssignmentLedger.Events) != events {
+			t.Fatal("event written")
+		}
+		if f.s.state.CoordinatorDelegations["del-f11s"].Generation != 1 {
+			t.Fatal("grant generation changed")
+		}
+	}
+
+	t.Run("no_handoff_history", func(t *testing.T) {
+		before := ownerStateBytes(t, f.s)
+		rev, seq, events := f.s.state.Revision, f.s.state.OwnerCredentials["owner-1"].CommandSequence, len(f.s.state.AssignmentLedger.Events)
+		err := f.s.commitCanonical(delegationCommitHandoff, func(state *CanonicalState) error {
+			rec := state.CoordinatorDelegations["del-f11s"]
+			rec.ActingCoordinator = &successor
+			consume(&rec, "vis-f11s-b", "asg-f11s")
+			state.CoordinatorDelegations["del-f11s"] = rec
+			return nil
+		})
+		assertReject(t, err, before, rev, seq, events, "handoff history required")
+	})
+	t.Run("no_visibility_receipt", func(t *testing.T) {
+		before := ownerStateBytes(t, f.s)
+		rev, seq, events := f.s.state.Revision, f.s.state.OwnerCredentials["owner-1"].CommandSequence, len(f.s.state.AssignmentLedger.Events)
+		err := f.s.commitCanonical(delegationCommitHandoff, func(state *CanonicalState) error {
+			rec := state.CoordinatorDelegations["del-f11s"]
+			rec.ActingCoordinator = &successor
+			rec.History = append(rec.History, DelegationHistoryEntry{
+				Kind: DelegationHistoryHandoff, At: now, AssignmentID: "asg-f11s", From: &from, To: &successor,
+			})
+			asg := state.AssignmentLedger.Records["asg-f11s"]
+			asg.CurrentCoordinator, asg.CoordinatorAgentID, asg.CoordinatorGeneration = successor.SessionID, successor.StableAgentID, successor.Generation
+			state.AssignmentLedger.Records["asg-f11s"] = asg
+			state.CoordinatorDelegations["del-f11s"] = rec
+			return nil
+		})
+		assertReject(t, err, before, rev, seq, events, "visibility receipt required")
+	})
+	t.Run("receipt_wrong_successor", func(t *testing.T) {
+		before := ownerStateBytes(t, f.s)
+		rev, seq, events := f.s.state.Revision, f.s.state.OwnerCredentials["owner-1"].CommandSequence, len(f.s.state.AssignmentLedger.Events)
+		err := f.s.commitCanonical(delegationCommitHandoff, func(state *CanonicalState) error {
+			rec := state.CoordinatorDelegations["del-f11s"]
+			rec.ActingCoordinator = &successor
+			rec.History = append(rec.History, DelegationHistoryEntry{
+				Kind: DelegationHistoryHandoff, At: now, AssignmentID: "asg-f11s", From: &from, To: &successor,
+			})
+			consume(&rec, "vis-f11s-pr", "asg-f11s")
+			asg := state.AssignmentLedger.Records["asg-f11s"]
+			asg.CurrentCoordinator, asg.CoordinatorAgentID, asg.CoordinatorGeneration = successor.SessionID, successor.StableAgentID, successor.Generation
+			state.AssignmentLedger.Records["asg-f11s"] = asg
+			state.CoordinatorDelegations["del-f11s"] = rec
+			return nil
+		})
+		assertReject(t, err, before, rev, seq, events, "visibility receipt successor mismatch")
+	})
+	t.Run("receipt_wrong_assignment", func(t *testing.T) {
+		before := ownerStateBytes(t, f.s)
+		rev, seq, events := f.s.state.Revision, f.s.state.OwnerCredentials["owner-1"].CommandSequence, len(f.s.state.AssignmentLedger.Events)
+		err := f.s.commitCanonical(delegationCommitHandoff, func(state *CanonicalState) error {
+			rec := state.CoordinatorDelegations["del-f11s"]
+			rec.ActingCoordinator = &successor
+			rec.History = append(rec.History, DelegationHistoryEntry{
+				Kind: DelegationHistoryHandoff, At: now, AssignmentID: "asg-f11s", From: &from, To: &successor,
+			})
+			consume(&rec, "vis-f11s-b", "asg-other")
+			asg := state.AssignmentLedger.Records["asg-f11s"]
+			asg.CurrentCoordinator, asg.CoordinatorAgentID, asg.CoordinatorGeneration = successor.SessionID, successor.StableAgentID, successor.Generation
+			state.AssignmentLedger.Records["asg-f11s"] = asg
+			state.CoordinatorDelegations["del-f11s"] = rec
+			return nil
+		})
+		assertReject(t, err, before, rev, seq, events, "visibility receipt assignment mismatch")
+	})
+}
+
+func TestF11_PrimaryRestartSeamRejectsUnvalidatedActingDelta(t *testing.T) {
+	enableDelegationHarness(t)
+	f := newOwnerCommandFixture(t)
+	now := f.s.now().UTC()
+	grantDelegation(t, f, "del-f11r", now)
+	seedDelegatedAssignment(t, f, "asg-f11r", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now)
+	lossConfirm(t, f, "del-f11r", "loss-f11r", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1}, now)
+	registerSession(t, f, "claude:a2", "agent-a")
+	bumpSessionGeneration(t, f, "claude:a2", 2)
+	confirmVisibility(t, f, "del-f11r", "vis-f11r", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a2", Generation: 2}, now)
+
+	to := DelegationPrincipal{StableAgentID: "agent-a", SessionID: "claude:a2", Generation: 2}
+	from := DelegationPrincipal{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1}
+	consume := func(rec *DelegationRecord, msgID, consumedBy string) {
+		for i := range rec.VisibilityReceipts {
+			if rec.VisibilityReceipts[i].MessageID == msgID {
+				rec.VisibilityReceipts[i].ConsumedAt = now
+				rec.VisibilityReceipts[i].ConsumedBy = consumedBy
+			}
+		}
+	}
+	assertReject := func(t *testing.T, err error, before []byte, want string) {
+		t.Helper()
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Fatalf("err=%v want containing %q", err, want)
+		}
+		if !bytes.Equal(before, ownerStateBytes(t, f.s)) {
+			t.Fatal("canonical bytes changed")
+		}
+	}
+
+	t.Run("no_restart_history", func(t *testing.T) {
+		before := ownerStateBytes(t, f.s)
+		err := f.s.commitCanonical(delegationCommitPrimaryRestart, func(state *CanonicalState) error {
+			rec := state.CoordinatorDelegations["del-f11r"]
+			rec.ActingCoordinator = &to
+			consume(&rec, "vis-f11r", "restart-1")
+			state.CoordinatorDelegations["del-f11r"] = rec
+			return nil
+		})
+		assertReject(t, err, before, "primaryRestart history required")
+	})
+	t.Run("no_visibility_receipt", func(t *testing.T) {
+		before := ownerStateBytes(t, f.s)
+		err := f.s.commitCanonical(delegationCommitPrimaryRestart, func(state *CanonicalState) error {
+			rec := state.CoordinatorDelegations["del-f11r"]
+			rec.ActingCoordinator = &to
+			rec.History = append(rec.History, DelegationHistoryEntry{
+				Kind: DelegationHistoryPrimaryRestart, At: now, From: &from, To: &to,
+				AssignmentID: "asg-f11r", ReceiptID: "loss-f11r", ReceiptDig: "vis-f11r",
+			})
+			state.CoordinatorDelegations["del-f11r"] = rec
+			return nil
+		})
+		assertReject(t, err, before, "visibility receipt required")
+	})
+	t.Run("receipt_wrong_loss_record", func(t *testing.T) {
+		before := ownerStateBytes(t, f.s)
+		err := f.s.commitCanonical(delegationCommitPrimaryRestart, func(state *CanonicalState) error {
+			rec := state.CoordinatorDelegations["del-f11r"]
+			rec.ActingCoordinator = &to
+			rec.History = append(rec.History, DelegationHistoryEntry{
+				Kind: DelegationHistoryPrimaryRestart, At: now, From: &from, To: &to,
+				AssignmentID: "asg-f11r", ReceiptID: "loss-other", ReceiptDig: "vis-f11r",
+			})
+			consume(&rec, "vis-f11r", "restart-1")
+			state.CoordinatorDelegations["del-f11r"] = rec
+			return nil
+		})
+		assertReject(t, err, before, "visibility receipt loss record mismatch")
+	})
+	t.Run("receipt_wrong_assignment", func(t *testing.T) {
+		before := ownerStateBytes(t, f.s)
+		err := f.s.commitCanonical(delegationCommitPrimaryRestart, func(state *CanonicalState) error {
+			rec := state.CoordinatorDelegations["del-f11r"]
+			rec.ActingCoordinator = &to
+			rec.History = append(rec.History, DelegationHistoryEntry{
+				Kind: DelegationHistoryPrimaryRestart, At: now, From: &from, To: &to,
+				AssignmentID: "asg-other", ReceiptID: "loss-f11r", ReceiptDig: "vis-f11r",
+			})
+			consume(&rec, "vis-f11r", "restart-1")
+			state.CoordinatorDelegations["del-f11r"] = rec
+			return nil
+		})
+		assertReject(t, err, before, "visibility receipt assignment mismatch")
+	})
+	t.Run("receipt_wrong_generation", func(t *testing.T) {
+		to3 := to
+		to3.Generation = 3
+		before := ownerStateBytes(t, f.s)
+		err := f.s.commitCanonical(delegationCommitPrimaryRestart, func(state *CanonicalState) error {
+			rec := state.CoordinatorDelegations["del-f11r"]
+			rec.ActingCoordinator = &to3
+			rec.History = append(rec.History, DelegationHistoryEntry{
+				Kind: DelegationHistoryPrimaryRestart, At: now, From: &from, To: &to3,
+				AssignmentID: "asg-f11r", ReceiptID: "loss-f11r", ReceiptDig: "vis-f11r",
+			})
+			consume(&rec, "vis-f11r", "restart-1")
+			state.CoordinatorDelegations["del-f11r"] = rec
+			return nil
+		})
+		assertReject(t, err, before, "visibility receipt generation mismatch")
+	})
 }

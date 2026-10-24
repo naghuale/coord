@@ -332,7 +332,7 @@ func (s *CanonicalStore) ObserveAssignmentCoordinatorLoss(observer, coordinator 
 // historical predecessor only after recorded loss, with the active successor
 // as the event actor and nonempty verified recovery evidence.
 func (s *CanonicalStore) HandoffAssignment(previous, nextCoordinator assignment.Principal, id string, revision uint64, evidence string) error {
-	return s.UpdateCanonical(func(state *CanonicalState) error {
+	return s.commitCanonical(delegationCommitHandoff, func(state *CanonicalState) error {
 		r, err := assignmentRecord(*state, id, revision)
 		if err != nil {
 			return err

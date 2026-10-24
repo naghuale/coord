@@ -558,54 +558,229 @@ func actingGrantsFor(state CanonicalState, actor assignment.Principal, now time.
 	return out
 }
 
-// validateGenericDelegationWriterDelta allows only handoff/primaryRestart
-// deltas: acting coordinator, append-only history/barred list, and consumed
-// visibility. Scope, validity, successors, identity, and revocation stay
-// on the OwnerCredential command path.
-func validateGenericDelegationWriterDelta(prev, next map[string]DelegationRecord) error {
-	if len(prev) != len(next) {
-		return fmt.Errorf("%w: generic writer cannot insert or delete grants", ErrCoordinatorDelegationInvalid)
+// delegationCommitKind is the unexported writer seam for grant mutations.
+// A callback cannot set this; only HandoffAssignment and ApplyPrimaryRestart
+// mint the corresponding value. Generic UpdateCanonical is always generic.
+type delegationCommitKind uint8
+
+const (
+	delegationCommitGeneric delegationCommitKind = iota
+	delegationCommitHandoff
+	delegationCommitPrimaryRestart
+)
+
+func grantAuthorityFrozen(before, after DelegationRecord) bool {
+	return before.Generation == after.Generation && bytesEqualScope(before.Scope, after.Scope) &&
+		before.Validity.NotBefore.Equal(after.Validity.NotBefore) && before.Validity.ExpiresAt.Equal(after.Validity.ExpiresAt) &&
+		before.PrimaryCoordinator.Equal(after.PrimaryCoordinator) && reflect.DeepEqual(before.Successors, after.Successors) &&
+		reflect.DeepEqual(before.PrimaryRestart, after.PrimaryRestart) && before.Evidence == after.Evidence &&
+		reflect.DeepEqual(before.CutoverAssignmentIDs, after.CutoverAssignmentIDs) &&
+		before.RevokedAt.Equal(after.RevokedAt) && before.RevokedBy == after.RevokedBy
+}
+
+func historyAppendOnly(before, after DelegationRecord) error {
+	if len(after.History) < len(before.History) {
+		return fmt.Errorf("%w: grant history cannot shrink", ErrCoordinatorDelegationInvalid)
 	}
+	for i := range before.History {
+		if !reflect.DeepEqual(before.History[i], after.History[i]) {
+			return fmt.Errorf("%w: grant history is append-only", ErrCoordinatorDelegationInvalid)
+		}
+	}
+	return nil
+}
+
+func visibilityNoReset(before, after DelegationRecord) error {
+	if len(before.VisibilityReceipts) != len(after.VisibilityReceipts) {
+		return fmt.Errorf("%w: visibility receipts are owner-command only", ErrCoordinatorDelegationInvalid)
+	}
+	for i := range before.VisibilityReceipts {
+		p, n := before.VisibilityReceipts[i], after.VisibilityReceipts[i]
+		if p.MessageID != n.MessageID || p.Digest != n.Digest || p.DelegationID != n.DelegationID ||
+			p.StableAgentID != n.StableAgentID || !p.IssuedAt.Equal(n.IssuedAt) || !p.ExpiresAt.Equal(n.ExpiresAt) ||
+			!reflect.DeepEqual(p.Successor, n.Successor) {
+			return fmt.Errorf("%w: visibility receipt identity is immutable", ErrCoordinatorDelegationInvalid)
+		}
+		if !p.ConsumedAt.IsZero() && (n.ConsumedAt.IsZero() || n.ConsumedBy != p.ConsumedBy || !n.ConsumedAt.Equal(p.ConsumedAt)) {
+			return fmt.Errorf("%w: consumed visibility cannot be reset", ErrCoordinatorDelegationInvalid)
+		}
+	}
+	return nil
+}
+
+func newlyConsumedVisibility(before, after DelegationRecord) []VisibilityConfirmation {
+	var out []VisibilityConfirmation
+	for i := range before.VisibilityReceipts {
+		p, n := before.VisibilityReceipts[i], after.VisibilityReceipts[i]
+		if p.ConsumedAt.IsZero() && !n.ConsumedAt.IsZero() {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+func changedGrants(prev, next map[string]DelegationRecord) ([]string, error) {
+	if len(prev) != len(next) {
+		return nil, fmt.Errorf("%w: generic writer cannot insert or delete grants", ErrCoordinatorDelegationInvalid)
+	}
+	var ids []string
 	for id, before := range prev {
 		after, ok := next[id]
 		if !ok || after.DelegationID != before.DelegationID {
-			return fmt.Errorf("%w: generic writer cannot insert or delete grants", ErrCoordinatorDelegationInvalid)
+			return nil, fmt.Errorf("%w: generic writer cannot insert or delete grants", ErrCoordinatorDelegationInvalid)
 		}
-		if before.Generation != after.Generation || !bytesEqualScope(before.Scope, after.Scope) ||
-			!before.Validity.NotBefore.Equal(after.Validity.NotBefore) || !before.Validity.ExpiresAt.Equal(after.Validity.ExpiresAt) ||
-			!before.PrimaryCoordinator.Equal(after.PrimaryCoordinator) || !reflect.DeepEqual(before.Successors, after.Successors) ||
-			!reflect.DeepEqual(before.PrimaryRestart, after.PrimaryRestart) || before.Evidence != after.Evidence ||
-			!reflect.DeepEqual(before.CutoverAssignmentIDs, after.CutoverAssignmentIDs) ||
-			!before.RevokedAt.Equal(after.RevokedAt) || before.RevokedBy != after.RevokedBy {
-			return fmt.Errorf("%w: grant authority is immutable via generic writer", ErrCoordinatorDelegationInvalid)
+		if !reflect.DeepEqual(before, after) {
+			ids = append(ids, id)
 		}
-		if len(after.History) < len(before.History) {
-			return fmt.Errorf("%w: grant history cannot shrink", ErrCoordinatorDelegationInvalid)
+	}
+	for id := range next {
+		if _, ok := prev[id]; !ok {
+			return nil, fmt.Errorf("%w: generic writer cannot insert or delete grants", ErrCoordinatorDelegationInvalid)
 		}
-		for i := range before.History {
-			if !reflect.DeepEqual(before.History[i], after.History[i]) {
-				return fmt.Errorf("%w: grant history is append-only", ErrCoordinatorDelegationInvalid)
-			}
+	}
+	return ids, nil
+}
+
+// validateDelegatedWriterDelta is the F8/F11 grant-writer gate.
+// Generic UpdateCanonical cannot mutate CoordinatorDelegations at all.
+// Handoff and primaryRestart permits still freeze grant authority and require
+// an exact history entry plus a matching one-time visibility consumption.
+func validateDelegatedWriterDelta(kind delegationCommitKind, prev, next CanonicalState) error {
+	if kind == delegationCommitGeneric {
+		return fmt.Errorf("%w: grant authority is immutable via generic writer", ErrCoordinatorDelegationInvalid)
+	}
+	ids, err := changedGrants(prev.CoordinatorDelegations, next.CoordinatorDelegations)
+	if err != nil {
+		return err
+	}
+	if len(ids) != 1 {
+		return fmt.Errorf("%w: handoff/primaryRestart must mutate exactly one grant", ErrCoordinatorDelegationInvalid)
+	}
+	before := prev.CoordinatorDelegations[ids[0]]
+	after := next.CoordinatorDelegations[ids[0]]
+	if !grantAuthorityFrozen(before, after) {
+		return fmt.Errorf("%w: grant authority is immutable via generic writer", ErrCoordinatorDelegationInvalid)
+	}
+	if err := historyAppendOnly(before, after); err != nil {
+		return err
+	}
+	if !reflect.DeepEqual(before.BarredCoordinators, after.BarredCoordinators) {
+		return fmt.Errorf("%w: barred coordinators are owner-command only", ErrCoordinatorDelegationInvalid)
+	}
+	if err := visibilityNoReset(before, after); err != nil {
+		return err
+	}
+	switch kind {
+	case delegationCommitHandoff:
+		return validateHandoffGrantDelta(next, before, after)
+	case delegationCommitPrimaryRestart:
+		return validatePrimaryRestartGrantDelta(before, after)
+	default:
+		return fmt.Errorf("%w: acting coordinator requires handoff or primaryRestart", ErrCoordinatorDelegationInvalid)
+	}
+}
+
+func validateHandoffGrantDelta(next CanonicalState, before, after DelegationRecord) error {
+	if after.ActingCoordinator == nil {
+		return fmt.Errorf("%w: handoff history required", ErrCoordinatorDelegationInvalid)
+	}
+	to := *after.ActingCoordinator
+	if !after.hasSuccessor(to) {
+		return fmt.Errorf("%w: handoff target outside successor list", ErrCoordinatorDelegationInvalid)
+	}
+	added := after.History[len(before.History):]
+	if len(added) == 0 {
+		return fmt.Errorf("%w: handoff history required", ErrCoordinatorDelegationInvalid)
+	}
+	for i := 0; i < len(added)-1; i++ {
+		if added[i].Kind != DelegationHistorySuccessorSkipped {
+			return fmt.Errorf("%w: handoff history required", ErrCoordinatorDelegationInvalid)
 		}
-		if len(after.BarredCoordinators) < len(before.BarredCoordinators) {
-			return fmt.Errorf("%w: barred coordinators cannot shrink", ErrCoordinatorDelegationInvalid)
+	}
+	h := added[len(added)-1]
+	if h.Kind != DelegationHistoryHandoff || h.To == nil || !h.To.Equal(to) || h.From == nil || h.AssignmentID == "" {
+		return fmt.Errorf("%w: handoff history required", ErrCoordinatorDelegationInvalid)
+	}
+	if next.AssignmentLedger == nil {
+		return fmt.Errorf("%w: handoff assignment mismatch", ErrCoordinatorDelegationInvalid)
+	}
+	rec, ok := next.AssignmentLedger.Records[h.AssignmentID]
+	if !ok {
+		return fmt.Errorf("%w: handoff assignment mismatch", ErrCoordinatorDelegationInvalid)
+	}
+	coord := rec.Coordinator()
+	if coord.AgentID != to.StableAgentID || coord.SessionID != to.SessionID || coord.Generation != to.Generation {
+		return fmt.Errorf("%w: handoff assignment mismatch", ErrCoordinatorDelegationInvalid)
+	}
+	if rec.DelegationBinding == nil || rec.DelegationBinding.GrantID != after.DelegationID || rec.DelegationBinding.GrantGeneration != after.Generation {
+		return fmt.Errorf("%w: handoff assignment mismatch", ErrCoordinatorDelegationInvalid)
+	}
+	consumed := newlyConsumedVisibility(before, after)
+	if len(consumed) == 0 {
+		return fmt.Errorf("%w: visibility receipt required", ErrCoordinatorDelegationInvalid)
+	}
+	if len(consumed) != 1 {
+		return fmt.Errorf("%w: visibility receipt assignment mismatch", ErrCoordinatorDelegationInvalid)
+	}
+	v := consumed[0]
+	if v.Successor.StableAgentID != to.StableAgentID || v.Successor.SessionID != to.SessionID {
+		return fmt.Errorf("%w: visibility receipt successor mismatch", ErrCoordinatorDelegationInvalid)
+	}
+	if v.Successor.Generation != to.Generation {
+		return fmt.Errorf("%w: visibility receipt generation mismatch", ErrCoordinatorDelegationInvalid)
+	}
+	if v.ConsumedBy != h.AssignmentID {
+		return fmt.Errorf("%w: visibility receipt assignment mismatch", ErrCoordinatorDelegationInvalid)
+	}
+	return nil
+}
+
+func validatePrimaryRestartGrantDelta(before, after DelegationRecord) error {
+	if after.ActingCoordinator == nil {
+		return fmt.Errorf("%w: primaryRestart history required", ErrCoordinatorDelegationInvalid)
+	}
+	to := *after.ActingCoordinator
+	if to.StableAgentID != after.PrimaryCoordinator.StableAgentID {
+		return fmt.Errorf("%w: primaryRestart only for primary stableAgentId", ErrCoordinatorDelegationInvalid)
+	}
+	if to.Generation <= before.highestPrimaryGeneration() {
+		return fmt.Errorf("%w: restart requires a new generation", ErrCoordinatorDelegationInvalid)
+	}
+	if before.ActingCoordinator != nil && !before.IsBarred(*before.ActingCoordinator) {
+		return fmt.Errorf("%w: predecessor still acting", ErrCoordinatorDelegationInvalid)
+	}
+	added := after.History[len(before.History):]
+	if len(added) != 1 || added[0].Kind != DelegationHistoryPrimaryRestart || added[0].To == nil || !added[0].To.Equal(to) {
+		return fmt.Errorf("%w: primaryRestart history required", ErrCoordinatorDelegationInvalid)
+	}
+	h := added[0]
+	loss, ok := before.latestUnconsumedLoss()
+	if !ok || h.ReceiptID == "" || h.ReceiptID != loss.ReceiptID {
+		return fmt.Errorf("%w: visibility receipt loss record mismatch", ErrCoordinatorDelegationInvalid)
+	}
+	if h.AssignmentID != loss.AssignmentID {
+		return fmt.Errorf("%w: visibility receipt assignment mismatch", ErrCoordinatorDelegationInvalid)
+	}
+	consumed := newlyConsumedVisibility(before, after)
+	if len(consumed) == 0 {
+		return fmt.Errorf("%w: visibility receipt required", ErrCoordinatorDelegationInvalid)
+	}
+	if len(consumed) != 1 {
+		return fmt.Errorf("%w: visibility receipt assignment mismatch", ErrCoordinatorDelegationInvalid)
+	}
+	v := consumed[0]
+	if v.MessageID != h.ReceiptDig {
+		return fmt.Errorf("%w: visibility receipt loss record mismatch", ErrCoordinatorDelegationInvalid)
+	}
+	if v.Successor.StableAgentID != "" || v.Successor.SessionID != "" {
+		if v.Successor.StableAgentID != to.StableAgentID || v.Successor.SessionID != to.SessionID {
+			return fmt.Errorf("%w: visibility receipt successor mismatch", ErrCoordinatorDelegationInvalid)
 		}
-		for i := range before.BarredCoordinators {
-			if !before.BarredCoordinators[i].Equal(after.BarredCoordinators[i]) {
-				return fmt.Errorf("%w: barred coordinators are append-only", ErrCoordinatorDelegationInvalid)
-			}
+		if v.Successor.Generation != to.Generation {
+			return fmt.Errorf("%w: visibility receipt generation mismatch", ErrCoordinatorDelegationInvalid)
 		}
-		if len(before.VisibilityReceipts) != len(after.VisibilityReceipts) {
-			return fmt.Errorf("%w: visibility receipts are owner-command only", ErrCoordinatorDelegationInvalid)
-		}
-		for i := range before.VisibilityReceipts {
-			p, n := before.VisibilityReceipts[i], after.VisibilityReceipts[i]
-			if p.MessageID != n.MessageID || p.Digest != n.Digest || p.DelegationID != n.DelegationID ||
-				p.StableAgentID != n.StableAgentID || !p.IssuedAt.Equal(n.IssuedAt) || !p.ExpiresAt.Equal(n.ExpiresAt) ||
-				!reflect.DeepEqual(p.Successor, n.Successor) {
-				return fmt.Errorf("%w: visibility receipt identity is immutable", ErrCoordinatorDelegationInvalid)
-			}
-		}
+	} else if v.StableAgentID != to.StableAgentID {
+		return fmt.Errorf("%w: visibility receipt successor mismatch", ErrCoordinatorDelegationInvalid)
 	}
 	return nil
 }
@@ -959,7 +1134,7 @@ func (s *CanonicalStore) ApplyPrimaryRestart(delegationID string, newSession ass
 	if !coordinatorDelegationActive() {
 		return ErrCoordinatorDelegationDisabled
 	}
-	return s.UpdateCanonical(func(state *CanonicalState) error {
+	return s.commitCanonical(delegationCommitPrimaryRestart, func(state *CanonicalState) error {
 		now := s.now().UTC()
 		rec, ok := state.CoordinatorDelegations[delegationID]
 		if !ok || !rec.Active(now) {

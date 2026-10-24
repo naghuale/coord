@@ -774,7 +774,14 @@ func dehydrateRuns(state *CanonicalState, runs map[string]fsm.Run) error {
 
 // UpdateCanonical serializes a complete state transition and publishes it in
 // memory only after the single durable snapshot commit succeeds.
+// Callers cannot authorize a CoordinatorDelegations mutation through this
+// entry: grant acting/history/visibility changes require the unexported
+// handoff or primaryRestart commit seam.
 func (s *CanonicalStore) UpdateCanonical(fn func(*CanonicalState) error) error {
+	return s.commitCanonical(delegationCommitGeneric, fn)
+}
+
+func (s *CanonicalStore) commitCanonical(kind delegationCommitKind, fn func(*CanonicalState) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
@@ -793,15 +800,11 @@ func (s *CanonicalStore) UpdateCanonical(fn func(*CanonicalState) error) error {
 	if !reflect.DeepEqual(s.state.OwnerCredentials, next.OwnerCredentials) {
 		return ErrOwnerCommandRequired
 	}
-	// F2/F8: generic writers never insert, revoke, or rewrite grant authority.
-	// Grant/revoke/loss/visibility use the authenticated OwnerCredential path.
-	// Handoff/primaryRestart may only append acting/history/barred/consumed
-	// visibility while the feature is active.
 	if !reflect.DeepEqual(s.state.CoordinatorDelegations, next.CoordinatorDelegations) {
 		if !coordinatorDelegationActive() {
 			return ErrCoordinatorDelegationDisabled
 		}
-		if err := validateGenericDelegationWriterDelta(s.state.CoordinatorDelegations, next.CoordinatorDelegations); err != nil {
+		if err := validateDelegatedWriterDelta(kind, s.state, next); err != nil {
 			return err
 		}
 	}
