@@ -423,7 +423,8 @@ func TestPrimaryRestartRejectsWithoutFreshVisibility(t *testing.T) {
 	seedDelegatedAssignment(t, f, "asg-pr1", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now)
 	lossConfirm(t, f, "del-pr1", "loss-pr1", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1}, now)
 	registerSession(t, f, "claude:a2", "agent-a")
-	if err := f.s.ApplyPrimaryRestart("del-pr1", assignment.Principal{SessionID: "claude:a2", AgentID: "agent-a", Generation: 1}, "no-vis"); !errors.Is(err, ErrCoordinatorDelegationInvalid) {
+	bumpSessionGeneration(t, f, "claude:a2", 2)
+	if err := f.s.ApplyPrimaryRestart("del-pr1", assignment.Principal{SessionID: "claude:a2", AgentID: "agent-a", Generation: 2}, "no-vis"); !errors.Is(err, ErrCoordinatorDelegationInvalid) {
 		t.Fatalf("err=%v", err)
 	}
 }
@@ -637,16 +638,15 @@ func TestAfterRestartNextGenerationDoesNotAutoContinue(t *testing.T) {
 	seedDelegatedAssignment(t, f, "asg-pr5", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now)
 	lossConfirm(t, f, "del-pr5", "loss-pr5", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1}, now)
 	registerSession(t, f, "claude:a2", "agent-a")
-	confirmVisibility(t, f, "del-pr5", "vis-pr5-trip", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a2", Generation: 1}, now)
-	if err := f.s.ApplyPrimaryRestart("del-pr5", assignment.Principal{SessionID: "claude:a2", AgentID: "agent-a", Generation: 1}, "restart-ok"); err != nil {
+	bumpSessionGeneration(t, f, "claude:a2", 2)
+	confirmVisibility(t, f, "del-pr5", "vis-pr5-trip", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a2", Generation: 2}, now)
+	if err := f.s.ApplyPrimaryRestart("del-pr5", assignment.Principal{SessionID: "claude:a2", AgentID: "agent-a", Generation: 2}, "restart-ok"); err != nil {
 		t.Fatal(err)
 	}
 	// Next generation of same session without new loss/visibility must not auto-continue.
-	if err := f.s.RotateAgentSessionKey("claude:a2", ed25519.PublicKey(strings.Repeat("y", 32))); err != nil {
-		t.Fatal(err)
-	}
-	gen2 := assignment.Principal{SessionID: "claude:a2", AgentID: "agent-a", Generation: 2}
-	if _, ok := findGrantForActingCoordinator(f.s.state, gen2, now); ok {
+	bumpSessionGeneration(t, f, "claude:a2", 3)
+	gen3 := assignment.Principal{SessionID: "claude:a2", AgentID: "agent-a", Generation: 3}
+	if _, ok := findGrantForActingCoordinator(f.s.state, gen3, now); ok {
 		t.Fatal("next generation auto-continued")
 	}
 }
@@ -889,6 +889,29 @@ func registerSession(t *testing.T, f *ownerCommandFixture, sessionID, agentID st
 	key := ed25519.PublicKey(strings.Repeat("b", 32))
 	if err := f.s.RegisterAgentSession(sessionID, agentID, key); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// bumpSessionGeneration key-rotates sessionID until its AgentSession generation
+// equals target. New addresses register at generation 1; a primaryRestart
+// "new generation" is a strictly higher generation on that fresh address.
+func bumpSessionGeneration(t *testing.T, f *ownerCommandFixture, sessionID string, target uint64) {
+	t.Helper()
+	sess, ok := f.s.state.AgentSessions[sessionID]
+	if !ok {
+		t.Fatalf("session %s missing", sessionID)
+	}
+	n := byte(0)
+	for sess.Generation < target {
+		n++
+		key := make(ed25519.PublicKey, ed25519.PublicKeySize)
+		for i := range key {
+			key[i] = byte(sess.Generation) + n + byte(i)
+		}
+		if err := f.s.RotateAgentSessionKey(sessionID, key); err != nil {
+			t.Fatal(err)
+		}
+		sess = f.s.state.AgentSessions[sessionID]
 	}
 }
 

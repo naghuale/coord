@@ -526,6 +526,34 @@ func (d DelegationRecord) primaryRestartConsumedLoss(lossRecordID string) bool {
 	return false
 }
 
+// highestPrimaryGeneration is the highest generation already bound to the
+// primary stableAgentId on this grant (primary, acting, barred, history).
+// ADR-0010 §8: primaryRestart must present a strictly newer generation.
+// AgentSession issues each new address at generation 1; the numeric generation
+// is still comparable for this stableAgentId across session ids.
+func (d DelegationRecord) highestPrimaryGeneration() uint64 {
+	max := d.PrimaryCoordinator.Generation
+	consider := func(p *DelegationPrincipal) {
+		if p == nil || p.StableAgentID != d.PrimaryCoordinator.StableAgentID {
+			return
+		}
+		if p.Generation > max {
+			max = p.Generation
+		}
+	}
+	if d.ActingCoordinator != nil {
+		consider(d.ActingCoordinator)
+	}
+	for i := range d.BarredCoordinators {
+		consider(&d.BarredCoordinators[i])
+	}
+	for i := range d.History {
+		consider(d.History[i].From)
+		consider(d.History[i].To)
+	}
+	return max
+}
+
 // latestUnconsumedLoss returns the newest LOSS_RECORDED entry whose ReceiptID
 // has not yet been bound to a PRIMARY_RESTART. lossRecordID is the OWNER
 // loss.confirm message id stored on the history entry.
@@ -829,6 +857,11 @@ func (s *CanonicalStore) ApplyPrimaryRestart(delegationID string, newSession ass
 			if newSession.SessionID == h.To.SessionID {
 				return fmt.Errorf("%w: restart cannot reuse prior restart session", ErrCoordinatorDelegationInvalid)
 			}
+		}
+		// Distinct session is not enough: generation must be strictly newer than
+		// every generation already bound to this primary stableAgentId.
+		if newSession.Generation <= rec.highestPrimaryGeneration() {
+			return fmt.Errorf("%w: restart requires a new generation", ErrCoordinatorDelegationInvalid)
 		}
 		if err := assignmentPrincipal(*state, newSession); err != nil {
 			return fmt.Errorf("%w: fresh session registration required", ErrCoordinatorDelegationInvalid)
