@@ -3231,7 +3231,7 @@ documents:
     class: process
     status: proposed
     purpose:
-      - machine-readable YAML projection of ACTION-MAP.md; used by resolve-action-context and check-action-context scripts
+      - "standalone reconstructed proposal; non-normative checklist and candidate source for a future decision; not a projection of the absent ACTION-MAP.md; not a basis for a production transition; semanticChange false"
     usedBy:
       - COORDINATOR
       - EXECUTOR
@@ -4425,7 +4425,6 @@ changeMatrix:
       - docs/DEVELOPMENT.md
       - docs/VERIFICATION.md
       - docs/operations/COORDINATOR-STATE-MACHINE.md
-      - docs/operations/ACTION-MAP.md
       - CHANGELOG.md
     ownerBoundaryCheck: conditional
   CLI_CHANGED:

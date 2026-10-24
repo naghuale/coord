@@ -1,5 +1,9 @@
 # История изменений
 
+## 2026-10-24 — Interim action-map procedure (документация)
+
+- Пока принятая карта действий не опубликована как отслеживаемый авторитетный артефакт, событие сверяется с `AGENTS.md`, Coordinator State Machine, Document Registry и принятыми ADR/R. Отсутствующий `ACTION-MAP.md` не читается и не дополняется. `ACTION-MAP.yaml` остаётся ненормативным checklist и не задаёт production-переход. Новых переходов нет. (документация)
+
 ## 2026-10-24 — Documentation reconciliation with accepted reality (Refs #89, #90, #93, #95, #96)
 
 - README больше не называет снимок 2026-10-07 текущей рабочей версией. Обратное направление ролей указывает на уже принятое правило `EXECUTOR_ROLE_HISTORY_CONFLICT` (ADR-0001 CM-02a; `TestFormerReviewerOrAuditorCannotLaterBecomeExecutor`). (документация)
