@@ -1,5 +1,19 @@
 # История изменений
 
+## 2026-10-23 — Assignment coordinator recovery authority correction (Refs #90)
+
+- Reject rotated/revoked predecessor handoffs before recorded coordinator loss,
+  and require a current active loss observer separate from the lost subject.
+  Recovery requires recorded loss, active successor and verified evidence.
+  (`TestAssignmentHandoffRequiresCurrentPredecessor`,
+  `TestAssignmentLossRequiresCurrentObserver`,
+  `TestAssignmentLossRecoveryWithRotatedCoordinator`)
+- Preflight and work-started validate the expected immutable issuer.
+  (`TestAssignmentPreflightAndWorkStartedRequireIssuer`)
+- Narrow stale-restart coverage to preflight simulation, correct loss/handoff test
+  references, and clarify existing ACTIVATE/WORK_STARTED in LEDGER_FROZEN.
+  (документация)
+
 ## 2026-10-23 — Assignment Ledger MVP on canonical JSON (Refs #90)
 
 - Added exact assignment authority/history inside the existing canonical snapshot,

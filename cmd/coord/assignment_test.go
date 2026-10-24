@@ -60,7 +60,7 @@ func assignmentCLIFixture(t *testing.T, phase string, now time.Time) (string, st
 		}
 	}
 	if phase == "LOST" {
-		if err := s.ObserveAssignmentCoordinatorLoss(coord, "supervisor-loss"); err != nil {
+		if err := s.ObserveAssignmentCoordinatorLoss(coord, coord, "supervisor-loss"); err != nil {
 			t.Fatal(err)
 		}
 	}

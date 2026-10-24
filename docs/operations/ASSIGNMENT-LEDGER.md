@@ -53,10 +53,17 @@ replays history and rejects mismatches/deletion. WorkStarted is an observation
 only after ACTIVE. now == validUntil denies work/result even before EXPIRE is
 persisted. Queries do not write EXPIRED.
 
-A trusted `ObserveAssignmentCoordinatorLoss` event marks current authority lost;
+A trusted `ObserveAssignmentCoordinatorLoss(observer, coordinator, evidence)`
+checks the observer against its current active AgentSession, separately from the
+lost-coordinator subject (which may be stale/revoked). The event actor is the
+observer, not an impersonation of the lost subject. It marks current authority lost;
 state may still say ACTIVE but work/result checks refuse. `HandoffAssignment`
 requires exact predecessor, a currently valid successor principal and verified
 nonempty evidence, appends lineage, preserves original issuer and deadline.
+Without recorded loss the predecessor must also be current and active. Only an
+already CoordinatorLost record permits recovery from a stale predecessor; the
+active successor is that recovery event actor. Both observation and recovery
+remain trusted service calls: principal freshness is not operator authentication.
 The service caller must authorize recovery/predecessor evidence, not accept a
 bare transport claim. Session revocation or generation mismatch independently
 blocks authority. Physical-process liveness detection is NOT implemented;
@@ -67,9 +74,11 @@ recomputed or implemented by this MVP.
 
 ## Enforcement points and trust boundary
 
-`CheckAssignmentWork` compares actual expected ID, SHA, role, session principal,
-current coordinator and generation. An agent uses `coord assignment status`,
-compares its exact expected values, and waits for ACTIVE before work/resume/result.
+`CheckAssignmentWork` and `RecordAssignmentWorkStarted` compare actual expected
+ID, immutable issuer address, SHA, role, session principal, current coordinator
+and generation. An agent uses `coord assignment status`,
+compares its exact expected values including issuer, and waits for ACTIVE before
+work/resume/result.
 A status response is a time-bounded observation, not a durable capability or a
 pre-tool sandbox. External listeners that bypass preflight are not prevented by
 this library; full runtime hook/receiver enforcement stays out of #90.

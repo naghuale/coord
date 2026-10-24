@@ -263,7 +263,7 @@ func checkEvent(prior Record, exists bool, e Event) error {
 	}
 	want := prior
 	want.Revision, want.UpdatedAt = r.Revision, e.At
-	if e.Kind != "ACK" && e.Kind != "WORK_STARTED" && e.Actor != prior.Coordinator() {
+	if e.Kind != "ACK" && e.Kind != "WORK_STARTED" && e.Kind != "COORDINATOR_LOST" && e.Kind != "HANDOFF" && e.Actor != prior.Coordinator() {
 		return fmt.Errorf("%w: wrong currentCoordinator/generation", ErrInvalid)
 	}
 	if e.Kind != "VOID" && e.Kind != "EXPIRE" && e.Kind != "COORDINATOR_LOST" && e.Kind != "HANDOFF" &&
@@ -310,6 +310,13 @@ func checkEvent(prior Record, exists bool, e Event) error {
 	case "COORDINATOR_LOST":
 		want.CoordinatorLost = true
 	case "HANDOFF":
+		actor := prior.Coordinator()
+		if prior.CoordinatorLost {
+			actor = r.Coordinator()
+		}
+		if e.Actor != actor {
+			return fmt.Errorf("%w: wrong handoff actor", ErrInvalid)
+		}
 		if !e.At.Before(prior.ValidUntil) || len(r.HandoffEvidence) != len(prior.HandoffEvidence)+1 {
 			return fmt.Errorf("%w: invalid handoff", ErrInvalid)
 		}

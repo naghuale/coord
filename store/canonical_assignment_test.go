@@ -73,7 +73,7 @@ func (f *ledgerFixture) activate(t *testing.T) {
 func (f *ledgerFixture) preflight(t *testing.T) error {
 	t.Helper()
 	r := f.record(t)
-	return f.s.CheckAssignmentWork(f.agent, f.id, r.SubjectSHA, r.Role, f.coord.SessionID, f.coord.Generation)
+	return f.s.CheckAssignmentWork(f.agent, f.id, r.SubjectSHA, r.Role, r.Issuer, f.coord.SessionID, f.coord.Generation)
 }
 func (f *ledgerFixture) result(t *testing.T) assignment.Result {
 	t.Helper()
@@ -92,7 +92,7 @@ func TestAssignmentNoWorkBeforeActiveAndAckInsufficient(t *testing.T) {
 			t.Fatalf("work authorized in %s", phase)
 		}
 		r := f.record(t)
-		if err := f.s.RecordAssignmentWorkStarted(f.agent, f.id, r.Revision, r.SubjectSHA, r.Role, f.coord.SessionID, 1, "work-start"); err == nil {
+		if err := f.s.RecordAssignmentWorkStarted(f.agent, f.id, r.Revision, r.SubjectSHA, r.Role, r.Issuer, f.coord.SessionID, 1, "work-start"); err == nil {
 			t.Fatalf("workStarted accepted in %s", phase)
 		}
 		if err := f.s.AcceptAssignmentResult(f.coord, f.agent, f.result(t)); err == nil {
@@ -108,7 +108,7 @@ func TestAssignmentNoWorkBeforeActiveAndAckInsufficient(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := f.record(t)
-	if err := f.s.RecordAssignmentWorkStarted(f.agent, f.id, r.Revision, r.SubjectSHA, r.Role, f.coord.SessionID, 1, "actual-start"); err != nil {
+	if err := f.s.RecordAssignmentWorkStarted(f.agent, f.id, r.Revision, r.SubjectSHA, r.Role, r.Issuer, f.coord.SessionID, 1, "actual-start"); err != nil {
 		t.Fatal(err)
 	}
 	if f.record(t).WorkStartedAt.IsZero() {
@@ -216,7 +216,8 @@ func TestAssignmentOe4StaleLateDeliveryAfterRestartDoesNoWork(t *testing.T) {
 				}
 				before, _ := f.s.CanonicalSnapshot()
 				workCalls := 0
-				// Simulate the late FIRST full prompt delivered to two receiver generations.
+				// Stale preflight after restart in two receiver generations; no transport
+				// frame is injected here (authenticated callback is tested separately).
 				if err := f.preflight(t); err == nil {
 					workCalls++
 				}
@@ -303,7 +304,7 @@ func TestAssignmentCoordinatorLossAndVerifiedHandoff(t *testing.T) {
 	f := newLedgerFixture(t)
 	f.activate(t)
 	original := f.record(t)
-	if err := f.s.ObserveAssignmentCoordinatorLoss(f.coord, "supervisor-observed-loss"); err != nil {
+	if err := f.s.ObserveAssignmentCoordinatorLoss(f.coord, f.coord, "supervisor-observed-loss"); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.preflight(t); err == nil {

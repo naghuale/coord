@@ -35,11 +35,15 @@ operator principal, path flag or OS-user claim substitutes for authorization.
    identity/generations, immutable clock, admission/visibility evidence. Do not
    invent a Task for a standalone commit audit/analysis assignment.
 5. Verify exact ACK, then explicitly ACTIVATE. Agent reads `coord --state <same
-   coordd-state-dir> assignment status <id>` and compares subject/target/current
-   coordinator/generation before work/resume/result. Unknown/unavailable/corrupt
+   coordd-state-dir> assignment status <id>` and compares immutable
+   issuer/subject/target/current coordinator/generation before work/resume/result. Unknown/unavailable/corrupt
    state grants no permission. CLI read does not start a daemon or bypass locks.
-6. Coordinator records observed loss promptly. Loss blocks work/results until
-   verified handoff or a fresh assignment. Assignee host restart is VOID/new ID,
+6. An active observer records verified coordinator loss promptly; its principal is
+   separate from the lost-coordinator subject. Normal handoff requires a current
+   active predecessor. Recovery handoff requires already recorded loss, an active
+   successor and verified nonempty evidence; the successor is the event actor.
+   The authenticated command boundary must authorize observation/recovery (#93).
+   Loss blocks work/results until verified handoff or a fresh assignment. Assignee host restart is VOID/new ID,
    not ALIVE or old ACK revival. Existing R154 incident clocks are not reset.
 7. Record actual cutover time and first new assignment ID in Completion Report;
    roadmap tracks implementation versus operational cutover separately. No live
@@ -59,11 +63,24 @@ This is an additional field of the complete config, not a replacement config.
 Keep existing transport/token/key/path settings unchanged and private. Start
 `coordd -config <config>` through the existing launch procedure. Frozen mode is
 applied before runtime processing. Existing assignment queries, validation,
-results, terminal-state enforcement and handoffs remain operational, as do
-non-ledger service functions. New OFFER/new IDs, ledger schema migration and new
-workflow-feature activation are forbidden. No checks are disabled; records and
-history stay in canonical.json. A deliberate later restart removing this mode
-returns to normal operation only after the original blocking condition is resolved.
+terminal-state enforcement and handoffs remain operational. Two cases must be
+separated:
+
+- Assignments already ACTIVE can continue with WORK_STARTED, result processing
+  and terminal transitions, subject to the existing authority/TTL checks.
+- Existing OFFERED/ACKED assignments can still reach ACTIVE in the current code:
+  OFFERED first requires ACK, and ACKED can be explicitly ACTIVATED. They may then
+  record WORK_STARTED. This is a description of current behaviour, not a policy
+  approval. OWNER's position is "preserve existing work, forbid new work";
+  whether this second case fits it is pending with OWNER. No frozen-mode code
+  change is made by the coordinator-authority correction.
+
+All existing state, issuer, session, generation, TTL and coordinator checks
+remain in force as applicable. Non-ledger service functions remain available.
+New OFFER/new IDs, ledger schema migration and new workflow-feature activation
+are forbidden. No checks are disabled; records and history stay in
+canonical.json. A deliberate later restart removing this mode returns to normal
+operation only after the original blocking condition is resolved.
 
 Test obligation LEDGER-ROLLBACK-01 is implemented by
 `TestAssignmentLedgerRollbackFrozenMode`: ledger present -> restart frozen ->

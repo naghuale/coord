@@ -43,7 +43,7 @@ func (s *CanonicalStore) validateAssignmentMode(next CanonicalState) error {
 }
 
 // AssignmentStatus is a read-only observation, never a durable permit. The
-// caller must also compare its exact subject/role/session before starting work.
+// caller must also compare its exact issuer/subject/role/session before work.
 type AssignmentStatus struct {
 	AssignmentID          string           `json:"assignmentId"`
 	State                 assignment.State `json:"state"`
@@ -236,9 +236,15 @@ func appendAssignment(state *CanonicalState, actor assignment.Principal, prior, 
 }
 
 // ObserveAssignmentCoordinatorLoss records a trusted supervisor/operator
-// observation. It is not physical process detection or a new Session Registry.
-func (s *CanonicalStore) ObserveAssignmentCoordinatorLoss(coordinator assignment.Principal, evidence string) error {
+// observation by a current active observer, separate from the lost coordinator
+// subject (which may already be revoked/rotated). The command boundary must
+// authorize the observation; a principal argument is not a credential.
+// It is not physical process detection or a new Session Registry.
+func (s *CanonicalStore) ObserveAssignmentCoordinatorLoss(observer, coordinator assignment.Principal, evidence string) error {
 	return s.UpdateCanonical(func(state *CanonicalState) error {
+		if err := assignmentPrincipal(*state, observer); err != nil {
+			return err
+		}
 		if state.AssignmentLedger == nil {
 			return ErrAssignmentUnknown
 		}
@@ -248,7 +254,7 @@ func (s *CanonicalStore) ObserveAssignmentCoordinatorLoss(coordinator assignment
 			}
 			next := r
 			next.CoordinatorLost = true
-			if err := appendAssignment(state, coordinator, r, next, "COORDINATOR_LOST", evidence, s.now().UTC()); err != nil {
+			if err := appendAssignment(state, observer, r, next, "COORDINATOR_LOST", evidence, s.now().UTC()); err != nil {
 				return err
 			}
 		}
@@ -259,6 +265,9 @@ func (s *CanonicalStore) ObserveAssignmentCoordinatorLoss(coordinator assignment
 // HandoffAssignment records a verified coordinator/recovery decision. The
 // command boundary must authorize predecessor/recovery evidence; a bare
 // transport announcement is not such a command. Issuer and deadline stay fixed.
+// A normal handoff requires the current active predecessor. Recovery may use a
+// historical predecessor only after recorded loss, with the active successor
+// as the event actor and nonempty verified recovery evidence.
 func (s *CanonicalStore) HandoffAssignment(previous, nextCoordinator assignment.Principal, id string, revision uint64, evidence string) error {
 	return s.UpdateCanonical(func(state *CanonicalState) error {
 		r, err := assignmentRecord(*state, id, revision)
@@ -268,6 +277,12 @@ func (s *CanonicalStore) HandoffAssignment(previous, nextCoordinator assignment.
 		if previous != r.Coordinator() {
 			return fmt.Errorf("%w: wrong handoff predecessor", assignment.ErrInvalid)
 		}
+		actor := previous
+		if r.CoordinatorLost {
+			actor = nextCoordinator
+		} else if err := assignmentPrincipal(*state, previous); err != nil {
+			return err
+		}
 		if err := assignmentPrincipal(*state, nextCoordinator); err != nil {
 			return err
 		}
@@ -276,13 +291,13 @@ func (s *CanonicalStore) HandoffAssignment(previous, nextCoordinator assignment.
 		next.CurrentCoordinator, next.CoordinatorAgentID, next.CoordinatorGeneration = nextCoordinator.SessionID, nextCoordinator.AgentID, nextCoordinator.Generation
 		next.HandoffEvidence = append(append([]assignment.Handoff{}, r.HandoffEvidence...), assignment.Handoff{From: previous, To: nextCoordinator, EvidenceRef: evidence, At: now})
 		next.CoordinatorLost = false
-		return appendAssignment(state, previous, r, next, "HANDOFF", evidence, now)
+		return appendAssignment(state, actor, r, next, "HANDOFF", evidence, now)
 	})
 }
 
 // CheckAssignmentWork rechecks the actual expected assignment identity. It is
 // suitable for agent preflight; cached status or ACK cannot substitute it.
-func (s *CanonicalStore) CheckAssignmentWork(actor assignment.Principal, id, subjectSHA, role, currentCoordinator string, generation uint64) error {
+func (s *CanonicalStore) CheckAssignmentWork(actor assignment.Principal, id, subjectSHA, role, issuer, currentCoordinator string, generation uint64) error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.closed || s.failed != nil {
@@ -295,19 +310,19 @@ func (s *CanonicalStore) CheckAssignmentWork(actor assignment.Principal, id, sub
 	if !ok {
 		return ErrAssignmentUnknown
 	}
-	if actor != r.Target() || subjectSHA != r.SubjectSHA || role != r.Role || currentCoordinator != r.CurrentCoordinator || generation != r.CoordinatorGeneration {
+	if actor != r.Target() || subjectSHA != r.SubjectSHA || role != r.Role || issuer != r.Issuer || currentCoordinator != r.CurrentCoordinator || generation != r.CoordinatorGeneration {
 		return assignment.ErrInvalid
 	}
 	return assignmentReady(s.state, r, s.now().UTC())
 }
 
-func (s *CanonicalStore) RecordAssignmentWorkStarted(actor assignment.Principal, id string, revision uint64, subjectSHA, role, currentCoordinator string, generation uint64, evidence string) error {
+func (s *CanonicalStore) RecordAssignmentWorkStarted(actor assignment.Principal, id string, revision uint64, subjectSHA, role, issuer, currentCoordinator string, generation uint64, evidence string) error {
 	return s.UpdateCanonical(func(state *CanonicalState) error {
 		r, err := assignmentRecord(*state, id, revision)
 		if err != nil {
 			return err
 		}
-		if actor != r.Target() || subjectSHA != r.SubjectSHA || role != r.Role || currentCoordinator != r.CurrentCoordinator || generation != r.CoordinatorGeneration {
+		if actor != r.Target() || subjectSHA != r.SubjectSHA || role != r.Role || issuer != r.Issuer || currentCoordinator != r.CurrentCoordinator || generation != r.CoordinatorGeneration {
 			return assignment.ErrInvalid
 		}
 		now := s.now().UTC()
