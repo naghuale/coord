@@ -69,8 +69,9 @@ func Check(opts Options) (*Result, error) {
 	actionMap := actionMapDocStatus{registryOK: loadErr == nil}
 	if loadErr == nil {
 		if d, ok := docs.byPath["docs/operations/ACTION-MAP.yaml"]; ok {
+			actionMap = classifyActionMapDoc(d)
+			actionMap.registryOK = true
 			actionMap.found = true
-			actionMap.proposed = d.Status == "proposed"
 		}
 	}
 
@@ -91,9 +92,15 @@ func Check(opts Options) (*Result, error) {
 }
 
 type actionMapDocStatus struct {
-	proposed   bool
-	found      bool
-	registryOK bool // false when DOCUMENT-REGISTRY could not be loaded
+	proposed           bool
+	found              bool
+	registryOK         bool // false when DOCUMENT-REGISTRY could not be loaded
+	status             string
+	statusMissing      bool // row present but status field absent/empty
+	statusWrongType    bool
+	statusUnrecognized bool // present string outside the known vocabulary
+	fieldInvalid       bool // any FieldInvalid on the row (incl. status wrong type)
+	nonAuthoritative   bool // proposed/historical/superseded
 }
 
 // registryDoc is a lightweight DOCUMENT-REGISTRY row used for authority checks.
@@ -102,11 +109,57 @@ type registryDoc struct {
 	ID                           string
 	Path                         string
 	Status                       string
+	StatusPresent                bool // true when YAML status key was present (even if wrong type)
 	CanonicalProductionAuthority *bool
 	CurrentNormativeAuthority    *bool
 	NormativeAuthority           *string
 	// FieldInvalid is set when an authority field has a wrong YAML type.
 	FieldInvalid string
+}
+
+// classifyActionMapDoc derives ACTION-MAP authority posture for R3-F2 / R4-F1.
+func classifyActionMapDoc(d registryDoc) actionMapDocStatus {
+	out := actionMapDocStatus{
+		status:       d.Status,
+		fieldInvalid: d.FieldInvalid != "",
+	}
+	if strings.Contains(d.FieldInvalid, "status has wrong type") {
+		out.statusWrongType = true
+	}
+	if !d.StatusPresent && !out.statusWrongType {
+		out.statusMissing = true
+	} else if d.StatusPresent && d.Status == "" && !out.statusWrongType {
+		out.statusMissing = true
+	}
+	if d.Status != "" {
+		if !recognizedDocStatus(d.Status) {
+			out.statusUnrecognized = true
+		}
+		out.proposed = d.Status == "proposed"
+		out.nonAuthoritative = nonAuthoritativeDocStatus(d.Status)
+	}
+	return out
+}
+
+// recognizedDocStatus is the DOCUMENT-REGISTRY status vocabulary (exact match, no normalization).
+func recognizedDocStatus(status string) bool {
+	switch status {
+	case "proposed", "accepted", "active", "historical", "superseded", "legacy":
+		return true
+	default:
+		return false
+	}
+}
+
+// nonAuthoritativeDocStatus is true for statuses that cannot back AUTHORITATIVE_REFERENCE
+// (and cannot authorize production claims under F97-1). Exact match only.
+func nonAuthoritativeDocStatus(status string) bool {
+	switch status {
+	case "proposed", "historical", "superseded":
+		return true
+	default:
+		return false
+	}
 }
 
 type documentRegistryIndex struct {
@@ -144,6 +197,7 @@ func loadDocumentRegistryIndex(root, docRegistryPath string) (documentRegistryIn
 	for _, d := range doc.Documents {
 		row := registryDoc{ID: d.ID, Path: d.Path}
 		if d.Status != nil {
+			row.StatusPresent = true
 			s, ok := d.Status.(string)
 			if !ok {
 				row.FieldInvalid = fmt.Sprintf("%s: status has wrong type %T", d.ID, d.Status)

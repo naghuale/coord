@@ -838,6 +838,110 @@ func TestR3_F2_AuthoritativeReferenceFailsClosedWhenActionMapRowMissing(t *testi
 	}
 }
 
+// R4-F1: ACTION-MAP row status must be recognized and not non-authoritative.
+func TestR4_F1_ActionMapStatusMissingFails(t *testing.T) {
+	assertR4F1ActionMapStatus(t, "", CodeActionMapStatusInvalid, true)
+}
+
+func TestR4_F1_ActionMapStatusWrongTypeFails(t *testing.T) {
+	dir := t.TempDir()
+	writeAuthoritativeActionMapFixture(t, dir)
+	writeDocRegistry(t, dir, `apiVersion: coord.dev/v1alpha1
+kind: DocumentRegistry
+documents:
+  - id: action-map
+    path: docs/operations/ACTION-MAP.yaml
+    status: true
+`)
+	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCode(res.Violations, CodeActionMapStatusInvalid) {
+		t.Fatalf("expected %s for wrong-type status, got %v", CodeActionMapStatusInvalid, res.Violations)
+	}
+}
+
+func TestR4_F1_ActionMapStatusUnknownACCEPTEDFails(t *testing.T) {
+	assertR4F1ActionMapStatus(t, "ACCEPTED", CodeActionMapStatusInvalid, false)
+}
+
+func TestR4_F1_ActionMapStatusUnknownApprovedFails(t *testing.T) {
+	assertR4F1ActionMapStatus(t, "approved", CodeActionMapStatusInvalid, false)
+}
+
+func TestR4_F1_ActionMapStatusHistoricalFails(t *testing.T) {
+	assertR4F1ActionMapStatus(t, "historical", CodeAuthoritativeActionMap, false)
+}
+
+func TestR4_F1_ActionMapStatusSupersededFails(t *testing.T) {
+	assertR4F1ActionMapStatus(t, "superseded", CodeAuthoritativeActionMap, false)
+}
+
+func TestR4_F1_ActionMapStatusProposedFails(t *testing.T) {
+	assertR4F1ActionMapStatus(t, "proposed", CodeAuthoritativeActionMap, false)
+}
+
+func TestR4_F1_ActionMapStatusAcceptedPasses(t *testing.T) {
+	dir := t.TempDir()
+	writeAuthoritativeActionMapFixture(t, dir)
+	writeDocRegistry(t, dir, `apiVersion: coord.dev/v1alpha1
+kind: DocumentRegistry
+documents:
+  - id: action-map
+    path: docs/operations/ACTION-MAP.yaml
+    status: accepted
+`)
+	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasCode(res.Violations, CodeAuthoritativeActionMap) || hasCode(res.Violations, CodeActionMapStatusInvalid) {
+		t.Fatalf("accepted ACTION-MAP status must allow AUTHORITATIVE_REFERENCE, got %v", res.Violations)
+	}
+}
+
+func assertR4F1ActionMapStatus(t *testing.T, status, wantCode string, omitStatus bool) {
+	t.Helper()
+	dir := t.TempDir()
+	writeAuthoritativeActionMapFixture(t, dir)
+	var yaml string
+	if omitStatus {
+		yaml = `apiVersion: coord.dev/v1alpha1
+kind: DocumentRegistry
+documents:
+  - id: action-map
+    path: docs/operations/ACTION-MAP.yaml
+`
+	} else {
+		yaml = fmt.Sprintf(`apiVersion: coord.dev/v1alpha1
+kind: DocumentRegistry
+documents:
+  - id: action-map
+    path: docs/operations/ACTION-MAP.yaml
+    status: %s
+`, status)
+	}
+	writeDocRegistry(t, dir, yaml)
+	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCode(res.Violations, wantCode) {
+		t.Fatalf("expected %s for status=%q omit=%v, got %v", wantCode, status, omitStatus, res.Violations)
+	}
+}
+
+func writeAuthoritativeActionMapFixture(t *testing.T, dir string) {
+	t.Helper()
+	writeMinimalFixture(t, dir, func(reg *Registry) {
+		reg.ActionMapReferenceClassifications = []ActionMapReferenceClassification{{
+			Path: "docs/ARCHITECTURE.md", Line: 1, Class: "AUTHORITATIVE_REFERENCE", Note: "test",
+		}}
+	})
+	mustWrite(t, filepath.Join(dir, "docs/ARCHITECTURE.md"), "<!-- fixture-component -->\nAction Map is required.\n")
+}
+
 func TestMakefileAndWorkflowUseGoBlocking(t *testing.T) {
 	root := repoRoot(t)
 	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
