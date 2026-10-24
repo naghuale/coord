@@ -531,7 +531,7 @@ documents:
   - id: adr-0010
     path: docs/ADR-0010-COORDINATOR-DELEGATION.md
     class: normative
-    status: proposed
+    status: accepted
     purpose:
       - proposed bounded coordinator delegation and ordered succession
       - records OWNER model D plus S2 combined for drafting only
@@ -547,10 +547,10 @@ documents:
       - AUDIT
     updateWhen:
       - PRODUCT_NORM_CHANGED
-    currentNormativeAuthority: false
+    currentNormativeAuthority: true
     currentOperationalAuthority: false
     canonicalProductionAuthority: false
-    normativeAuthority: proposed_direction
+    normativeAuthority: product
     ownership:
       creates: COORDINATOR
       updates: EXECUTOR

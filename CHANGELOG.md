@@ -1,5 +1,9 @@
 # История изменений
 
+## 2026-10-24 — ADR-0010 accepted (Refs #102)
+
+- OWNER принял ADR-0010 решением ADR-0010-ACCEPTANCE на ревизии e3b5908. Статус Accepted. Реализация NOT_IMPLEMENTED, production DISABLED, делегация не действует, cutover не разрешён. (документация)
+
 ## 2026-10-24 — ADR-0010 OWNER loss confirm boundary (Refs #102)
 
 - Путь (b) `coordinator.loss.confirm` получил явный список mustNot, запрет второго действующего координатора при ещё зарегистрированной сессии и вид актора `AGENT_SESSION` или `OWNER_CREDENTIAL`. Расширение схемы названо для #93b и этим коммитом не добавляется. Статус остаётся Proposed. (документация)
