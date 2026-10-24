@@ -43,6 +43,13 @@ func mainRunWithWriter(args []string, factory transportFactory, stderr io.Writer
 }
 
 func mainRunWithShadowDeps(args []string, factory transportFactory, stderr io.Writer, shadow *shadowDeps) int {
+	if len(args) > 0 && args[0] == "owner" {
+		if err := runOwnerCommand(args[1:], os.Stdin, os.Stdout, stderr); err != nil {
+			_, _ = fmt.Fprintln(stderr, err)
+			return 2
+		}
+		return 0
+	}
 	if len(args) > 0 && args[0] == "shadow-pilot" {
 		root, err := os.Getwd()
 		if err != nil {

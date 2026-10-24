@@ -8,8 +8,10 @@
 для текущего Run runtime на versioned canonical snapshot, локальное демо и отдельный watchdog CLI. Есть также
 ограниченный самостоятельный Telepathy host/worker
 ([TELEPATHY_HOST.md](TELEPATHY_HOST.md)). P0-2 вводит typed Task/Event model и
-внутреннее создание Task, но полный Task workflow, Run assignment и production
-Task write path ещё не подключены.
+внутреннее создание Task. Схема canonical state v4 добавляет `OwnerCredential`;
+`coordd` поддерживает одноразовую bootstrap-церемонию, подписанные команды
+регистрации/отзыва ключа и Owner-команду `task.create`. Полный Task workflow,
+Run assignment, agent RESULT и cutover остальных writers ещё не подключены.
 
 ## Значения по умолчанию
 
@@ -135,6 +137,60 @@ acquired` / `namespace lock: not acquired`. Ошибка запуска Telepath
 
 Runtime config не принимает override-флаги. Для изменения параметров отредактируйте
 конфигурационный файл и перезапустите daemon через внешний supervisor.
+
+### Owner credential bootstrap и подписанные команды
+
+До первой Owner-команды зарегистрируйте минимум два публичных COSE ключа при
+инициализации canonical state. Файл `credentials.json` содержит только
+публичный ключ authenticator, без private material:
+
+```json
+[
+  {"id":"owner-primary","cose_public_key":"<base64 COSE_Key>"},
+  {"id":"owner-backup","cose_public_key":"<base64 COSE_Key>"}
+]
+```
+
+Запустите bootstrap и сравните напечатанные SHA-256 отпечатки с физическими
+authenticators:
+
+```sh
+./bin/coordd owner bootstrap --state-dir /absolute/path/coord-state \
+  --principal owner-1 --credentials /absolute/path/credentials.json
+```
+
+Команда требует точный ввод `BOOTSTRAP owner-1`, блокирует canonical store и
+фиксирует обе credentials одним сохранением в schema v4. Bootstrap глобально
+одноразовый: после первой записи нельзя добавить новый principal повторной
+инициализацией; при потере всех ключей требуется отдельное новое пустое state
+directory, старое состояние остаётся архивом. Утверждения публичных отпечатков
+при первом запуске — TOFU-риск, который оператор должен сверить вручную.
+
+После bootstrap существующий control listener принимает `POST /owner/challenge`
+и `POST /owner/command`; для обеих команд требуется `Authorization: Bearer …`.
+Control token только допускает запрос в loopback-канал. Он не подтверждает
+Owner и сам по себе не разрешает запись. Challenge связывает domain
+`coord.owner-command.v1`, principal, credential, message ID, revision, nonce,
+срок и точные байты payload. Caller должен получить WebAuthn assertion
+(`webauthn.get`, UP+UV) от зарегистрированного authenticator и передать его
+вторым запросом. Daemon проверяет assertion, актуальность credential и payload,
+а затем атомарно сохраняет эффект и durable receipt; challenges теряются при
+перезапуске daemon.
+
+В JSON API поля Go-типа `[]byte` кодируются base64. Challenge request имеет поля
+`kind`, `message_id`, `principal_id`, `credential_id`, `expected_credential_revision`
+и `payload` (base64 от точных JSON байтов команды). Ответ — подписываемый command
+envelope. Command request содержит `challenge_id`, неизменённый `command` и
+`assertion` с base64-полями `client_data_json`, `authenticator_data` и `signature`.
+Ответ включает durable `receipt` и `replayed`; точный повтор уже закоммиченной
+команды возвращает прежний receipt без дополнительной записи.
+
+Поддержаны только `owner.credential.register`, `owner.credential.revoke` и
+`task.create`. Последний создаёт Task с `OwnerID` из проверенного credential;
+Task, событие, Inbox receipt и Owner receipt записываются одним commit.
+Assignment offer/activation/handoff, delegation и прочие Task transitions
+этим endpoint не принимаются. Защита schema v4 не делает новые поля читаемыми
+старыми бинарниками: запись старой схемы поверх v4 отклоняется как downgrade.
 
 ## Сборка и watchdog
 

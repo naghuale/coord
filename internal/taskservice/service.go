@@ -1,7 +1,6 @@
-// Package taskservice contains an isolated canonical Task persistence helper.
-// It is currently used only by tests: it does not authenticate OwnerID and is
-// not a daemon command boundary. Production composition must add a verifier for
-// Task-scoped Owner capability and session generation before wiring this code.
+// Package taskservice retains an internal compatibility surface for the former
+// unauthenticated Task writer. Create now fails closed; production Task writes
+// must use the authenticated Owner command boundary in CanonicalStore.
 package taskservice
 
 import (
@@ -14,8 +13,6 @@ import (
 )
 
 var ErrTaskIDCollision = errors.New("could not allocate a unique TaskID")
-
-const taskIDAttempts = 16
 
 type IDGenerator interface {
 	New() (taskid.ID, error)
@@ -52,50 +49,6 @@ type CreateInput struct {
 }
 
 func (s *Service) Create(input CreateInput) (created task.Task, err error) {
-	if err := input.StagePlan.Validate(); err != nil {
-		return task.Task{}, fmt.Errorf("validate StagePlan: %w", err)
-	}
-	if err := input.StagePlan.ValidateRuntimeSupport(); err != nil {
-		return task.Task{}, fmt.Errorf("StagePlan is not executable by the current runtime: %w", err)
-	}
-	now := s.now().UTC()
-	err = s.state.UpdateCanonical(func(state *store.CanonicalState) error {
-		var id taskid.ID
-		for attempt := 0; attempt < taskIDAttempts; attempt++ {
-			candidate, genErr := s.ids.New()
-			if genErr != nil {
-				return fmt.Errorf("generate TaskID: %w", genErr)
-			}
-			if parseErr := candidate.Validate(); parseErr != nil {
-				return fmt.Errorf("generator returned invalid TaskID: %w", parseErr)
-			}
-			if _, exists := state.Tasks[candidate]; exists {
-				continue
-			}
-			id = candidate
-			break
-		}
-		if id == "" {
-			return ErrTaskIDCollision
-		}
-		stage := task.Execution
-		created = task.Task{
-			ID: id, Title: input.Title, Description: input.Description, OwnerID: input.OwnerID,
-			Revision: 1, LastEventSeq: 1, StagePlan: input.StagePlan,
-			CurrentStage: &stage, Status: task.Pending, CreatedAt: now, UpdatedAt: now,
-		}
-		if err := created.Validate(); err != nil {
-			return fmt.Errorf("validate new Task: %w", err)
-		}
-		state.Tasks[id] = created
-		state.Events = append(state.Events, task.DomainEvent{
-			ID: task.EventID(id, 1), TaskID: id, EventSeq: 1, TaskRevision: 1,
-			Type: task.TaskCreated, ActorID: input.OwnerID, Summary: "Task created", CreatedAt: now,
-		})
-		return nil
-	})
-	if err != nil {
-		return task.Task{}, err
-	}
-	return created, nil
+	_ = input
+	return task.Task{}, store.ErrOwnerCommandRequired
 }

@@ -4,6 +4,13 @@
 Ревью: Codex (ACCEPTED_BY_CODEX), приёмка: OWNER. Реализация — в P0-3 после
 остальных зависимостей из §5.
 
+Implementation status (2026-10-24, issue #101 / #93a): schema v4, explicit
+two-key bootstrap, signed `register`/`revoke`, and signed `task.create` are
+implemented through one serialized canonical-store commit and the existing
+coordd control listener. This status note does not change the accepted command
+boundary. No browser/CLI authenticator client, agent command endpoint, other
+Task mutation, assignment-ledger administration, or #93b delegation is included.
+
 Решения OWNER 2026-10-08:
 
 - **R69** — вариант A из §2: P0-2 — только основа хранилища и модели Task;

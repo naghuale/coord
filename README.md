@@ -11,7 +11,7 @@
 ## Ролевые сессии
 
 `make build`, затем `bin/coord prompt` — общий вход AI-агента.
-Production daemon: `make build`, затем `bin/coordd -config /absolute/path/coordd.json`. Он хранит текущий Run runtime в versioned `canonical.json`, удерживает legacy compatibility lock и fail-closed блокирует readiness при небезопасном старом или неизвестном состоянии. Внутренняя основа Task aggregate реализуется в P0-2; полный workflow и production Task write path ещё не подключены. Формат и exit codes описаны в [OPERATIONS.md](docs/OPERATIONS.md).
+Production daemon: `make build`, затем `bin/coordd -config /absolute/path/coordd.json`. Он хранит canonical state в versioned `canonical.json`, удерживает legacy compatibility lock и fail-closed блокирует readiness при небезопасном старом или неизвестном состоянии. Схема v4 включает `OwnerCredential`; bootstrap и подписанное создание Task подключены через отдельные owner-команды на control listener. Полный workflow, агентский RESULT path и cutover остальных writers не реализованы. Формат и exit codes описаны в [OPERATIONS.md](docs/OPERATIONS.md).
 `bin/coord --state state/team --server none rooms` запускает локальный room host
 с Unix socket API. Это host для `internal/rooms`, не production daemon из
 ADR-0004 и не часть `coordd`.

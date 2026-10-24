@@ -3,6 +3,7 @@ package store
 import (
 	"coord/envelope"
 	"coord/fsm"
+	"coord/ownercredential"
 	"coord/roles"
 	"coord/task"
 	"coord/taskid"
@@ -134,6 +135,29 @@ func TestAgentCommandRejectsMalformedEnvelope(t *testing.T) {
 	frame := validAgentCommandFrame(state, "malformed")
 	frame.envelope.MessageID = "  "
 	assertAgentCommandRefused(t, state, frame, taskid.ID(frame.envelope.Task), 2, ErrAgentCommandMalformed)
+}
+
+func TestAgentCommandBoundaryRemainsAvailableAfterOwnerEnrollment(t *testing.T) {
+	state := taskStateWithRun()
+	registeredAt := time.Unix(4000, 0).UTC()
+	primary, backup := sessionTestKey(0x51), sessionTestKey(0x52)
+	state.OwnerCredentials = map[string]ownercredential.Aggregate{}
+	aggregate, err := ownercredential.Bootstrap("owner", "owner-bootstrap", []ownercredential.Credential{
+		{ID: "owner-primary", Algorithm: ownercredential.EdDSA, PublicKey: primary, Fingerprint: ownercredential.Fingerprint(ownercredential.EdDSA, primary)},
+		{ID: "owner-backup", Algorithm: ownercredential.EdDSA, PublicKey: backup, Fingerprint: ownercredential.Fingerprint(ownercredential.EdDSA, backup)},
+	}, registeredAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.OwnerCredentials["owner"] = aggregate
+	p := &canonicalMemory{state: state}
+	clock := &canonicalTestClock{now: time.Unix(5000, 0).UTC()}
+	s := newCanonicalWithTestClock(t, p, clock)
+	frame := validAgentCommandFrame(state, "agent-command-after-owner-enrollment")
+	id := taskid.ID(frame.envelope.Task)
+	if _, replayed, err := s.ApplyAgentCommand(frame, id, state.Tasks[id].Revision, applyTestAgentCommand(clock, frame.envelope.MessageID)); err != nil || replayed {
+		t.Fatalf("accepted agent command after Owner enrollment replayed=%v err=%v", replayed, err)
+	}
 }
 
 func TestAgentCommandRejectsWrongRecipient(t *testing.T) {

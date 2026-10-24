@@ -127,7 +127,10 @@ Canonical command boundary реализована на store model и прове
 signed frame; AgentSession, generation и ключ; Run assignment; Task.Fence и Attempt;
 role и Stage; replay и ExpectedRevision; атомарную запись transition, DomainEvent,
 Inbox receipt и Outbox. `ApplyAgentCommand` пока вызывается только из тестов.
-Проверка: частично — `TestApplyInboxCommandCommitsReceiptWithTaskEventAndDeduplicates`, `TestApplyInboxCommandRejectsStaleExpectedRevision`; не реализовано: production daemon endpoint, production CLI/Telepathy caller, OwnerCredential, Executor RESULT path, единый write path для всех legacy writers.
+OwnerCredential bootstrap, lifecycle и подписанный `task.create` endpoint работают
+на отдельной atomic store boundary; agent command production endpoint и Executor
+RESULT path остаются вне реализации.
+Проверка: частично — `TestApplyInboxCommandCommitsReceiptWithTaskEventAndDeduplicates`, `TestApplyInboxCommandRejectsStaleExpectedRevision`, `TestControlOwnerCommandEndpointPerformsSignedCanonicalTaskCreate`, `TestOwnerCredentialSignedRevokeIsAtomicAndExactRetryReturnsReceipt`; не реализовано: production CLI/WebAuthn caller, agent command endpoint, Executor RESULT path, единый write path для всех legacy writers.
 
 ### RT-05 — Read Path
 

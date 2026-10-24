@@ -470,7 +470,7 @@ func TestAssignmentTransportCommandCannotChangeAuthority(t *testing.T) {
 }
 
 func TestAssignmentTypedResultGateAtomicWithTask(t *testing.T) {
-	p := &canonicalMemory{state: resultState(roles.Reviewer)}
+	p := &canonicalMemory{state: ownerEnrolledCanonicalState(t, resultState(roles.Reviewer))}
 	now := time.Unix(500, 0).UTC()
 	s, err := NewCanonicalWithClock(p, func() time.Time { return now })
 	if err != nil {

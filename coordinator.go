@@ -126,6 +126,17 @@ func New(tp transport.Transport, s store.RunStore, cfg Config) (*Coordinator, er
 	}
 	return c, nil
 }
+
+// ConfigureOwnerWebAuthnPolicy binds Owner assertions to the daemon's actual
+// localhost control port. Non-canonical test stores do not expose this path.
+func (c *Coordinator) ConfigureOwnerWebAuthnPolicy(rpID, origin string) error {
+	canonical, ok := c.store.(*store.CanonicalStore)
+	if !ok {
+		return nil
+	}
+	return canonical.ConfigureOwnerWebAuthnPolicy(rpID, origin)
+}
+
 func (c *Coordinator) base(k envelope.Kind, r fsm.Run) envelope.Envelope {
 	return envelope.Envelope{SchemaVersion: 1, MessageID: envelope.NewID(), Timestamp: c.cfg.Now().UTC(), From: c.tp.WhoAmI(), To: r.OwnerSession, Kind: k, Task: r.Task, Run: r.RunID, Attempt: r.Attempt, TargetSHA: r.TargetSHA, Fence: r.Fence}
 }
