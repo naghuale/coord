@@ -297,6 +297,222 @@ func resultAck(run fsm.Run, messageID string, now time.Time) (envelope.Envelope,
 	return ack, nil
 }
 
+func agentResultAck(command envelope.Envelope, disposition string, now time.Time) (envelope.Envelope, error) {
+	if command.AgentResultPayload == nil || command.SchemaVersion != envelope.SchemaVersionAgentResult {
+		return envelope.Envelope{}, fmt.Errorf("version-2 agent result required for acknowledgement")
+	}
+	outcome := "SUCCESS"
+	if disposition == "NO_ACCEPTANCE" {
+		outcome = "FAILURE"
+	}
+	ack := envelope.Envelope{
+		SchemaVersion: envelope.SchemaVersionAgentResult, MessageID: command.MessageID + ".result-ack", InReplyTo: command.MessageID,
+		Timestamp: now.UTC(), From: command.To, To: command.From, Kind: envelope.ResultAck,
+		Task: command.Task, Run: command.Run, Attempt: command.Attempt, TargetSHA: command.TargetSHA, Fence: command.Fence,
+		ResultAckPayload: &envelope.ResultAckPayload{
+			Outcome: outcome, AssignmentID: command.AgentResultPayload.AssignmentID, Disposition: disposition,
+		},
+	}
+	return ack, ack.Validate()
+}
+
+// applyAgentResultToState applies the typed wire result using the same Task
+// domain events and acknowledgement shape as the existing canonical result
+// commands. The caller owns the store lock and commits this with Inbox and the
+// Assignment RESULT event through applyAssignmentResultCommandLocked.
+func applyAgentResultToState(state *CanonicalState, actorID string, run fsm.Run, command envelope.Envelope, now time.Time) (InboxReceipt, error) {
+	p := command.AgentResultPayload
+	if state == nil || p == nil || run.RoleSelection == nil || run.TaskID.String() != command.Task {
+		return InboxReceipt{}, fmt.Errorf("typed agent result and canonical Run required")
+	}
+	id := run.TaskID
+	currentRun, exists := state.Runs[run.RunID]
+	if !exists || currentRun.TaskID != id || currentRun.RoleSelection == nil || currentRun.RoleSelection.AgentID != actorID || !reflectAgentCommandRunEqual(run, currentRun) {
+		return InboxReceipt{}, fmt.Errorf("canonical Run actor changed")
+	}
+	currentTask, exists := state.Tasks[id]
+	if !exists || currentTask.Status != task.InProgress || currentTask.CurrentStage == nil {
+		return InboxReceipt{}, fmt.Errorf("Task is not active at an agent result stage")
+	}
+	if currentRun.Terminal() || (currentRun.Status != fsm.Started && currentRun.Status != fsm.ResultReady) || now.IsZero() || now.Before(currentTask.UpdatedAt) {
+		return InboxReceipt{}, fmt.Errorf("Run or Task is not ready for an agent result")
+	}
+	var event task.DomainEvent
+	event.ID = task.EventID(id, currentTask.LastEventSeq+1)
+	event.TaskID, event.RunID = id, run.RunID
+	event.EventSeq, event.TaskRevision, event.TaskFence = currentTask.LastEventSeq+1, currentTask.Revision+1, currentTask.Fence
+	event.ActorID, event.CreatedAt, event.Summary = actorID, now.UTC(), p.Summary
+	role := currentRun.RoleSelection.Profile.Role
+	switch role {
+	case roles.Executor:
+		if *currentTask.CurrentStage != task.Execution {
+			return InboxReceipt{}, ErrAgentCommandStageRoleMismatch
+		}
+		result := task.ExecutorResult{Outcome: task.ExecutorOutcome(p.Outcome), Summary: p.Summary, OutputArtifactRefs: cloneStrings(p.OutputArtifactRefs), CreatedAt: now.UTC()}
+		if err := result.Validate(); err != nil {
+			return InboxReceipt{}, err
+		}
+		event.Type, event.ExecutorResult = task.ExecutorResultRecorded, &result
+	case roles.Reviewer:
+		if *currentTask.CurrentStage != task.Review {
+			return InboxReceipt{}, ErrAgentCommandStageRoleMismatch
+		}
+		if taskAgentsByRole(*state, id, roles.Executor)[actorID] {
+			return InboxReceipt{}, fmt.Errorf("reviewer %q also executed this Task: independence violation", actorID)
+		}
+		verdict, valid := reviewVerdict(p.Verdict)
+		if !valid {
+			return InboxReceipt{}, ErrAgentCommandVerdictRejected
+		}
+		result := task.ReviewResult{
+			Verdict: verdict, Summary: p.Summary,
+			Findings: agentFindings(p.Findings), InputArtifactRefs: cloneStrings(p.InputArtifactRefs),
+			OutputArtifactRefs: cloneStrings(p.OutputArtifactRefs), CreatedAt: now.UTC(),
+		}
+		if err := assignFindingIDs(result.Findings, id, currentTask.LastEventSeq+1); err != nil {
+			return InboxReceipt{}, err
+		}
+		stampFindings(result.Findings, now.UTC())
+		if err := result.Validate(); err != nil {
+			return InboxReceipt{}, err
+		}
+		result.ResultID, result.ReviewerID = event.ID, actorID
+		result.Round = uint32(countEventsByType(*state, id, task.ReviewResultRecorded) + 1)
+		event.Type, event.ReviewResult = task.ReviewResultRecorded, &result
+	case roles.Auditor:
+		if *currentTask.CurrentStage != task.Audit {
+			return InboxReceipt{}, ErrAgentCommandStageRoleMismatch
+		}
+		if taskAgentsByRole(*state, id, roles.Executor)[actorID] {
+			return InboxReceipt{}, fmt.Errorf("auditor %q also executed this Task: independence violation", actorID)
+		}
+		if taskAgentsByRole(*state, id, roles.Reviewer)[actorID] {
+			return InboxReceipt{}, fmt.Errorf("auditor %q also reviewed this Task: independence violation", actorID)
+		}
+		verdict, valid := auditVerdict(p.Verdict)
+		if !valid {
+			return InboxReceipt{}, ErrAgentCommandVerdictRejected
+		}
+		result := task.AuditResult{
+			Verdict: verdict, Summary: p.Summary,
+			Findings: agentFindings(p.Findings), InputArtifactRefs: cloneStrings(p.InputArtifactRefs),
+			OutputArtifactRefs: cloneStrings(p.OutputArtifactRefs), CreatedAt: now.UTC(),
+			Properties: agentProperties(p.Properties),
+		}
+		if err := assignFindingIDs(result.Findings, id, currentTask.LastEventSeq+1); err != nil {
+			return InboxReceipt{}, err
+		}
+		stampFindings(result.Findings, now.UTC())
+		if err := result.Validate(); err != nil {
+			return InboxReceipt{}, err
+		}
+		result.ResultID, result.AuditorID = event.ID, actorID
+		result.Round = uint32(countEventsByType(*state, id, task.AuditResultRecorded) + 1)
+		event.Type, event.AuditResult = task.AuditResultRecorded, &result
+	default:
+		return InboxReceipt{}, ErrAgentCommandWrongRole
+	}
+	if err := validateResultReferences(*state, id, currentTask.LastEventSeq+1, event.ReviewResult, event.AuditResult); err != nil {
+		return InboxReceipt{}, err
+	}
+	currentTask.Revision++
+	currentTask.LastEventSeq++
+	currentTask.Status = task.Blocked
+	currentTask.UpdatedAt = now.UTC()
+	state.Tasks[id] = currentTask
+	currentRun.Status, currentRun.LastUpdate = fsm.Done, now.UTC()
+	state.Runs[run.RunID] = currentRun
+	state.Events = append(state.Events, event)
+	ack, err := agentResultAck(command, "ACCEPTED", now.UTC())
+	if err != nil {
+		return InboxReceipt{}, err
+	}
+	state.Outbox[run.RunID] = appendOutbox(state.Outbox[run.RunID], OutboxMessage{Envelope: ack, EventID: event.ID})
+	return InboxReceipt{
+		ActorID: actorID, MessageID: command.MessageID, TaskID: id, RunID: run.RunID,
+		EventIDs: []string{event.ID}, ExpectedRevision: p.ExpectedRevision,
+		CommittedRevision: currentTask.Revision, RecordedAt: now.UTC(),
+	}, nil
+}
+
+func reviewVerdict(value string) (task.ReviewVerdict, bool) {
+	switch value {
+	case "REVIEW_ACCEPTED":
+		return task.ReviewApproved, true
+	case "CHANGES_REQUIRED":
+		return task.ReviewChangesRequired, true
+	default:
+		return "", false
+	}
+}
+
+func auditVerdict(value string) (task.AuditVerdict, bool) {
+	switch value {
+	case "AUDIT_ACCEPTED":
+		return task.AuditPass, true
+	case "CHANGES_REQUIRED":
+		return task.AuditChangesRequired, true
+	default:
+		return "", false
+	}
+}
+
+func agentFindings(values []envelope.AgentFinding) []task.Finding {
+	findings := make([]task.Finding, len(values))
+	for i, value := range values {
+		evidence := make([]task.Reference, len(value.Evidence))
+		for j, ref := range value.Evidence {
+			evidence[j] = task.Reference{Kind: ref.Kind, ID: ref.ID}
+		}
+		findings[i] = task.Finding{ID: value.ID, Severity: task.FindingSeverity(value.Severity), Summary: value.Summary, Evidence: evidence}
+	}
+	return findings
+}
+
+func agentProperties(values []envelope.AgentAuditedProperty) []task.AuditedProperty {
+	properties := make([]task.AuditedProperty, len(values))
+	for i, value := range values {
+		properties[i] = task.AuditedProperty{Name: value.Name, Verdict: value.Verdict, Note: value.Note}
+	}
+	return properties
+}
+
+func validateNoAcceptanceAgentResult(state CanonicalState, currentTask task.Task, run fsm.Run, payload envelope.AgentResultPayload, now time.Time) error {
+	id := currentTask.ID
+	seq := currentTask.LastEventSeq + 1
+	switch run.RoleSelection.Profile.Role {
+	case roles.Executor:
+		return (task.ExecutorResult{Outcome: task.ExecutorOutcome(payload.Outcome), Summary: payload.Summary, OutputArtifactRefs: cloneStrings(payload.OutputArtifactRefs), CreatedAt: now}).Validate()
+	case roles.Reviewer:
+		if len(payload.Properties) != 0 {
+			return fmt.Errorf("properties are not part of reviewer results")
+		}
+		findings := agentFindings(payload.Findings)
+		if err := assignFindingIDs(findings, id, seq); err != nil {
+			return err
+		}
+		stampFindings(findings, now)
+		result := &task.ReviewResult{Verdict: task.ReviewApproved, Summary: payload.Summary, Findings: findings, InputArtifactRefs: cloneStrings(payload.InputArtifactRefs), OutputArtifactRefs: cloneStrings(payload.OutputArtifactRefs), CreatedAt: now}
+		if err := result.Validate(); err != nil {
+			return err
+		}
+		return validateResultReferences(state, id, seq, result, nil)
+	case roles.Auditor:
+		findings := agentFindings(payload.Findings)
+		if err := assignFindingIDs(findings, id, seq); err != nil {
+			return err
+		}
+		stampFindings(findings, now)
+		result := &task.AuditResult{Verdict: task.AuditPass, Summary: payload.Summary, Findings: findings, InputArtifactRefs: cloneStrings(payload.InputArtifactRefs), OutputArtifactRefs: cloneStrings(payload.OutputArtifactRefs), CreatedAt: now, Properties: agentProperties(payload.Properties)}
+		if err := result.Validate(); err != nil {
+			return err
+		}
+		return validateResultReferences(state, id, seq, nil, result)
+	default:
+		return ErrAgentCommandWrongRole
+	}
+}
+
 func appendOutbox(queue OutboxQueue, item OutboxMessage) OutboxQueue {
 	queue.Messages = append(queue.Messages, item)
 	return queue

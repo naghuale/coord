@@ -41,7 +41,7 @@ func TestOwnerBootstrapRequiresConfirmationAndStoresOnlyPublicCredentials(t *tes
 		t.Fatal(err)
 	}
 	aggregate := state.OwnerCredentials["owner-1"]
-	if state.SchemaVersion != 4 || len(aggregate.Credentials) != 2 || len(aggregate.Receipts) != 1 || !strings.Contains(out.String(), "sha256:") {
+	if state.SchemaVersion != 5 || len(aggregate.Credentials) != 2 || len(aggregate.Receipts) != 1 || !strings.Contains(out.String(), "sha256:") {
 		t.Fatalf("bootstrap result state=%+v output=%s", state, out.String())
 	}
 	if err := runOwnerCommand(args, strings.NewReader("BOOTSTRAP owner-1\n"), &out, &diagnostic); err == nil {

@@ -238,6 +238,20 @@ type AuthenticatedClient interface {
 	IncomingAuthenticated(context.Context) <-chan AuthenticatedFrame
 }
 
+// AuthenticatedReceiver exposes signed frames with verified AgentSession
+// evidence to the daemon command boundary. It is optional so legacy/test
+// transports retain their existing interface.
+type AuthenticatedReceiver interface {
+	ReceiveAuthenticated(context.Context) <-chan AuthenticatedFrame
+}
+
+// ConfiguredAuthenticatedReceiver distinguishes transports that support this
+// path from transports whose AgentSession resolver has not been installed.
+type ConfiguredAuthenticatedReceiver interface {
+	AuthenticatedReceiver
+	AuthenticatedIngressConfigured() bool
+}
+
 // AuthenticatedAdapter applies the same local-recipient check as Adapter while
 // preserving verification evidence for the canonical command boundary. It sets
 // ReceivedBy only after the signed recipient matches its configured Session;

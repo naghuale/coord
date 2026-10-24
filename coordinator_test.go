@@ -1,18 +1,26 @@
 package coord
 
 import (
+	"bytes"
 	"context"
+	"coord/agentsession"
+	"coord/assignment"
 	"coord/checkpoint"
 	"coord/envelope"
 	"coord/fsm"
 	"coord/retry"
+	"coord/roles"
 	"coord/store"
+	"coord/task"
 	"coord/taskid"
+	"coord/transport"
 	"coord/watchdog"
+	"crypto/ed25519"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -124,6 +132,217 @@ func TestFullLifecycleAndRestart(t *testing.T) {
 		t.Fatal("restart lost result")
 	}
 }
+
+func TestAgentResultResponseIsStableAcrossRedelivery(t *testing.T) {
+	command := envelope.Envelope{
+		SchemaVersion: envelope.SchemaVersionAgentResult, MessageID: "agent-result-42",
+		Timestamp: time.Unix(100, 0).UTC(), From: "codex:worker", To: "opencode:coord",
+		Kind: envelope.Result, InReplyTo: "task-delivery", Task: "task_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+		Run: "run-42", Attempt: 1, TargetSHA: strings.Repeat("a", 40), Fence: 1,
+		AgentResultPayload: &envelope.AgentResultPayload{AssignmentID: "assignment-42"},
+	}
+	committedAt := time.Unix(200, 0).UTC()
+	first, err := agentResultResponse(command, "ACCEPTED", committedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replay, err := agentResultResponse(command, "ACCEPTED", committedAt)
+	if err != nil || !reflect.DeepEqual(first, replay) {
+		t.Fatalf("replayed response=%+v err=%v; first=%+v", replay, err, first)
+	}
+	if first.MessageID != command.MessageID+".result-ack" || first.ResultAckPayload.AssignmentID != "assignment-42" || first.ResultAckPayload.Disposition != "ACCEPTED" {
+		t.Fatalf("response lost command binding: %+v", first)
+	}
+}
+
+func TestAuthenticatedAgentCommandIngressRemainsDisabledByDefault(t *testing.T) {
+	if authenticatedAgentIngressEnabled {
+		t.Fatal("production authenticated agent command ingress must remain disabled before explicit cutover")
+	}
+}
+
+type ingressTestPersistence struct{ state store.CanonicalState }
+
+func (p *ingressTestPersistence) Lock() (func() error, error) {
+	return func() error { return nil }, nil
+}
+func (p *ingressTestPersistence) Load() (store.CanonicalState, error)   { return p.state, nil }
+func (p *ingressTestPersistence) Save(state store.CanonicalState) error { p.state = state; return nil }
+
+type ingressTestByteClient struct{ incoming chan []byte }
+
+func (c *ingressTestByteClient) Send(context.Context, string, []byte) error { return nil }
+func (c *ingressTestByteClient) Incoming(context.Context) <-chan []byte     { return c.incoming }
+
+type ingressTestKeyResolver struct{ key transport.VerificationKey }
+
+func (r ingressTestKeyResolver) ResolveVerificationKey(context.Context, string) (transport.VerificationKey, error) {
+	return r.key, nil
+}
+
+type ingressTestTransport struct {
+	*fakeTransport
+	receiver *transport.AuthenticatedAdapter
+	session  string
+}
+
+func (t *ingressTestTransport) WhoAmI() string                       { return t.session }
+func (t *ingressTestTransport) AuthenticatedIngressConfigured() bool { return t.receiver != nil }
+func (t *ingressTestTransport) ReceiveAuthenticated(ctx context.Context) <-chan transport.AuthenticatedFrame {
+	return t.receiver.ReceiveAuthenticated(ctx)
+}
+
+func newAuthenticatedReviewFixture(t *testing.T) (*store.CanonicalStore, *canonicalAgentEnvelope, ed25519.PrivateKey) {
+	t.Helper()
+	state := store.EmptyCanonicalState()
+	id := taskid.ID("task_01ARZ3NDEKTSV4RRFFQ69G5FAV")
+	now := time.Unix(100, 0).UTC()
+	stagePlan := task.StagePlan{Stages: []task.Stage{task.Execution, task.Review}, PolicyVersion: task.StagePlanPolicyVersion}
+	stage := task.Review
+	state.Tasks[id] = task.Task{ID: id, Title: "Task", OwnerID: "owner", Revision: 3, LastEventSeq: 3,
+		StagePlan: stagePlan, CurrentStage: &stage, Status: task.InProgress, Fence: 2,
+		CreatedAt: now, UpdatedAt: now.Add(2 * time.Second)}
+	sha := []byte(strings.Repeat("a", 40))
+	private := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{0x31}, ed25519.SeedSize))
+	public := private.Public().(ed25519.PublicKey)
+	coordPrivate := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{0x42}, ed25519.SeedSize))
+	coordPublic := coordPrivate.Public().(ed25519.PublicKey)
+	execSelection := roles.Selection{AgentID: "agent-executor", Session: "executor-session", Profile: roles.Profile{Role: roles.Executor}}
+	reviewSelection := roles.Selection{AgentID: "agent-reviewer", Session: "review-session", Profile: roles.Profile{Role: roles.Reviewer}}
+	state.Runs["run-executor"] = fsm.Run{Task: "task-label", TaskID: id, RunID: "run-executor", Attempt: 1, Fence: 1,
+		TargetSHA: string(sha), OwnerSession: execSelection.Session, CoordinatorSession: "coord-session", Worktree: "worktree",
+		Deadline: now.Add(time.Hour), AssignedAt: now, LastUpdate: now, Status: fsm.Done,
+		Result: &envelope.ResultPayload{Outcome: "SUCCESS", Summary: "done"}, RequiredRole: roles.Requirement{Role: roles.Executor},
+		RoleSelection: &execSelection, RoleHistory: []roles.Selection{execSelection}, AgentSessionGeneration: 1}
+	state.Runs["run-review"] = fsm.Run{Task: "task-label", TaskID: id, RunID: "run-review", Attempt: 1, Fence: 2,
+		TargetSHA: string(sha), OwnerSession: reviewSelection.Session, CoordinatorSession: "coord-session", Worktree: "worktree",
+		Deadline: now.Add(time.Hour), AssignedAt: now, LastUpdate: now.Add(2 * time.Second), Status: fsm.Started,
+		TaskMessages: []string{"task-delivery"}, RequiredRole: roles.Requirement{Role: roles.Reviewer},
+		RoleSelection: &reviewSelection, RoleHistory: []roles.Selection{reviewSelection}, AgentSessionGeneration: 1}
+	state.Events = []task.DomainEvent{
+		{ID: task.EventID(id, 1), TaskID: id, EventSeq: 1, TaskRevision: 1, Type: task.TaskCreated, ActorID: "owner", CreatedAt: now},
+		{ID: task.EventID(id, 2), TaskID: id, RunID: "run-executor", EventSeq: 2, TaskRevision: 2, TaskFence: 1, Type: task.TaskOwnershipTransferred, CreatedAt: now.Add(time.Second)},
+		{ID: task.EventID(id, 3), TaskID: id, RunID: "run-review", EventSeq: 3, TaskRevision: 3, TaskFence: 2, Type: task.TaskOwnershipTransferred, CreatedAt: now.Add(2 * time.Second)},
+	}
+	for _, binding := range []struct {
+		address, agent string
+		key            ed25519.PublicKey
+	}{
+		{"executor-session", "agent-executor", coordPublic},
+		{"review-session", "agent-reviewer", public},
+	} {
+		state.AgentSessions[binding.address] = agentsession.Session{Address: binding.address, AgentID: binding.agent, Generation: 1, PublicKey: binding.key, RegisteredAt: now, UpdatedAt: now}
+		state.AgentSessionEvents = append(state.AgentSessionEvents, agentsession.Event{ID: agentsession.EventID(binding.address, 1), Address: binding.address,
+			AgentID: binding.agent, Sequence: 1, Type: agentsession.Registered, Generation: 1, PublicKey: binding.key, CreatedAt: now})
+	}
+	p := &ingressTestPersistence{state: state}
+	canonical, err := store.NewCanonicalWithClock(p, func() time.Time { return now.Add(time.Hour / 2) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	coordPrincipal := assignment.Principal{SessionID: "coord-session", AgentID: "coord-agent", Generation: 1}
+	if err := canonical.RegisterAgentSession(coordPrincipal.SessionID, coordPrincipal.AgentID, coordPublic); err != nil {
+		t.Fatal(err)
+	}
+	r := assignment.Record{AssignmentID: "ingress-assignment", State: assignment.Offered,
+		Issuer: coordPrincipal.SessionID, IssuerAgentID: coordPrincipal.AgentID, IssuerGeneration: 1,
+		CurrentCoordinator: coordPrincipal.SessionID, CoordinatorAgentID: coordPrincipal.AgentID, CoordinatorGeneration: 1,
+		HandoffEvidence: []assignment.Handoff{}, Assignee: reviewSelection.Session, SessionID: reviewSelection.Session,
+		StableAgentID: reviewSelection.AgentID, AssigneeGeneration: 1, Role: string(roles.Reviewer), SubjectSHA: string(sha),
+		IssuedAt: now, ValidUntil: now.Add(2 * time.Hour),
+		AdmissionBasis:     assignment.AdmissionBasis{Kind: "POOL", Reference: "test", TargetSessionID: reviewSelection.Session, TargetAgentID: reviewSelection.AgentID, Role: string(roles.Reviewer), SubjectSHA: string(sha)},
+		VisibilityEvidence: assignment.VisibilityEvidence{Reference: "visible", SessionID: reviewSelection.Session, ObservedAt: now}, Revision: 1, UpdatedAt: now,
+		RunBinding: &assignment.RunBinding{TaskID: id.String(), RunID: "run-review", Fence: 2, Attempt: 1}}
+	if err := r.Validate(); err != nil {
+		t.Fatalf("invalid integration assignment fixture: %v (%+v)", err, r)
+	}
+	if err := canonical.OfferAssignment(coordPrincipal, r, "offer"); err != nil {
+		t.Fatal(err)
+	}
+	if err := canonical.ChangeAssignment(r.Target(), r.AssignmentID, 1, "ACK", "ack"); err != nil {
+		t.Fatal(err)
+	}
+	if err := canonical.ChangeAssignment(coordPrincipal, r.AssignmentID, 2, "ACTIVATE", "activate"); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := canonical.CanonicalSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	r = snapshot.AssignmentLedger.Records[r.AssignmentID]
+	if err := canonical.RecordAssignmentWorkStarted(r.Target(), r.AssignmentID, r.Revision, r.SubjectSHA, r.Role, r.Issuer, r.CurrentCoordinator, r.CoordinatorGeneration, "started"); err != nil {
+		t.Fatal(err)
+	}
+	return canonical, &canonicalAgentEnvelope{Task: id, Assignment: r, SHA: string(sha), Now: now.Add(time.Hour / 2), Session: reviewSelection.Session}, private
+}
+
+type canonicalAgentEnvelope struct {
+	Task       taskid.ID
+	Assignment assignment.Record
+	SHA        string
+	Now        time.Time
+	Session    string
+}
+
+func TestAuthenticatedAgentResultRunsOnlyThroughExplicitHarness(t *testing.T) {
+	canonical, fixture, private := newAuthenticatedReviewFixture(t)
+	initial, err := canonical.CanonicalSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := envelope.Envelope{
+		SchemaVersion: envelope.SchemaVersionAgentResult, MessageID: "coordinator-ingress-result",
+		Timestamp: fixture.Now, From: fixture.Session, To: fixture.Assignment.CurrentCoordinator,
+		Kind: envelope.Result, InReplyTo: "task-delivery", Task: fixture.Task.String(),
+		Run: fixture.Assignment.RunBinding.RunID, Attempt: fixture.Assignment.RunBinding.Attempt,
+		TargetSHA: fixture.SHA, Fence: fixture.Assignment.RunBinding.Fence,
+		AgentResultPayload: &envelope.AgentResultPayload{
+			AssignmentID: fixture.Assignment.AssignmentID, Issuer: fixture.Assignment.Issuer,
+			CoordinatorGeneration: fixture.Assignment.CoordinatorGeneration,
+			ExpectedRevision:      initial.Tasks[fixture.Task].Revision,
+			Verdict:               "REVIEW_ACCEPTED", Summary: "review complete",
+			Findings: []envelope.AgentFinding{}, InputArtifactRefs: []string{}, OutputArtifactRefs: []string{},
+		},
+	}
+	raw, err := envelope.Sign(command, private)
+	if err != nil {
+		t.Fatal(err)
+	}
+	incoming := make(chan []byte, 1)
+	incoming <- raw
+	byteClient := &ingressTestByteClient{incoming: incoming}
+	signed := &transport.SignedClient{Client: byteClient, Resolver: ingressTestKeyResolver{key: transport.VerificationKey{PublicKey: private.Public().(ed25519.PublicKey), Generation: 1}}}
+	receiver := &transport.AuthenticatedAdapter{Client: signed, Session: command.To}
+	tp := &ingressTestTransport{fakeTransport: &fakeTransport{in: make(chan envelope.Envelope)}, receiver: receiver, session: command.To}
+	cfg := DefaultConfig()
+	cfg.Now = func() time.Time { return fixture.Now.Add(time.Minute) }
+	coordinator, err := New(tp, canonical, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var frame transport.AuthenticatedFrame
+	select {
+	case frame = <-receiver.ReceiveAuthenticated(ctx):
+	case <-time.After(time.Second):
+		t.Fatal("explicit harness did not receive authenticated frame")
+	}
+	if err := coordinator.handleAuthenticatedFrame(ctx, frame); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := canonical.CanonicalSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.AssignmentLedger.Records[fixture.Assignment.AssignmentID].State != assignment.Completed || snapshot.Tasks[fixture.Task].Revision != command.AgentResultPayload.ExpectedRevision+1 {
+		t.Fatal("explicit authenticated ingress did not apply the canonical result")
+	}
+	if len(tp.sent) != 1 || tp.sent[0].Kind != envelope.ResultAck || tp.sent[0].ResultAckPayload.Disposition != "ACCEPTED" {
+		t.Fatalf("durable result response not delivered: %+v", tp.sent)
+	}
+}
+
 func TestIdentityCorrelationAndOrder(t *testing.T) {
 	f := setup(t)
 	f.assign(t)

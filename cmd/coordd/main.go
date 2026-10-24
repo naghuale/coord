@@ -214,6 +214,17 @@ func runWithWriterFactories(ctx context.Context, cfg coorddconfig.Config, factor
 		}
 		return &startupFailure{section: "transport", ownership: "released", namespaceLock: "released", exitCode: 1, err: errors.Join(fmt.Errorf("transport factory returned incomplete runtime"), closeErr, registry.Close(), canonical.Close())}
 	}
+	if configurable, ok := tp.(interface {
+		ConfigureAgentSessionIngress(transport.KeyResolver) error
+	}); ok {
+		canonicalStore, ok := canonical.(*store.CanonicalStore)
+		if !ok {
+			return &startupFailure{section: "transport", ownership: "released", namespaceLock: "released", exitCode: 1, err: errors.Join(fmt.Errorf("AgentSession ingress requires CanonicalStore"), closeTransport(), registry.Close(), canonical.Close())}
+		}
+		if err = configurable.ConfigureAgentSessionIngress(canonicalAgentSessionResolver{store: canonicalStore}); err != nil {
+			return &startupFailure{section: "transport", ownership: "released", namespaceLock: "released", exitCode: 1, err: errors.Join(fmt.Errorf("configure authenticated agent ingress: %w", err), closeTransport(), registry.Close(), canonical.Close())}
+		}
+	}
 
 	coordinator, err := coord.New(tp, canonical, coord.DefaultConfig())
 	if err != nil {
@@ -239,6 +250,23 @@ func runWithWriterFactories(ctx context.Context, cfg coorddconfig.Config, factor
 		return &startupFailure{section: "runtime", ownership: "released", namespaceLock: "released", exitCode: 1, err: err}
 	}
 	return nil
+}
+
+type canonicalAgentSessionResolver struct{ store *store.CanonicalStore }
+
+func (r canonicalAgentSessionResolver) ResolveVerificationKey(_ context.Context, address string) (transport.VerificationKey, error) {
+	if r.store == nil || strings.TrimSpace(address) == "" {
+		return transport.VerificationKey{}, fmt.Errorf("invalid AgentSession address")
+	}
+	snapshot, err := r.store.CanonicalSnapshot()
+	if err != nil {
+		return transport.VerificationKey{}, err
+	}
+	session, exists := snapshot.AgentSessions[address]
+	if !exists || !session.Active() || len(session.PublicKey) != ed25519.PublicKeySize || session.Generation == 0 {
+		return transport.VerificationKey{}, fmt.Errorf("unknown or inactive AgentSession")
+	}
+	return transport.VerificationKey{PublicKey: append(ed25519.PublicKey(nil), session.PublicKey...), Generation: session.Generation}, nil
 }
 
 // DISABLE_PENDING_ACCEPTANCE (#96): changing this requires BOTH an accepted

@@ -387,6 +387,24 @@ func (s *CanonicalStore) applyAssignmentResultCommand(actor, messageID string, i
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.applyAssignmentResultCommandLocked(actor, messageID, id, runID, revision, now, coordinator, nil, apply)
+}
+
+type agentAssignmentResultBinding struct {
+	AssignmentID          string
+	CommandDigest         string
+	Issuer                string
+	CoordinatorGeneration uint64
+	Target                assignment.Principal
+}
+
+// applyAssignmentResultCommandLocked is shared by trusted canonical result
+// writers and the authenticated Telepathy ingress. Caller holds s.mu; result,
+// Inbox, outbox and Assignment completion are committed in the same snapshot.
+func (s *CanonicalStore) applyAssignmentResultCommandLocked(actor, messageID string, id taskid.ID, runID string, revision uint64, now time.Time, coordinator []assignment.Principal, agentBinding *agentAssignmentResultBinding, apply func(*CanonicalState) (InboxReceipt, error)) (InboxReceipt, bool, error) {
+	if actor == "" || strings.TrimSpace(actor) != actor || messageID == "" || strings.TrimSpace(messageID) != messageID || id.Validate() != nil || apply == nil {
+		return InboxReceipt{}, false, fmt.Errorf("valid command identity and handler are required")
+	}
 	if s.closed || s.failed != nil {
 		return InboxReceipt{}, false, fmt.Errorf("store unavailable")
 	}
@@ -395,9 +413,14 @@ func (s *CanonicalStore) applyAssignmentResultCommand(actor, messageID string, i
 	if s.state.AssignmentLedger != nil {
 		for _, r := range s.state.AssignmentLedger.Records {
 			if r.RunBinding != nil && r.RunBinding.RunID == runID {
+				if agentBinding != nil && r.AssignmentID != agentBinding.AssignmentID {
+					continue
+				}
+				if record != nil {
+					return InboxReceipt{}, false, fmt.Errorf("%w: Run is bound to multiple Assignments", assignment.ErrInvalid)
+				}
 				copy := r
 				record = &copy
-				break
 			}
 		}
 		if record == nil {
@@ -406,7 +429,10 @@ func (s *CanonicalStore) applyAssignmentResultCommand(actor, messageID string, i
 		if len(coordinator) != 1 || coordinator[0] != record.Coordinator() {
 			return InboxReceipt{}, false, fmt.Errorf("%w: currentCoordinator/generation required for typed result", assignment.ErrInvalid)
 		}
-		if record.StableAgentID != actor || record.RunBinding.TaskID != id.String() {
+		if record.StableAgentID != actor || record.RunBinding.TaskID != id.String() || record.RunBinding.RunID != runID {
+			return InboxReceipt{}, false, assignment.ErrInvalid
+		}
+		if agentBinding != nil && (record.AssignmentID != agentBinding.AssignmentID || record.Issuer != agentBinding.Issuer || record.CoordinatorGeneration != agentBinding.CoordinatorGeneration || record.Target() != agentBinding.Target || len(agentBinding.CommandDigest) != 64) {
 			return InboxReceipt{}, false, assignment.ErrInvalid
 		}
 		if err := assignmentReady(s.state, *record, authorityNow); err != nil {
@@ -418,25 +444,35 @@ func (s *CanonicalStore) applyAssignmentResultCommand(actor, messageID string, i
 		if err != nil || record == nil {
 			return receipt, err
 		}
+		if agentBinding != nil {
+			receipt.AssignmentID = record.AssignmentID
+			receipt.AgentCommandDigest = agentBinding.CommandDigest
+		}
 		if len(receipt.EventIDs) == 0 {
 			return InboxReceipt{}, falseResultError()
 		}
-		// The same snapshot contains the typed result/events/receipt/outbox and
-		// assignment completion. A failed commit publishes neither half.
-		r := *record
-		next := r
-		raw, err := json.Marshal(receipt)
-		if err != nil {
-			return InboxReceipt{}, err
-		}
-		digest := sha256.Sum256(raw)
-		result := assignment.Result{AssignmentID: r.AssignmentID, SubjectSHA: r.SubjectSHA, Assignee: r.Assignee, SessionID: r.SessionID, StableAgentID: r.StableAgentID, Role: r.Role, CoordinatorGeneration: r.CoordinatorGeneration, ResultID: messageID, Digest: hex.EncodeToString(digest[:]), EvidenceRef: receipt.EventIDs[0]}
-		next.State, next.AcceptedResult = assignment.Completed, &result
-		if err := appendAssignment(state, r.Coordinator(), r, next, "RESULT", result.EvidenceRef, authorityNow); err != nil {
+		if err := appendAssignmentResult(state, *record, receipt, messageID, authorityNow); err != nil {
 			return InboxReceipt{}, err
 		}
 		return receipt, nil
 	})
+}
+
+func appendAssignmentResult(state *CanonicalState, prior assignment.Record, receipt InboxReceipt, messageID string, now time.Time) error {
+	raw, err := json.Marshal(receipt)
+	if err != nil {
+		return err
+	}
+	digest := sha256.Sum256(raw)
+	result := assignment.Result{
+		AssignmentID: prior.AssignmentID, SubjectSHA: prior.SubjectSHA, Assignee: prior.Assignee,
+		SessionID: prior.SessionID, StableAgentID: prior.StableAgentID, Role: prior.Role,
+		CoordinatorGeneration: prior.CoordinatorGeneration, ResultID: messageID,
+		Digest: hex.EncodeToString(digest[:]), EvidenceRef: receipt.EventIDs[0],
+	}
+	next := prior
+	next.State, next.AcceptedResult = assignment.Completed, &result
+	return appendAssignment(state, prior.Coordinator(), prior, next, "RESULT", result.EvidenceRef, now)
 }
 
 func falseResultError() error {
