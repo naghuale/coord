@@ -153,9 +153,11 @@ func recognizedDocStatus(status string) bool {
 
 // nonAuthoritativeDocStatus is true for statuses that cannot back AUTHORITATIVE_REFERENCE
 // (and cannot authorize production claims under F97-1). Exact match only.
+// legacy is included for AUTHORITATIVE_REFERENCE (R5-F1): registry marks it as
+// not applicable to new canonical development / Action Map authority.
 func nonAuthoritativeDocStatus(status string) bool {
 	switch status {
-	case "proposed", "historical", "superseded":
+	case "proposed", "historical", "superseded", "legacy":
 		return true
 	default:
 		return false

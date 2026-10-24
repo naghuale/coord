@@ -882,6 +882,10 @@ func TestR4_F1_ActionMapStatusProposedFails(t *testing.T) {
 	assertR4F1ActionMapStatus(t, "proposed", CodeAuthoritativeActionMap, false)
 }
 
+func TestR5_F1_ActionMapStatusLegacyFails(t *testing.T) {
+	assertR4F1ActionMapStatus(t, "legacy", CodeAuthoritativeActionMap, false)
+}
+
 func TestR4_F1_ActionMapStatusAcceptedPasses(t *testing.T) {
 	dir := t.TempDir()
 	writeAuthoritativeActionMapFixture(t, dir)
