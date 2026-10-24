@@ -475,6 +475,45 @@ func TestF5_PrimaryRestartOncePerLossEvent(t *testing.T) {
 	})
 }
 
+// rejectPublicVoid pokes one invalid binding into a live OFFERED assignment,
+// then calls ChangeAssignment. The assertion requires that public VOID's
+// stable rejection text. Canonical bytes, events, and receipts stay unchanged.
+func rejectPublicVoid(t *testing.T, actor assignment.Principal, poke func(*CanonicalState, string), want string) {
+	t.Helper()
+	f2 := newOwnerCommandFixture(t)
+	now2 := f2.s.now().UTC()
+	grantDelegation(t, f2, "del-a", now2)
+	seedDelegatedAssignment(t, f2, "asg-seed", actor, now2)
+	target := assignment.Principal{SessionID: "codex:worker", AgentID: "worker", Generation: 1}
+	sha := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	id := "asg-open"
+	offer := assignment.Record{
+		AssignmentID: id, State: assignment.Offered,
+		Issuer: actor.SessionID, IssuerAgentID: actor.AgentID, IssuerGeneration: actor.Generation,
+		CurrentCoordinator: actor.SessionID, CoordinatorAgentID: actor.AgentID, CoordinatorGeneration: actor.Generation,
+		HandoffEvidence: []assignment.Handoff{},
+		Assignee:        target.SessionID, StableAgentID: target.AgentID, SessionID: target.SessionID, AssigneeGeneration: 1,
+		Role: "IMPLEMENTER", SubjectSHA: sha,
+		IssuedAt: now2.Add(-time.Minute), ValidUntil: now2.Add(time.Hour),
+		AdmissionBasis:     assignment.AdmissionBasis{Kind: "POOL", Reference: "issue-93b", TargetSessionID: target.SessionID, TargetAgentID: target.AgentID, Role: "IMPLEMENTER", SubjectSHA: sha},
+		VisibilityEvidence: assignment.VisibilityEvidence{Reference: "vis", SessionID: target.SessionID, ObservedAt: now2.Add(-time.Minute)},
+		Revision:           1, UpdatedAt: now2.Add(-time.Minute),
+	}
+	if err := f2.s.OfferAssignment(actor, offer, "offer-open"); err != nil {
+		t.Fatal(err)
+	}
+	f2.s.mu.Lock()
+	poke(&f2.s.state, id)
+	f2.s.mu.Unlock()
+	before := ownerStateBytes(t, f2.s)
+	nEvents := len(f2.s.state.AssignmentLedger.Events)
+	rec := f2.s.state.AssignmentLedger.Records[id]
+	err := f2.s.ChangeAssignment(actor, id, rec.Revision, "VOID", "probe")
+	if err == nil || !strings.Contains(err.Error(), want) || !bytes.Equal(before, ownerStateBytes(t, f2.s)) || len(f2.s.state.AssignmentLedger.Events) != nEvents {
+		t.Fatalf("want %q, err=%v", want, err)
+	}
+}
+
 func TestF1_ExactGrantBinding(t *testing.T) {
 	enableDelegationHarness(t)
 	f := newOwnerCommandFixture(t)
@@ -509,29 +548,29 @@ func TestF1_ExactGrantBinding(t *testing.T) {
 		if err := f.s.ChangeAssignment(actor, "asg-pos", rec.Revision, "VOID", "ok"); err != nil {
 			t.Fatal(err)
 		}
-		if f.s.state.AssignmentLedger.Records["asg-pos"].State != assignment.Void {
+		voided := f.s.state.AssignmentLedger.Records["asg-pos"]
+		if voided.State != assignment.Void {
 			t.Fatal("exact grant did not void")
+		}
+		ev := f.s.state.AssignmentLedger.Events[len(f.s.state.AssignmentLedger.Events)-1]
+		if ev.AssignmentID != "asg-pos" || ev.Kind != "VOID" || ev.Revision != voided.Revision {
+			t.Fatalf("void event: %+v", ev)
 		}
 	})
 
 	t.Run("item_allowed_only_by_other_grant", func(t *testing.T) {
-		before := ownerStateBytes(t, f.s)
-		err := f.s.UpdateCanonical(func(state *CanonicalState) error {
+		rejectPublicVoid(t, actor, func(state *CanonicalState, id string) {
 			other := state.CoordinatorDelegations["del-a"]
 			other.DelegationID = "del-b"
 			other.Scope.AllowedWorkItems = []string{"only-b"}
 			state.CoordinatorDelegations["del-b"] = other
-			r := state.AssignmentLedger.Records["asg-a"]
+			r := state.AssignmentLedger.Records[id]
 			r.AdmissionBasis.Reference = "only-b"
-			r.DelegationBinding.AllowedWorkItem = "only-b"
-			if _, err := assignmentBoundGrant(*state, r); err == nil {
-				return errors.New("item allowed only by another grant was accepted")
-			}
-			return errors.New("rejected")
-		})
-		if err == nil || !bytes.Equal(before, ownerStateBytes(t, f.s)) {
-			t.Fatalf("err=%v state changed", err)
-		}
+			b := *r.DelegationBinding
+			b.AllowedWorkItem = "only-b"
+			r.DelegationBinding = &b
+			state.AssignmentLedger.Records[id] = r
+		}, "outside allowedWorkItems")
 	})
 
 	t.Run("supplied_grant_b", func(t *testing.T) {
@@ -549,25 +588,13 @@ func TestF1_ExactGrantBinding(t *testing.T) {
 		}
 	})
 
-	t.Run("grant_generation_changed", func(t *testing.T) {
-		f2 := newOwnerCommandFixture(t)
-		now2 := f2.s.now().UTC()
-		grantDelegation(t, f2, "del-a", now2)
-		seedDelegatedAssignment(t, f2, "asg-a", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now2)
-		before := ownerStateBytes(t, f2.s)
-		err := f2.s.UpdateCanonical(func(state *CanonicalState) error {
+	t.Run("grant_generation_mismatch", func(t *testing.T) {
+		rejectPublicVoid(t, actor, func(state *CanonicalState, id string) {
 			g := state.CoordinatorDelegations["del-a"]
 			g.Generation = 2
 			state.CoordinatorDelegations["del-a"] = g
-			_, err := assignmentBoundGrant(*state, state.AssignmentLedger.Records["asg-a"])
-			if err == nil {
-				return errors.New("changed generation accepted")
-			}
-			return err
-		})
-		if err == nil || !bytes.Equal(before, ownerStateBytes(t, f2.s)) {
-			t.Fatalf("generation err=%v", err)
-		}
+			_ = id
+		}, "generation mismatch")
 	})
 
 	t.Run("revoked_grant_replacement_ignored", func(t *testing.T) {
@@ -635,22 +662,11 @@ func TestF1_ExactGrantBinding(t *testing.T) {
 	})
 
 	t.Run("missing_binding", func(t *testing.T) {
-		f2 := newOwnerCommandFixture(t)
-		now2 := f2.s.now().UTC()
-		grantDelegation(t, f2, "del-a", now2)
-		seedDelegatedAssignment(t, f2, "asg-a", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now2)
-		before := ownerStateBytes(t, f2.s)
-		err := f2.s.UpdateCanonical(func(state *CanonicalState) error {
-			r := state.AssignmentLedger.Records["asg-a"]
+		rejectPublicVoid(t, actor, func(state *CanonicalState, id string) {
+			r := state.AssignmentLedger.Records[id]
 			r.DelegationBinding = nil
-			if _, err := assignmentBoundGrant(*state, r); err == nil {
-				return errors.New("missing binding accepted")
-			}
-			return errors.New("rejected")
-		})
-		if err == nil || !bytes.Equal(before, ownerStateBytes(t, f2.s)) {
-			t.Fatalf("missing binding err=%v", err)
-		}
+			state.AssignmentLedger.Records[id] = r
+		}, "persisted assignment grant binding required")
 	})
 
 	t.Run("loss_batch_boundary", func(t *testing.T) {
@@ -728,8 +744,8 @@ func TestF1_ExactGrantBinding(t *testing.T) {
 			PrincipalID: "owner-primary", CredentialID: "owner-primary",
 			Payload: payload, Digest: "digest-poison",
 		}, now2)
-		if err == nil {
-			t.Fatal("poisoned batch accepted")
+		if err == nil || !strings.Contains(err.Error(), "grant binding invalid") {
+			t.Fatalf("poisoned batch err=%v", err)
 		}
 		if !bytes.Equal(beforeOK, mustJSON(t, state.AssignmentLedger.Records["asg-ok"])) ||
 			!bytes.Equal(beforeBad, mustJSON(t, state.AssignmentLedger.Records["asg-bad"])) {
@@ -740,38 +756,26 @@ func TestF1_ExactGrantBinding(t *testing.T) {
 		}
 	})
 
-	rejectBound := func(t *testing.T, mutate func(*assignment.DelegationBinding)) {
-		t.Helper()
-		f2 := newOwnerCommandFixture(t)
-		now2 := f2.s.now().UTC()
-		grantDelegation(t, f2, "del-a", now2)
-		seedDelegatedAssignment(t, f2, "asg-a", actor, now2)
-		before := ownerStateBytes(t, f2.s)
-		err := f2.s.UpdateCanonical(func(state *CanonicalState) error {
-			r := state.AssignmentLedger.Records["asg-a"]
+	mutateBinding := func(set func(*assignment.DelegationBinding)) func(*CanonicalState, string) {
+		return func(state *CanonicalState, id string) {
+			r := state.AssignmentLedger.Records[id]
 			b := *r.DelegationBinding
-			mutate(&b)
+			set(&b)
 			r.DelegationBinding = &b
-			if _, err := assignmentBoundGrant(*state, r); err == nil {
-				return errors.New("mutated binding accepted")
-			}
-			return errors.New("rejected")
-		})
-		if err == nil || !bytes.Equal(before, ownerStateBytes(t, f2.s)) {
-			t.Fatalf("err=%v", err)
+			state.AssignmentLedger.Records[id] = r
 		}
 	}
-	t.Run("same_item_wrong_repo", func(t *testing.T) {
-		rejectBound(t, func(b *assignment.DelegationBinding) { b.Repository = "other/repo" })
+	t.Run("repository_mismatch", func(t *testing.T) {
+		rejectPublicVoid(t, actor, mutateBinding(func(b *assignment.DelegationBinding) { b.Repository = "other/repo" }), "repository/project mismatch")
 	})
-	t.Run("same_item_wrong_project", func(t *testing.T) {
-		rejectBound(t, func(b *assignment.DelegationBinding) { b.Project = "other" })
+	t.Run("project_mismatch", func(t *testing.T) {
+		rejectPublicVoid(t, actor, mutateBinding(func(b *assignment.DelegationBinding) { b.Project = "other" }), "repository/project mismatch")
 	})
 	t.Run("missing_persisted_repo", func(t *testing.T) {
-		rejectBound(t, func(b *assignment.DelegationBinding) { b.Repository = "" })
+		rejectPublicVoid(t, actor, mutateBinding(func(b *assignment.DelegationBinding) { b.Repository = "" }), "persisted assignment grant binding required")
 	})
 	t.Run("missing_persisted_project", func(t *testing.T) {
-		rejectBound(t, func(b *assignment.DelegationBinding) { b.Project = "" })
+		rejectPublicVoid(t, actor, mutateBinding(func(b *assignment.DelegationBinding) { b.Project = "" }), "persisted assignment grant binding required")
 	})
 
 	rejectClaim := func(t *testing.T, claim scopeClaim) {
