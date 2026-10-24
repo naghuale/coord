@@ -116,6 +116,9 @@ func TestA95AuthenticatedIngressHasSingleCompileTimeGate(t *testing.T) {
 	if astUsesForbiddenFlag(guard.Cond) {
 		t.Fatal("ingress configuration gate reads an environment, flag or config switch")
 	}
+	if astUsesForbiddenFlag(configure.Body) {
+		t.Fatal("configureAuthenticatedAgentIngress reads an environment variable or flag")
+	}
 
 	run := functionDecl(coordinatorFile, "RunWithReadiness")
 	if run == nil {
@@ -132,6 +135,9 @@ func TestA95AuthenticatedIngressHasSingleCompileTimeGate(t *testing.T) {
 	})
 	if count != 1 || selection == nil || astUsesForbiddenFlag(selection.Cond) {
 		t.Fatalf("RunWithReadiness stream selection must depend only on %s (matching if count=%d)", constName, count)
+	}
+	if astUsesForbiddenFlag(run.Body) {
+		t.Fatal("RunWithReadiness reads an environment variable or flag")
 	}
 	if receiveCalls(selection.Body, "ReceiveAuthenticated") != 1 || receiveCalls(selection.Body, "Receive") != 0 || selection.Else == nil || receiveCalls(selection.Else, "Receive") != 1 || receiveCalls(selection.Else, "ReceiveAuthenticated") != 0 {
 		t.Fatal("RunWithReadiness must use authenticated Receive only in the gate's true branch and legacy Receive only in its false branch")

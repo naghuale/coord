@@ -211,12 +211,23 @@ func TestA95AuthenticatedCoordinatorRedeliveryResendsStableReceiptOnce(t *testin
 			if !reflect.DeepEqual(first.Inbox, second.Inbox) || !reflect.DeepEqual(first.Tasks, second.Tasks) || !reflect.DeepEqual(first.Events, second.Events) || !reflect.DeepEqual(first.AssignmentLedger, second.AssignmentLedger) {
 				t.Fatal("redelivery changed the durable receipt or duplicated canonical effects")
 			}
+			if len(second.Inbox) != 1 {
+				t.Fatalf("redelivery left %d inbox receipts, want one", len(second.Inbox))
+			}
+			for _, receipt := range second.Inbox {
+				if receipt.MessageID != command.MessageID || receipt.AgentCommandDigest == "" || receipt.AssignmentID != fixture.Assignment.AssignmentID {
+					t.Fatalf("redelivery receipt lost command identity/digest: %+v", receipt)
+				}
+				if tc.wantDisposition == "ACCEPTED" && len(receipt.EventIDs) != 1 || tc.wantDisposition == "NO_ACCEPTANCE" && len(receipt.EventIDs) != 0 {
+					t.Fatalf("receipt event count=%d for %s", len(receipt.EventIDs), tc.wantDisposition)
+				}
+			}
 			if tc.wantDisposition == "ACCEPTED" {
-				if len(first.Events) != len(before.Events)+1 || second.Tasks[fixture.Task].Revision != before.Tasks[fixture.Task].Revision+1 || second.AssignmentLedger.Records[fixture.Assignment.AssignmentID].State != assignment.Completed {
+				if second.Revision != first.Revision+2 || len(first.Outbox[fixture.Assignment.RunBinding.RunID].Messages) != 1 || len(second.Outbox[fixture.Assignment.RunBinding.RunID].Messages) != 0 || first.Runs[fixture.Assignment.RunBinding.RunID].Status != second.Runs[fixture.Assignment.RunBinding.RunID].Status || !reflect.DeepEqual(first.Runs[fixture.Assignment.RunBinding.RunID].Result, second.Runs[fixture.Assignment.RunBinding.RunID].Result) || len(first.Events) != len(before.Events)+1 || second.Tasks[fixture.Task].Revision != before.Tasks[fixture.Task].Revision+1 || second.AssignmentLedger.Records[fixture.Assignment.AssignmentID].State != assignment.Completed {
 					t.Fatal("accepted redelivery did not preserve exactly one result effect")
 				}
-			} else if !reflect.DeepEqual(before.Tasks, second.Tasks) || !reflect.DeepEqual(before.Events, second.Events) || second.AssignmentLedger.Records[fixture.Assignment.AssignmentID].State != assignment.Active {
-				t.Fatal("no-acceptance redelivery changed Task effects or Assignment state")
+			} else if second.Revision != first.Revision || !reflect.DeepEqual(first.Runs, second.Runs) || !reflect.DeepEqual(first.Outbox, second.Outbox) || !reflect.DeepEqual(before.Tasks, second.Tasks) || !reflect.DeepEqual(before.Events, second.Events) || second.AssignmentLedger.Records[fixture.Assignment.AssignmentID].State != assignment.Active {
+				t.Fatal("no-acceptance redelivery changed canonical revision, Run, outbox, Task effects or Assignment state")
 			}
 		})
 	}
