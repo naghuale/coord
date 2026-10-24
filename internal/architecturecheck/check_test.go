@@ -886,9 +886,36 @@ func TestR5_F1_ActionMapStatusLegacyFails(t *testing.T) {
 	assertR4F1ActionMapStatus(t, "legacy", CodeAuthoritativeActionMap, false)
 }
 
-func TestR4_F1_ActionMapStatusAcceptedPasses(t *testing.T) {
+func TestR6_F1_ActionMapStatusActiveFails(t *testing.T) {
 	dir := t.TempDir()
 	writeAuthoritativeActionMapFixture(t, dir)
+	mustMkdir(t, filepath.Join(dir, "docs/operations"))
+	mustWrite(t, filepath.Join(dir, "docs/operations/ACTION-MAP.yaml"), "apiVersion: v1\n")
+	writeDocRegistry(t, dir, actionMapRegistryYAML("active", false, "docs/operations/ACTION-MAP.yaml"))
+	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCode(res.Violations, CodeAuthoritativeActionMap) {
+		t.Fatalf("expected %s for active, got %v", CodeAuthoritativeActionMap, res.Violations)
+	}
+}
+
+func TestR6_F1_ActionMapAcceptedOptionalMissingFails(t *testing.T) {
+	assertR6Publication(t, true, "docs/operations/ACTION-MAP.yaml", false, false, CodeActionMapNotPublished)
+}
+
+func TestR6_F1_ActionMapAcceptedRequiredMissingFails(t *testing.T) {
+	assertR6Publication(t, false, "docs/operations/ACTION-MAP.yaml", false, false, CodeActionMapNotPublished)
+}
+
+func TestR6_F1_ActionMapAcceptedEmptyPathFails(t *testing.T) {
+	dir := t.TempDir()
+	writeAuthoritativeActionMapFixture(t, dir)
+	// Row is discoverable by the fixed ACTION-MAP path key only when path matches;
+	// empty path cannot be found via byPath["docs/operations/ACTION-MAP.yaml"].
+	// Simulate accepted row with empty path by writing the key path then clearing via custom YAML
+	// that still uses the canonical path string of spaces — treat as empty after trim in evaluatePublication.
 	writeDocRegistry(t, dir, `apiVersion: coord.dev/v1alpha1
 kind: DocumentRegistry
 documents:
@@ -896,12 +923,125 @@ documents:
     path: docs/operations/ACTION-MAP.yaml
     status: accepted
 `)
+	// Overwrite the loaded path by using a registry entry whose path is only whitespace under a
+	// duplicate id won't work with byPath. Instead write path as the canonical key but evaluate
+	// empty via a dedicated helper path: use path "." which is not a regular file under ops.
+	// Spec: empty path FAIL — inject via classify path "".
+	writeDocRegistry(t, dir, `apiVersion: coord.dev/v1alpha1
+kind: DocumentRegistry
+documents:
+  - id: action-map
+    path: "docs/operations/ACTION-MAP.yaml"
+    status: accepted
+`)
+	// Direct unit of evaluatePublication for empty path:
+	st := actionMapDocStatus{status: "accepted", path: ""}
+	st.evaluatePublication(dir)
+	if st.publishedOK || st.publishedDetail == "" {
+		t.Fatalf("empty path must fail publication, got ok=%v detail=%q", st.publishedOK, st.publishedDetail)
+	}
+}
+
+func TestR6_F1_ActionMapAcceptedDirectoryFails(t *testing.T) {
+	dir := t.TempDir()
+	writeAuthoritativeActionMapFixture(t, dir)
+	mustMkdir(t, filepath.Join(dir, "docs/operations/ACTION-MAP.yaml")) // directory at the path
+	writeDocRegistry(t, dir, actionMapRegistryYAML("accepted", false, "docs/operations/ACTION-MAP.yaml"))
 	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if hasCode(res.Violations, CodeAuthoritativeActionMap) || hasCode(res.Violations, CodeActionMapStatusInvalid) {
-		t.Fatalf("accepted ACTION-MAP status must allow AUTHORITATIVE_REFERENCE, got %v", res.Violations)
+	if !hasCode(res.Violations, CodeActionMapNotPublished) {
+		t.Fatalf("expected %s for directory path, got %v", CodeActionMapNotPublished, res.Violations)
+	}
+}
+
+func TestR6_F1_ActionMapAcceptedPathEscapeFails(t *testing.T) {
+	dir := t.TempDir()
+	writeAuthoritativeActionMapFixture(t, dir)
+	st := actionMapDocStatus{status: "accepted", path: "../outside.yaml"}
+	st.evaluatePublication(dir)
+	if st.publishedOK {
+		t.Fatal("path escape must fail publication")
+	}
+}
+
+func TestR6_F1_ActionMapAcceptedOtherFileDoesNotSubstitute(t *testing.T) {
+	dir := t.TempDir()
+	writeAuthoritativeActionMapFixture(t, dir)
+	mustWrite(t, filepath.Join(dir, "docs/elsewhere.yaml"), "other\n")
+	// ACTION-MAP path missing; another file exists — must still FAIL.
+	writeDocRegistry(t, dir, actionMapRegistryYAML("accepted", false, "docs/operations/ACTION-MAP.yaml"))
+	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCode(res.Violations, CodeActionMapNotPublished) {
+		t.Fatalf("other existing file must not substitute, got %v", res.Violations)
+	}
+}
+
+func TestR6_F1_ActionMapAcceptedOptionalPresentPasses(t *testing.T) {
+	assertR6Publication(t, true, "docs/operations/ACTION-MAP.yaml", true, true, "")
+}
+
+func TestR6_F1_ActionMapAcceptedRequiredPresentPasses(t *testing.T) {
+	assertR6Publication(t, false, "docs/operations/ACTION-MAP.yaml", true, true, "")
+}
+
+func TestR6_F1_ActionMapLegacyWithFileFails(t *testing.T) {
+	dir := t.TempDir()
+	writeAuthoritativeActionMapFixture(t, dir)
+	mustMkdir(t, filepath.Join(dir, "docs/operations"))
+	mustWrite(t, filepath.Join(dir, "docs/operations/ACTION-MAP.yaml"), "apiVersion: v1\n")
+	writeDocRegistry(t, dir, actionMapRegistryYAML("legacy", false, "docs/operations/ACTION-MAP.yaml"))
+	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCode(res.Violations, CodeAuthoritativeActionMap) {
+		t.Fatalf("expected %s for legacy, got %v", CodeAuthoritativeActionMap, res.Violations)
+	}
+}
+
+func TestR4_F1_ActionMapStatusAcceptedPasses(t *testing.T) {
+	assertR6Publication(t, false, "docs/operations/ACTION-MAP.yaml", true, true, "")
+}
+
+func actionMapRegistryYAML(status string, optional bool, path string) string {
+	return fmt.Sprintf(`apiVersion: coord.dev/v1alpha1
+kind: DocumentRegistry
+documents:
+  - id: action-map
+    path: %s
+    status: %s
+    optional: %t
+`, path, status, optional)
+}
+
+func assertR6Publication(t *testing.T, optional bool, path string, writeFile, wantPass bool, wantCode string) {
+	t.Helper()
+	dir := t.TempDir()
+	writeAuthoritativeActionMapFixture(t, dir)
+	if writeFile {
+		mustMkdir(t, filepath.Join(dir, filepath.Dir(path)))
+		mustWrite(t, filepath.Join(dir, path), "apiVersion: v1\nkinds: []\n")
+	}
+	writeDocRegistry(t, dir, actionMapRegistryYAML("accepted", optional, path))
+	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wantPass {
+		for _, code := range []string{CodeAuthoritativeActionMap, CodeActionMapStatusInvalid, CodeActionMapNotPublished} {
+			if hasCode(res.Violations, code) {
+				t.Fatalf("accepted+published must pass, got %v", res.Violations)
+			}
+		}
+		return
+	}
+	if !hasCode(res.Violations, wantCode) {
+		t.Fatalf("expected %s, got %v", wantCode, res.Violations)
 	}
 }
 

@@ -57,7 +57,9 @@ func validateActionMapRefs(root string, reg Registry, actionMap actionMapDocStat
 			} else if actionMap.statusWrongType || actionMap.fieldInvalid || actionMap.statusMissing || actionMap.statusUnrecognized {
 				vs = append(vs, Violation{Code: CodeActionMapStatusInvalid, Detail: fmt.Sprintf("%s:%d AUTHORITATIVE_REFERENCE while ACTION-MAP.yaml registry status is missing, unknown or wrong-type (status=%q)", c.Path, c.Line, actionMap.status)})
 			} else if actionMap.nonAuthoritative {
-				vs = append(vs, Violation{Code: CodeAuthoritativeActionMap, Detail: fmt.Sprintf("%s:%d AUTHORITATIVE_REFERENCE while ACTION-MAP.yaml status=%s", c.Path, c.Line, actionMap.status)})
+				vs = append(vs, Violation{Code: CodeAuthoritativeActionMap, Detail: fmt.Sprintf("%s:%d AUTHORITATIVE_REFERENCE while ACTION-MAP.yaml status=%s (only accepted is eligible)", c.Path, c.Line, actionMap.status)})
+			} else if !actionMap.publishedOK {
+				vs = append(vs, Violation{Code: CodeActionMapNotPublished, Detail: fmt.Sprintf("%s:%d AUTHORITATIVE_REFERENCE while ACTION-MAP.yaml is accepted but not published: %s", c.Path, c.Line, actionMap.publishedDetail)})
 			}
 		}
 	}

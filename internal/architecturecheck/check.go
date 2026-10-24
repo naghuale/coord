@@ -72,6 +72,7 @@ func Check(opts Options) (*Result, error) {
 			actionMap = classifyActionMapDoc(d)
 			actionMap.registryOK = true
 			actionMap.found = true
+			actionMap.evaluatePublication(root)
 		}
 	}
 
@@ -100,7 +101,12 @@ type actionMapDocStatus struct {
 	statusWrongType    bool
 	statusUnrecognized bool // present string outside the known vocabulary
 	fieldInvalid       bool // any FieldInvalid on the row (incl. status wrong type)
-	nonAuthoritative   bool // proposed/historical/superseded
+	nonAuthoritative   bool // status recognized but not exactly "accepted" (R6-F1)
+	path               string
+	optional           bool
+	locationClass      string // "" means LOCAL (omitted)
+	publishedOK        bool
+	publishedDetail    string
 }
 
 // registryDoc is a lightweight DOCUMENT-REGISTRY row used for authority checks.
@@ -110,6 +116,8 @@ type registryDoc struct {
 	Path                         string
 	Status                       string
 	StatusPresent                bool // true when YAML status key was present (even if wrong type)
+	Optional                     bool
+	LocationClass                string // empty => LOCAL
 	CanonicalProductionAuthority *bool
 	CurrentNormativeAuthority    *bool
 	NormativeAuthority           *string
@@ -117,11 +125,14 @@ type registryDoc struct {
 	FieldInvalid string
 }
 
-// classifyActionMapDoc derives ACTION-MAP authority posture for R3-F2 / R4-F1.
+// classifyActionMapDoc derives ACTION-MAP authority posture for R3-F2 / R4-F1 / R6-F1.
 func classifyActionMapDoc(d registryDoc) actionMapDocStatus {
 	out := actionMapDocStatus{
-		status:       d.Status,
-		fieldInvalid: d.FieldInvalid != "",
+		status:        d.Status,
+		fieldInvalid:  d.FieldInvalid != "",
+		path:          d.Path,
+		optional:      d.Optional,
+		locationClass: d.LocationClass,
 	}
 	if strings.Contains(d.FieldInvalid, "status has wrong type") {
 		out.statusWrongType = true
@@ -136,28 +147,58 @@ func classifyActionMapDoc(d registryDoc) actionMapDocStatus {
 			out.statusUnrecognized = true
 		}
 		out.proposed = d.Status == "proposed"
-		out.nonAuthoritative = nonAuthoritativeDocStatus(d.Status)
+		// R6-F1: AUTHORITATIVE_REFERENCE allow-list is exactly "accepted".
+		out.nonAuthoritative = d.Status != "accepted"
 	}
 	return out
+}
+
+// evaluatePublication applies the authoritative-ACTION-MAP publication rule (R6-F1):
+// accepted AND LOCAL AND non-empty contained path resolving to an existing regular file.
+// optional:true does NOT waive this check for AUTHORITATIVE_REFERENCE.
+func (a *actionMapDocStatus) evaluatePublication(root string) {
+	if a.status != "accepted" || a.statusMissing || a.statusWrongType || a.statusUnrecognized || a.fieldInvalid {
+		return
+	}
+	loc := a.locationClass
+	if loc == "" {
+		loc = "LOCAL"
+	}
+	if loc != "LOCAL" {
+		a.publishedDetail = fmt.Sprintf("ACTION-MAP location class %q is not LOCAL", loc)
+		return
+	}
+	if strings.TrimSpace(a.path) == "" {
+		a.publishedDetail = "ACTION-MAP registry path is empty"
+		return
+	}
+	clean := filepath.Clean(a.path)
+	if filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		a.publishedDetail = fmt.Sprintf("ACTION-MAP path escapes repo root: %q", a.path)
+		return
+	}
+	full := filepath.Join(root, clean)
+	rel, err := filepath.Rel(root, full)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		a.publishedDetail = fmt.Sprintf("ACTION-MAP path escapes repo root: %q", a.path)
+		return
+	}
+	fi, err := os.Stat(full)
+	if err != nil {
+		a.publishedDetail = fmt.Sprintf("ACTION-MAP file missing at %s", clean)
+		return
+	}
+	if !fi.Mode().IsRegular() {
+		a.publishedDetail = fmt.Sprintf("ACTION-MAP path is not a regular file: %s", clean)
+		return
+	}
+	a.publishedOK = true
 }
 
 // recognizedDocStatus is the DOCUMENT-REGISTRY status vocabulary (exact match, no normalization).
 func recognizedDocStatus(status string) bool {
 	switch status {
 	case "proposed", "accepted", "active", "historical", "superseded", "legacy":
-		return true
-	default:
-		return false
-	}
-}
-
-// nonAuthoritativeDocStatus is true for statuses that cannot back AUTHORITATIVE_REFERENCE
-// (and cannot authorize production claims under F97-1). Exact match only.
-// legacy is included for AUTHORITATIVE_REFERENCE (R5-F1): registry marks it as
-// not applicable to new canonical development / Action Map authority.
-func nonAuthoritativeDocStatus(status string) bool {
-	switch status {
-	case "proposed", "historical", "superseded", "legacy":
 		return true
 	default:
 		return false
@@ -185,9 +226,13 @@ func loadDocumentRegistryIndex(root, docRegistryPath string) (documentRegistryIn
 	// Authority fields use interface{} so wrong types stay detectable (R3-F1).
 	var doc struct {
 		Documents []struct {
-			ID                           string      `yaml:"id"`
-			Path                         string      `yaml:"path"`
-			Status                       interface{} `yaml:"status"`
+			ID       string      `yaml:"id"`
+			Path     string      `yaml:"path"`
+			Status   interface{} `yaml:"status"`
+			Optional bool        `yaml:"optional"`
+			Location *struct {
+				Class string `yaml:"class"`
+			} `yaml:"location"`
 			CanonicalProductionAuthority interface{} `yaml:"canonicalProductionAuthority"`
 			CurrentNormativeAuthority    interface{} `yaml:"currentNormativeAuthority"`
 			NormativeAuthority           interface{} `yaml:"normativeAuthority"`
@@ -197,7 +242,10 @@ func loadDocumentRegistryIndex(root, docRegistryPath string) (documentRegistryIn
 		return out, fmt.Errorf("document registry malformed at %s: %w", path, err)
 	}
 	for _, d := range doc.Documents {
-		row := registryDoc{ID: d.ID, Path: d.Path}
+		row := registryDoc{ID: d.ID, Path: d.Path, Optional: d.Optional}
+		if d.Location != nil {
+			row.LocationClass = d.Location.Class
+		}
 		if d.Status != nil {
 			row.StatusPresent = true
 			s, ok := d.Status.(string)

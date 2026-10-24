@@ -118,6 +118,7 @@ const (
 	CodeUnclassifiedActionMap       = "ARCHITECTURE_ACTION_MAP_UNCLASSIFIED"
 	CodeAuthoritativeActionMap      = "ARCHITECTURE_ACTION_MAP_AUTHORITATIVE_WHILE_PROPOSED"
 	CodeActionMapStatusInvalid      = "ARCHITECTURE_ACTION_MAP_STATUS_INVALID"
+	CodeActionMapNotPublished       = "ARCHITECTURE_ACTION_MAP_NOT_PUBLISHED"
 	CodeDocumentRegistryUnavailable = "ARCHITECTURE_DOCUMENT_REGISTRY_UNAVAILABLE"
 	CodeAxisInvalid                 = "ARCHITECTURE_AXIS_INVALID"
 	CodeImplementedNoSymbol         = "ARCHITECTURE_IMPLEMENTED_WITHOUT_SYMBOL"
