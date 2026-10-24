@@ -34,8 +34,8 @@ Coordinator восстанавливает минимальный контекс
 assignment активной задачи. Проверяются ProjectID, HEAD, активная задача,
 blockers, следующий безопасный переход, OWNER boundary и доступность evidence.
 Только затем загружаются owning нормы текущей работы. Сейчас Coordinator вручную
-определяет применимые документы по `readWhen`, `status`, `authority` и `startupPaths` в
-Registry/Action Map; программный
+определяет применимые документы по `readWhen`, `status`, `authority` и `startupPaths`
+Document Registry, сверяя событие с промежуточным порядком в `AGENTS.md`. Программный
 resolver и launcher admission не подключены. Для Executor, Reviewer и Auditor
 наборы указаны в `startupPaths` реестра.
 
