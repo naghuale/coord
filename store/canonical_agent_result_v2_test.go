@@ -28,9 +28,10 @@ func newAgentResultFixture(t *testing.T, role roles.Role) *agentResultFixture {
 	t.Helper()
 	state := resultState(role)
 	runID := "run-review"
-	if role == roles.Auditor {
+	switch role {
+	case roles.Auditor:
 		runID = "run-audit"
-	} else if role == roles.Executor {
+	case roles.Executor:
 		runID = "run-executor"
 		state = executorState()
 	}
@@ -266,7 +267,7 @@ func TestAgentResultV2RejectsWithoutAssignmentOrOnCommitFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 	frame := f.frame("no-assignment", "REVIEW_ACCEPTED", "")
 	before, _ := s.CanonicalSnapshot()
 	if _, _, err := s.ApplyAgentCommand(frame, f.run.TaskID, frame.envelope.AgentResultPayload.ExpectedRevision, nil); !errors.Is(err, ErrAssignmentUnknown) {

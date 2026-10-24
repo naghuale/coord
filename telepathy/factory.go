@@ -39,7 +39,7 @@ func (a *runtimeAdapter) ConfigureAgentSessionIngress(resolver transport.KeyReso
 		return fmt.Errorf("AgentSession resolver required")
 	}
 	a.signed.Resolver = resolver
-	a.authenticated = &transport.AuthenticatedAdapter{Client: a.signed, Session: a.Adapter.Session}
+	a.authenticated = &transport.AuthenticatedAdapter{Client: a.signed, Session: a.Session}
 	return nil
 }
 

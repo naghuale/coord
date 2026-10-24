@@ -332,10 +332,10 @@ func applyAgentResultToState(state *CanonicalState, actorID string, run fsm.Run,
 	}
 	currentTask, exists := state.Tasks[id]
 	if !exists || currentTask.Status != task.InProgress || currentTask.CurrentStage == nil {
-		return InboxReceipt{}, fmt.Errorf("Task is not active at an agent result stage")
+		return InboxReceipt{}, fmt.Errorf("task is not active at an agent result stage")
 	}
 	if currentRun.Terminal() || (currentRun.Status != fsm.Started && currentRun.Status != fsm.ResultReady) || now.IsZero() || now.Before(currentTask.UpdatedAt) {
-		return InboxReceipt{}, fmt.Errorf("Run or Task is not ready for an agent result")
+		return InboxReceipt{}, fmt.Errorf("run or task is not ready for an agent result")
 	}
 	var event task.DomainEvent
 	event.ID = task.EventID(id, currentTask.LastEventSeq+1)
