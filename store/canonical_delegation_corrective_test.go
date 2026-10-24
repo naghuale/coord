@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"coord/assignment"
 	"coord/ownercredential"
+	"crypto/ed25519"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -298,25 +299,45 @@ func TestF5_PrimaryRestartOncePerLossEvent(t *testing.T) {
 	if restartEntry.ReceiptDig != "vis-f5-1" {
 		t.Fatalf("restart not bound to visibility id: %+v", restartEntry)
 	}
+	if restartEntry.AssignmentID != "asg-f5" {
+		t.Fatalf("restart not bound to assignment: %+v", restartEntry)
+	}
+	if restartEntry.To == nil || restartEntry.To.SessionID != "claude:a2" || restartEntry.To.Generation != 1 {
+		t.Fatalf("restart not bound to replacement session/generation: %+v", restartEntry)
+	}
 
-	t.Run("same_loss_second_application", func(t *testing.T) {
-		registerSession(t, f, "claude:a3", "agent-a")
-		confirmVisibility(t, f, "del-f5", "vis-f5-2", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a3", Generation: 1}, now)
-		// Acting is a2; bar it so dual-acting check passes, but same lossRecordID.
-		if err := f.s.UpdateCanonical(func(state *CanonicalState) error {
-			r := state.CoordinatorDelegations["del-f5"]
-			acting := DelegationPrincipal{StableAgentID: "agent-a", SessionID: "claude:a2", Generation: 1}
+	clearActing := func(t *testing.T, store *CanonicalStore, delID, sessionID string) {
+		t.Helper()
+		if err := store.UpdateCanonical(func(state *CanonicalState) error {
+			r := state.CoordinatorDelegations[delID]
+			acting := DelegationPrincipal{StableAgentID: "agent-a", SessionID: sessionID, Generation: 1}
 			if !r.IsBarred(acting) {
 				r.BarredCoordinators = append(r.BarredCoordinators, acting)
 			}
 			r.ActingCoordinator = nil
-			state.CoordinatorDelegations["del-f5"] = r
+			state.CoordinatorDelegations[delID] = r
 			return nil
 		}); err != nil {
 			t.Fatal(err)
 		}
+	}
+
+	t.Run("same_loss_second_application", func(t *testing.T) {
+		registerSession(t, f, "claude:a3", "agent-a")
+		confirmVisibility(t, f, "del-f5", "vis-f5-2", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a3", Generation: 1}, now)
+		clearActing(t, f.s, "del-f5", "claude:a2")
 		if err := f.s.ApplyPrimaryRestart("del-f5", assignment.Principal{SessionID: "claude:a3", AgentID: "agent-a", Generation: 1}, "restart-2"); !errors.Is(err, ErrCoordinatorDelegationInvalid) {
 			t.Fatalf("same loss second application err=%v", err)
+		}
+	})
+
+	t.Run("same_loss_new_command_id", func(t *testing.T) {
+		registerSession(t, f, "claude:a3b", "agent-a")
+		confirmVisibility(t, f, "del-f5", "vis-f5-2b", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a3b", Generation: 1}, now)
+		clearActing(t, f.s, "del-f5", "claude:a2")
+		// Different evidence/command id must not re-apply the same lossRecordID.
+		if err := f.s.ApplyPrimaryRestart("del-f5", assignment.Principal{SessionID: "claude:a3b", AgentID: "agent-a", Generation: 1}, "cmd-id-other"); !errors.Is(err, ErrCoordinatorDelegationInvalid) {
+			t.Fatalf("same loss new command id err=%v", err)
 		}
 	})
 
@@ -330,15 +351,88 @@ func TestF5_PrimaryRestartOncePerLossEvent(t *testing.T) {
 
 	t.Run("same_loss_new_session_only", func(t *testing.T) {
 		registerSession(t, f, "claude:a5", "agent-a")
-		// Reuse would need visibility; confirm then still fail on consumed loss.
 		confirmVisibility(t, f, "del-f5", "vis-f5-4", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a5", Generation: 1}, now)
 		if err := f.s.ApplyPrimaryRestart("del-f5", assignment.Principal{SessionID: "claude:a5", AgentID: "agent-a", Generation: 1}, "restart-sess-only"); !errors.Is(err, ErrCoordinatorDelegationInvalid) {
 			t.Fatalf("err=%v", err)
 		}
 	})
 
+	t.Run("receipt_bound_to_loss_assignment_generation_session", func(t *testing.T) {
+		if restartEntry.ReceiptID != "loss-f5-1" || restartEntry.AssignmentID != "asg-f5" {
+			t.Fatalf("receipt bind loss/assignment: %+v", restartEntry)
+		}
+		if restartEntry.From == nil || restartEntry.From.Generation != 1 || restartEntry.From.SessionID != "claude:a" {
+			t.Fatalf("receipt bind from generation/session: %+v", restartEntry)
+		}
+		if restartEntry.To == nil || restartEntry.To.Generation != 1 || restartEntry.To.SessionID != "claude:a2" {
+			t.Fatalf("receipt bind to generation/session: %+v", restartEntry)
+		}
+	})
+
+	t.Run("new_loss_old_session", func(t *testing.T) {
+		f2 := newOwnerCommandFixture(t)
+		now2 := f2.s.now().UTC()
+		grantDelegation(t, f2, "del-f5-os", now2)
+		seedDelegatedAssignment(t, f2, "asg-f5-os", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now2)
+		lossConfirm(t, f2, "del-f5-os", "loss-f5-os-1", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1}, now2)
+		registerSession(t, f2, "claude:os2", "agent-a")
+		confirmVisibility(t, f2, "del-f5-os", "vis-f5-os-1", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:os2", Generation: 1}, now2)
+		if err := f2.s.ApplyPrimaryRestart("del-f5-os", assignment.Principal{SessionID: "claude:os2", AgentID: "agent-a", Generation: 1}, "restart-os1"); err != nil {
+			t.Fatalf("first restart: %v", err)
+		}
+		seedDelegatedAssignment(t, f2, "asg-f5-os-2", assignment.Principal{SessionID: "claude:os2", AgentID: "agent-a", Generation: 1}, now2)
+		lossConfirm(t, f2, "del-f5-os", "loss-f5-os-2", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:os2", Generation: 1}, now2)
+		confirmVisibility(t, f2, "del-f5-os", "vis-f5-os-2", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:os2", Generation: 2}, now2)
+		// New lossRecordID but old session id of the just-lost acting coordinator.
+		if err := f2.s.RotateAgentSessionKey("claude:os2", ed25519.PublicKey(strings.Repeat("o", 32))); err != nil {
+			t.Fatal(err)
+		}
+		if err := f2.s.ApplyPrimaryRestart("del-f5-os", assignment.Principal{SessionID: "claude:os2", AgentID: "agent-a", Generation: 2}, "restart-old-sess"); err == nil {
+			t.Fatal("new loss with old session accepted")
+		}
+	})
+
+	t.Run("new_loss_old_generation", func(t *testing.T) {
+		f2 := newOwnerCommandFixture(t)
+		now2 := f2.s.now().UTC()
+		grantDelegation(t, f2, "del-f5-og", now2)
+		seedDelegatedAssignment(t, f2, "asg-f5-og", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now2)
+		lossConfirm(t, f2, "del-f5-og", "loss-f5-og-1", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1}, now2)
+		registerSession(t, f2, "claude:og2", "agent-a")
+		confirmVisibility(t, f2, "del-f5-og", "vis-f5-og-1", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:og2", Generation: 1}, now2)
+		if err := f2.s.ApplyPrimaryRestart("del-f5-og", assignment.Principal{SessionID: "claude:og2", AgentID: "agent-a", Generation: 1}, "restart-og1"); err != nil {
+			t.Fatalf("first restart: %v", err)
+		}
+		seedDelegatedAssignment(t, f2, "asg-f5-og-2", assignment.Principal{SessionID: "claude:og2", AgentID: "agent-a", Generation: 1}, now2)
+		lossConfirm(t, f2, "del-f5-og", "loss-f5-og-2", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:og2", Generation: 1}, now2)
+		// New lossRecordID but attempt to reuse the lost session's generation on that same session.
+		confirmVisibility(t, f2, "del-f5-og", "vis-f5-og-2", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:og2", Generation: 1}, now2)
+		if err := f2.s.ApplyPrimaryRestart("del-f5-og", assignment.Principal{SessionID: "claude:og2", AgentID: "agent-a", Generation: 1}, "restart-old-gen"); err == nil {
+			t.Fatal("new loss with old session+generation accepted")
+		}
+	})
+
+	t.Run("new_loss_old_visibility_confirmation", func(t *testing.T) {
+		f2 := newOwnerCommandFixture(t)
+		now2 := f2.s.now().UTC()
+		grantDelegation(t, f2, "del-f5-ov", now2)
+		seedDelegatedAssignment(t, f2, "asg-f5-ov", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now2)
+		lossConfirm(t, f2, "del-f5-ov", "loss-f5-ov-1", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1}, now2)
+		registerSession(t, f2, "claude:ov2", "agent-a")
+		confirmVisibility(t, f2, "del-f5-ov", "vis-f5-ov-1", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:ov2", Generation: 1}, now2)
+		if err := f2.s.ApplyPrimaryRestart("del-f5-ov", assignment.Principal{SessionID: "claude:ov2", AgentID: "agent-a", Generation: 1}, "restart-ov1"); err != nil {
+			t.Fatalf("first restart: %v", err)
+		}
+		seedDelegatedAssignment(t, f2, "asg-f5-ov-2", assignment.Principal{SessionID: "claude:ov2", AgentID: "agent-a", Generation: 1}, now2)
+		lossConfirm(t, f2, "del-f5-ov", "loss-f5-ov-2", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:ov2", Generation: 1}, now2)
+		// Fresh session+generation, but no new visibility — prior confirmation was consumed.
+		registerSession(t, f2, "claude:ov3", "agent-a")
+		if err := f2.s.ApplyPrimaryRestart("del-f5-ov", assignment.Principal{SessionID: "claude:ov3", AgentID: "agent-a", Generation: 1}, "restart-old-vis"); !errors.Is(err, ErrCoordinatorDelegationInvalid) {
+			t.Fatalf("new loss with consumed visibility err=%v", err)
+		}
+	})
+
 	t.Run("new_loss_fresh_inputs_pass", func(t *testing.T) {
-		// Fresh fixture: first restart, then a distinct second loss + restart.
 		f2 := newOwnerCommandFixture(t)
 		now2 := f2.s.now().UTC()
 		grantDelegation(t, f2, "del-f5b", now2)
@@ -361,8 +455,11 @@ func TestF5_PrimaryRestartOncePerLossEvent(t *testing.T) {
 		for _, h := range rec.History {
 			if h.Kind == DelegationHistoryPrimaryRestart && h.ReceiptID == "loss-f5b-2" {
 				bound = true
-				if h.To == nil || h.To.SessionID != "claude:b3" {
-					t.Fatalf("To not bound to new session: %+v", h)
+				if h.To == nil || h.To.SessionID != "claude:b3" || h.To.Generation != 1 {
+					t.Fatalf("To not bound to new session/generation: %+v", h)
+				}
+				if h.AssignmentID == "" {
+					t.Fatalf("AssignmentID not bound: %+v", h)
 				}
 			}
 		}

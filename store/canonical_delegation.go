@@ -780,7 +780,7 @@ func (s *CanonicalStore) ApplyPrimaryRestart(delegationID string, newSession ass
 		if newSession.AgentID != rec.PrimaryCoordinator.StableAgentID {
 			return fmt.Errorf("%w: primaryRestart only for primary stableAgentId", ErrCoordinatorDelegationInvalid)
 		}
-		// Old session or exact prior triple rejected; a fresh session may start at generation 1.
+		// Old grant-primary session or exact prior triple rejected; a fresh session may start at generation 1.
 		if newSession.SessionID == rec.PrimaryCoordinator.SessionID {
 			return fmt.Errorf("%w: restart requires new sessionId and generation", ErrCoordinatorDelegationInvalid)
 		}
@@ -802,6 +802,33 @@ func (s *CanonicalStore) ApplyPrimaryRestart(delegationID string, newSession ass
 		// Prior primary / lost triple must be barred.
 		if lossEntry.From != nil && !rec.IsBarred(*lossEntry.From) {
 			return fmt.Errorf("%w: lost coordinator not barred", ErrCoordinatorDelegationInvalid)
+		}
+		// F5: new loss still requires a fresh session — never reuse the lost
+		// session id (even with a bumped generation) or the exact lost triple.
+		if lossEntry.From != nil {
+			if newSession.SessionID == lossEntry.From.SessionID {
+				return fmt.Errorf("%w: restart requires new sessionId (lost session)", ErrCoordinatorDelegationInvalid)
+			}
+			if principalFromAssignment(newSession).Equal(*lossEntry.From) {
+				return fmt.Errorf("%w: restart cannot reuse lost triple", ErrCoordinatorDelegationInvalid)
+			}
+		}
+		// Also reject any previously barred or previously installed primary-restart session.
+		for _, barred := range rec.BarredCoordinators {
+			if newSession.SessionID == barred.SessionID {
+				return fmt.Errorf("%w: restart cannot reuse barred session", ErrCoordinatorDelegationInvalid)
+			}
+			if principalFromAssignment(newSession).Equal(barred) {
+				return fmt.Errorf("%w: restart cannot reuse barred triple", ErrCoordinatorDelegationInvalid)
+			}
+		}
+		for _, h := range rec.History {
+			if h.Kind != DelegationHistoryPrimaryRestart || h.To == nil {
+				continue
+			}
+			if newSession.SessionID == h.To.SessionID {
+				return fmt.Errorf("%w: restart cannot reuse prior restart session", ErrCoordinatorDelegationInvalid)
+			}
 		}
 		if err := assignmentPrincipal(*state, newSession); err != nil {
 			return fmt.Errorf("%w: fresh session registration required", ErrCoordinatorDelegationInvalid)
