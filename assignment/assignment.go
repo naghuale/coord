@@ -232,7 +232,7 @@ func (l *Ledger) Append(e Event) error {
 		return fmt.Errorf("%w: missing ledger", ErrInvalid)
 	}
 	prior, exists := l.Records[e.AssignmentID]
-	if err := checkEvent(prior, exists, e); err != nil {
+	if err := l.checkEvent(prior, exists, e); err != nil {
 		return err
 	}
 	l.Records[e.AssignmentID] = e.Record
@@ -240,7 +240,28 @@ func (l *Ledger) Append(e Event) error {
 	return nil
 }
 
-func checkEvent(prior Record, exists bool, e Event) error {
+// OpenCoordinatorLossObserver derives the current loss observer from history;
+// it adds no persisted field or new authority. A handoff closes that interval.
+func (l *Ledger) OpenCoordinatorLossObserver(id string) (Principal, bool) {
+	if l == nil || !l.Records[id].CoordinatorLost || l.Records[id].State.Terminal() {
+		return Principal{}, false
+	}
+	for i := len(l.Events) - 1; i >= 0; i-- {
+		e := l.Events[i]
+		if e.AssignmentID != id {
+			continue
+		}
+		switch e.Kind {
+		case "COORDINATOR_LOST":
+			return e.Actor, true
+		case "HANDOFF", "OFFER":
+			return Principal{}, false
+		}
+	}
+	return Principal{}, false
+}
+
+func (l *Ledger) checkEvent(prior Record, exists bool, e Event) error {
 	r := e.Record
 	if e.AssignmentID != r.AssignmentID || e.Revision != r.Revision || !e.At.Equal(r.UpdatedAt) || !e.Actor.Valid() || !clean(e.EvidenceRef) {
 		return fmt.Errorf("%w: invalid event", ErrInvalid)
@@ -308,10 +329,22 @@ func checkEvent(prior Record, exists bool, e Event) error {
 		}
 		want.WorkStartedAt = e.At
 	case "COORDINATOR_LOST":
+		if prior.CoordinatorLost || e.Actor == prior.Coordinator() || e.Actor == prior.Target() {
+			return fmt.Errorf("%w: repeated or self-interested loss observation", ErrInvalid)
+		}
+		for _, candidate := range l.Records {
+			if candidate.Coordinator() == prior.Coordinator() && !candidate.State.Terminal() && !candidate.CoordinatorLost && candidate.Target() == e.Actor {
+				return fmt.Errorf("%w: observer targets another affected assignment", ErrInvalid)
+			}
+		}
 		want.CoordinatorLost = true
 	case "HANDOFF":
 		actor := prior.Coordinator()
 		if prior.CoordinatorLost {
+			observer, lossOpen := l.OpenCoordinatorLossObserver(e.AssignmentID)
+			if !lossOpen || r.Coordinator() == observer || r.Coordinator() == prior.Target() {
+				return fmt.Errorf("%w: loss observer or target cannot recover to itself", ErrInvalid)
+			}
 			actor = r.Coordinator()
 		}
 		if e.Actor != actor {

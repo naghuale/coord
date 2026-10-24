@@ -89,9 +89,10 @@ func TestAssignmentLossRequiresCurrentObserver(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			f := newLedgerFixture(t)
 			f.activate(t)
-			invalidateAssignmentPrincipal(t, f, f.coord, kind)
+			observer := registerAssignmentLossObserver(t, f)
+			invalidateAssignmentPrincipal(t, f, observer, kind)
 			before := assignmentStateBytes(t, f.s)
-			if err := f.s.ObserveAssignmentCoordinatorLoss(f.coord, f.coord, "old-generation-loss-frame"); err == nil {
+			if err := f.s.ObserveAssignmentCoordinatorLoss(observer, f.coord, "old-generation-loss-frame"); err == nil {
 				t.Fatal("stale observer recorded coordinator loss")
 			}
 			if !bytes.Equal(before, assignmentStateBytes(t, f.s)) {
@@ -106,9 +107,10 @@ func TestAssignmentLossRecoveryWithRotatedCoordinator(t *testing.T) {
 	f.activate(t)
 	original := f.record(t)
 	next := registerAssignmentSuccessor(t, f)
+	observer := registerAssignmentLossObserver(t, f)
 	invalidateAssignmentPrincipal(t, f, f.coord, "rotated")
 	// The active observer is distinct from the stale lost-coordinator subject.
-	if err := f.s.ObserveAssignmentCoordinatorLoss(next, f.coord, "verified-supervisor-loss"); err != nil {
+	if err := f.s.ObserveAssignmentCoordinatorLoss(observer, f.coord, "verified-supervisor-loss"); err != nil {
 		t.Fatal(err)
 	}
 	state, err := f.s.CanonicalSnapshot()
@@ -116,7 +118,7 @@ func TestAssignmentLossRecoveryWithRotatedCoordinator(t *testing.T) {
 		t.Fatal(err)
 	}
 	event := state.AssignmentLedger.Events[len(state.AssignmentLedger.Events)-1]
-	if event.Actor != next || event.Record.Coordinator() != f.coord || !event.Record.CoordinatorLost {
+	if event.Actor != observer || event.Record.Coordinator() != f.coord || !event.Record.CoordinatorLost {
 		t.Fatal("loss actor was conflated with lost coordinator subject")
 	}
 	before := assignmentStateBytes(t, f.s)

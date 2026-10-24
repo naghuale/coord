@@ -60,7 +60,11 @@ func assignmentCLIFixture(t *testing.T, phase string, now time.Time) (string, st
 		}
 	}
 	if phase == "LOST" {
-		if err := s.ObserveAssignmentCoordinatorLoss(coord, coord, "supervisor-loss"); err != nil {
+		observer := assignment.Principal{SessionID: "codex:loss-observer", AgentID: "observer", Generation: 1}
+		if err := s.RegisterAgentSession(observer.SessionID, observer.AgentID, ed25519.PublicKey(strings.Repeat("c", 32))); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.ObserveAssignmentCoordinatorLoss(observer, coord, "supervisor-loss"); err != nil {
 			t.Fatal(err)
 		}
 	}

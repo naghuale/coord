@@ -248,6 +248,15 @@ func (s *CanonicalStore) ObserveAssignmentCoordinatorLoss(observer, coordinator 
 		if state.AssignmentLedger == nil {
 			return ErrAssignmentUnknown
 		}
+		if observer == coordinator {
+			return fmt.Errorf("%w: coordinator cannot observe its own loss", assignment.ErrInvalid)
+		}
+		// Preflight the whole batch before appending any loss observation.
+		for _, r := range state.AssignmentLedger.Records {
+			if r.Coordinator() == coordinator && !r.State.Terminal() && !r.CoordinatorLost && observer == r.Target() {
+				return fmt.Errorf("%w: target cannot observe coordinator loss", assignment.ErrInvalid)
+			}
+		}
 		for _, r := range state.AssignmentLedger.Records {
 			if r.Coordinator() != coordinator || r.State.Terminal() || r.CoordinatorLost {
 				continue
@@ -279,6 +288,10 @@ func (s *CanonicalStore) HandoffAssignment(previous, nextCoordinator assignment.
 		}
 		actor := previous
 		if r.CoordinatorLost {
+			observer, open := state.AssignmentLedger.OpenCoordinatorLossObserver(id)
+			if !open || nextCoordinator == observer || nextCoordinator == r.Target() {
+				return fmt.Errorf("%w: loss observer or target cannot recover to itself", assignment.ErrInvalid)
+			}
 			actor = nextCoordinator
 		} else if err := assignmentPrincipal(*state, previous); err != nil {
 			return err

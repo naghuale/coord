@@ -39,7 +39,10 @@ operator principal, path flag or OS-user claim substitutes for authorization.
    issuer/subject/target/current coordinator/generation before work/resume/result. Unknown/unavailable/corrupt
    state grants no permission. CLI read does not start a daemon or bypass locks.
 6. An active observer records verified coordinator loss promptly; its principal is
-   separate from the lost-coordinator subject. Normal handoff requires a current
+   separate from the lost-coordinator subject and from affected targets. The
+   coordinator cannot report its own loss. Recovery successor must differ from
+   both target and the open loss observer; replay validates these exclusions.
+   Normal handoff requires a current
    active predecessor. Recovery handoff requires already recorded loss, an active
    successor and verified nonempty evidence; the successor is the event actor.
    The authenticated command boundary must authorize observation/recovery (#93).

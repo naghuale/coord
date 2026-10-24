@@ -304,7 +304,8 @@ func TestAssignmentCoordinatorLossAndVerifiedHandoff(t *testing.T) {
 	f := newLedgerFixture(t)
 	f.activate(t)
 	original := f.record(t)
-	if err := f.s.ObserveAssignmentCoordinatorLoss(f.coord, f.coord, "supervisor-observed-loss"); err != nil {
+	observer := registerAssignmentLossObserver(t, f)
+	if err := f.s.ObserveAssignmentCoordinatorLoss(observer, f.coord, "supervisor-observed-loss"); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.preflight(t); err == nil {

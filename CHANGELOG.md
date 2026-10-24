@@ -1,5 +1,21 @@
 # История изменений
 
+## 2026-10-24 — Assignment loss and recovery separation (Refs #90)
+
+- Reject self-interested loss observations, including a whole loss batch when an
+  affected assignment targets its observer; reject recovery to target/open loss
+  observer. No schema, role, credential or authority slice is added.
+  (`TestAssignmentLossRejectsCoordinatorAndTarget`,
+  `TestAssignmentLossBatchRejectsAnyAffectedTarget`,
+  `TestAssignmentRecoveryRejectsTargetAndOpenLossObserver`)
+- Derive the open loss observer from existing event history; enforce exclusions
+  on replay/load and retain recovery to a distinct successor.
+  (`TestAssignmentReplayRejectsSelfInterestedRecovery`,
+  `TestAssignmentRecoveryUsesOnlyOpenLossObserver`,
+  `TestAssignmentLossRecoveryWithRotatedCoordinator`)
+- Record the separate #93 privilege-gate test obligation without implementing it.
+  (документация)
+
 ## 2026-10-23 — Assignment coordinator recovery authority correction (Refs #90)
 
 - Reject rotated/revoked predecessor handoffs before recorded coordinator loss,

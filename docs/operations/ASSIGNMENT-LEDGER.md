@@ -56,14 +56,25 @@ persisted. Queries do not write EXPIRED.
 A trusted `ObserveAssignmentCoordinatorLoss(observer, coordinator, evidence)`
 checks the observer against its current active AgentSession, separately from the
 lost-coordinator subject (which may be stale/revoked). The event actor is the
-observer, not an impersonation of the lost subject. It marks current authority lost;
+observer, not an impersonation of the lost subject. The observer cannot equal the
+named coordinator or the target of any non-terminal assignment the batch would
+mark; one such conflict rejects the whole call. It marks current authority lost;
 state may still say ACTIVE but work/result checks refuse. `HandoffAssignment`
 requires exact predecessor, a currently valid successor principal and verified
 nonempty evidence, appends lineage, preserves original issuer and deadline.
 Without recorded loss the predecessor must also be current and active. Only an
 already CoordinatorLost record permits recovery from a stale predecessor; the
-active successor is that recovery event actor. Both observation and recovery
+active successor is that recovery event actor. Recovery rejects the target and
+the observer of the current open loss event as successors. That observer is
+derived from existing append-only history, not a new record field; a handoff
+closes the interval. Replay/load enforces the same exclusions and rejects repeated
+loss events that would replace the open observer. Both observation and recovery
 remain trusted service calls: principal freshness is not operator authentication.
+These separation checks are not a privilege grant: #93 must reject an
+unprivileged third-party loss observer before mutation (future test reference
+`TestWriteAuthorityRejectsUnprivilegedLossObserver`). Blocking that observer
+from later handing off to itself or the target does not authorize the first loss
+observation. No #93 write authority is implemented here.
 The service caller must authorize recovery/predecessor evidence, not accept a
 bare transport claim. Session revocation or generation mismatch independently
 blocks authority. Physical-process liveness detection is NOT implemented;
