@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -909,76 +910,132 @@ func TestR6_F1_ActionMapAcceptedRequiredMissingFails(t *testing.T) {
 	assertR6Publication(t, false, "docs/operations/ACTION-MAP.yaml", false, false, CodeActionMapNotPublished)
 }
 
-func TestR6_F1_ActionMapAcceptedEmptyPathFails(t *testing.T) {
-	dir := t.TempDir()
-	writeAuthoritativeActionMapFixture(t, dir)
-	// Row is discoverable by the fixed ACTION-MAP path key only when path matches;
-	// empty path cannot be found via byPath["docs/operations/ACTION-MAP.yaml"].
-	// Simulate accepted row with empty path by writing the key path then clearing via custom YAML
-	// that still uses the canonical path string of spaces — treat as empty after trim in evaluatePublication.
-	writeDocRegistry(t, dir, `apiVersion: coord.dev/v1alpha1
+func TestR7_F2_ActionMapAcceptedEmptyPathFailsAtCheck(t *testing.T) {
+	assertActionMapNotPublishedReason(t, func(dir string) {
+		writeDocRegistry(t, dir, `apiVersion: coord.dev/v1alpha1
 kind: DocumentRegistry
 documents:
   - id: action-map
-    path: docs/operations/ACTION-MAP.yaml
+    path: ""
     status: accepted
 `)
-	// Overwrite the loaded path by using a registry entry whose path is only whitespace under a
-	// duplicate id won't work with byPath. Instead write path as the canonical key but evaluate
-	// empty via a dedicated helper path: use path "." which is not a regular file under ops.
-	// Spec: empty path FAIL — inject via classify path "".
-	writeDocRegistry(t, dir, `apiVersion: coord.dev/v1alpha1
-kind: DocumentRegistry
-documents:
-  - id: action-map
-    path: "docs/operations/ACTION-MAP.yaml"
-    status: accepted
-`)
-	// Direct unit of evaluatePublication for empty path:
-	st := actionMapDocStatus{status: "accepted", path: ""}
-	st.evaluatePublication(dir)
-	if st.publishedOK || st.publishedDetail == "" {
-		t.Fatalf("empty path must fail publication, got ok=%v detail=%q", st.publishedOK, st.publishedDetail)
-	}
+	}, "EMPTY_PATH")
 }
 
 func TestR6_F1_ActionMapAcceptedDirectoryFails(t *testing.T) {
+	assertActionMapNotPublishedReason(t, func(dir string) {
+		mustMkdir(t, filepath.Join(dir, "docs/operations/ACTION-MAP.yaml"))
+		writeDocRegistry(t, dir, actionMapRegistryYAML("accepted", false, "docs/operations/ACTION-MAP.yaml"))
+	}, "NOT_REGULAR_FILE")
+}
+
+func TestR7_F2_ActionMapLexicalEscapeExistingOutsideFails(t *testing.T) {
+	assertActionMapNotPublishedReason(t, func(dir string) {
+		outside := filepath.Join(filepath.Dir(dir), "outside-action-map-"+filepath.Base(dir)+".yaml")
+		mustWrite(t, outside, "outside\n")
+		t.Cleanup(func() { _ = os.Remove(outside) })
+		writeDocRegistry(t, dir, actionMapRegistryYAML("accepted", false, "../"+filepath.Base(outside)))
+	}, "PATH_OUTSIDE_REPOSITORY")
+}
+
+func TestR7_F2_ActionMapAbsoluteOutsideExistingFails(t *testing.T) {
+	assertActionMapNotPublishedReason(t, func(dir string) {
+		outside := filepath.Join(t.TempDir(), "abs-outside.yaml")
+		mustWrite(t, outside, "outside\n")
+		writeDocRegistry(t, dir, actionMapRegistryYAML("accepted", false, outside))
+	}, "PATH_OUTSIDE_REPOSITORY")
+}
+
+func TestR7_F1_ActionMapSymlinkEscapeExistingOutsideFails(t *testing.T) {
+	assertActionMapNotPublishedReason(t, func(dir string) {
+		outside := filepath.Join(filepath.Dir(dir), "symlink-outside-"+filepath.Base(dir)+".yaml")
+		mustWrite(t, outside, "outside\n")
+		t.Cleanup(func() { _ = os.Remove(outside) })
+		mustMkdir(t, filepath.Join(dir, "docs/operations"))
+		link := filepath.Join(dir, "docs/operations/ACTION-MAP.yaml")
+		if err := os.Symlink(outside, link); err != nil {
+			t.Fatal(err)
+		}
+		writeDocRegistry(t, dir, actionMapRegistryYAML("accepted", false, "docs/operations/ACTION-MAP.yaml"))
+	}, "SYMLINK_TARGET_OUTSIDE_REPOSITORY")
+}
+
+func TestR7_F1_ActionMapUntrackedRegularFileFails(t *testing.T) {
 	dir := t.TempDir()
 	writeAuthoritativeActionMapFixture(t, dir)
-	mustMkdir(t, filepath.Join(dir, "docs/operations/ACTION-MAP.yaml")) // directory at the path
+	mustMkdir(t, filepath.Join(dir, "docs/operations"))
+	mustWrite(t, filepath.Join(dir, "docs/operations/ACTION-MAP.yaml"), "apiVersion: v1\n")
 	writeDocRegistry(t, dir, actionMapRegistryYAML("accepted", false, "docs/operations/ACTION-MAP.yaml"))
+	// Init git but do NOT add the ACTION-MAP file.
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "fixture@test")
+	runGit(t, dir, "config", "user.name", "fixture")
+	runGit(t, dir, "add", "docs/DOCUMENT-REGISTRY.yaml", "docs/ARCHITECTURE.md", "docs/architecture")
+	runGit(t, dir, "commit", "-m", "partial")
 	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !hasCode(res.Violations, CodeActionMapNotPublished) {
-		t.Fatalf("expected %s for directory path, got %v", CodeActionMapNotPublished, res.Violations)
-	}
-}
-
-func TestR6_F1_ActionMapAcceptedPathEscapeFails(t *testing.T) {
-	dir := t.TempDir()
-	writeAuthoritativeActionMapFixture(t, dir)
-	st := actionMapDocStatus{status: "accepted", path: "../outside.yaml"}
-	st.evaluatePublication(dir)
-	if st.publishedOK {
-		t.Fatal("path escape must fail publication")
+	if !hasCode(res.Violations, CodeActionMapNotPublished) || !detailHas(res.Violations, CodeActionMapNotPublished, "FILE_NOT_TRACKED") {
+		t.Fatalf("expected FILE_NOT_TRACKED, got %v", res.Violations)
 	}
 }
 
 func TestR6_F1_ActionMapAcceptedOtherFileDoesNotSubstitute(t *testing.T) {
+	assertActionMapNotPublishedReason(t, func(dir string) {
+		mustWrite(t, filepath.Join(dir, "docs/elsewhere.yaml"), "other\n")
+		writeDocRegistry(t, dir, actionMapRegistryYAML("accepted", false, "docs/operations/ACTION-MAP.yaml"))
+	}, "FILE_MISSING")
+}
+
+func TestA97_3_ActionMapAcceptedTrackedInOtherBranchFails(t *testing.T) {
+	assertActionMapNotPublishedReason(t, func(dir string) {
+		mustMkdir(t, filepath.Join(dir, "docs/operations"))
+		mustWrite(t, filepath.Join(dir, "docs/operations/ACTION-MAP.yaml"), "apiVersion: v1\n")
+		writeDocRegistry(t, dir, actionMapRegistryYAMLLoc("accepted", false, "docs/operations/ACTION-MAP.yaml", "TRACKED_IN_OTHER_BRANCH"))
+	}, "NON_LOCAL_LOCATION")
+}
+
+func TestA97_1_ProductionAuthStatusACCEPTEDFails(t *testing.T) {
+	assertR3F1AuthFailure(t, "ACCEPTED", true, true, "product", CodeProdAuthWrongStatus)
+}
+
+func assertActionMapNotPublishedReason(t *testing.T, setup func(dir string), reason string) {
+	t.Helper()
 	dir := t.TempDir()
 	writeAuthoritativeActionMapFixture(t, dir)
-	mustWrite(t, filepath.Join(dir, "docs/elsewhere.yaml"), "other\n")
-	// ACTION-MAP path missing; another file exists — must still FAIL.
-	writeDocRegistry(t, dir, actionMapRegistryYAML("accepted", false, "docs/operations/ACTION-MAP.yaml"))
+	setup(dir)
+	initFixtureGit(t, dir)
 	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !hasCode(res.Violations, CodeActionMapNotPublished) {
-		t.Fatalf("other existing file must not substitute, got %v", res.Violations)
+	if !hasCode(res.Violations, CodeActionMapNotPublished) || !detailHas(res.Violations, CodeActionMapNotPublished, reason) {
+		t.Fatalf("expected %s with reason %s, got %v", CodeActionMapNotPublished, reason, res.Violations)
 	}
+}
+
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	cmd.Env = append(os.Environ(),
+		"GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null",
+		"GIT_AUTHOR_NAME=fixture", "GIT_AUTHOR_EMAIL=fixture@test",
+		"GIT_COMMITTER_NAME=fixture", "GIT_COMMITTER_EMAIL=fixture@test",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+func detailHas(vs []Violation, code, marker string) bool {
+	for _, v := range vs {
+		if v.Code == code && strings.Contains(v.Detail, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestR6_F1_ActionMapAcceptedOptionalPresentPasses(t *testing.T) {
@@ -1009,14 +1066,34 @@ func TestR4_F1_ActionMapStatusAcceptedPasses(t *testing.T) {
 }
 
 func actionMapRegistryYAML(status string, optional bool, path string) string {
+	return actionMapRegistryYAMLLoc(status, optional, path, "")
+}
+
+func actionMapRegistryYAMLLoc(status string, optional bool, path, locationClass string) string {
+	loc := ""
+	if locationClass != "" {
+		loc = fmt.Sprintf("\n    location:\n      class: %s", locationClass)
+	}
 	return fmt.Sprintf(`apiVersion: coord.dev/v1alpha1
 kind: DocumentRegistry
 documents:
   - id: action-map
-    path: %s
+    path: %q
     status: %s
-    optional: %t
-`, path, status, optional)
+    optional: %t%s
+`, path, status, optional, loc)
+}
+
+func initFixtureGit(t *testing.T, dir string, track ...string) {
+	t.Helper()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "fixture@test")
+	runGit(t, dir, "config", "user.name", "fixture")
+	for _, p := range track {
+		runGit(t, dir, "add", "-f", p)
+	}
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "fixture", "--allow-empty")
 }
 
 func assertR6Publication(t *testing.T, optional bool, path string, writeFile, wantPass bool, wantCode string) {
@@ -1028,6 +1105,7 @@ func assertR6Publication(t *testing.T, optional bool, path string, writeFile, wa
 		mustWrite(t, filepath.Join(dir, path), "apiVersion: v1\nkinds: []\n")
 	}
 	writeDocRegistry(t, dir, actionMapRegistryYAML("accepted", optional, path))
+	initFixtureGit(t, dir)
 	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
 	if err != nil {
 		t.Fatal(err)

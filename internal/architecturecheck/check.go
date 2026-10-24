@@ -68,7 +68,7 @@ func Check(opts Options) (*Result, error) {
 	docs, loadErr := loadDocumentRegistryIndex(root, opts.DocRegistryPath)
 	actionMap := actionMapDocStatus{registryOK: loadErr == nil}
 	if loadErr == nil {
-		if d, ok := docs.byPath["docs/operations/ACTION-MAP.yaml"]; ok {
+		if d, ok := findActionMapRegistryDoc(docs); ok {
 			actionMap = classifyActionMapDoc(d)
 			actionMap.registryOK = true
 			actionMap.found = true
@@ -107,6 +107,7 @@ type actionMapDocStatus struct {
 	locationClass      string // "" means LOCAL (omitted)
 	publishedOK        bool
 	publishedDetail    string
+	publishedReason    string // EMPTY_PATH | PATH_OUTSIDE_REPOSITORY | ...
 }
 
 // registryDoc is a lightweight DOCUMENT-REGISTRY row used for authority checks.
@@ -153,46 +154,98 @@ func classifyActionMapDoc(d registryDoc) actionMapDocStatus {
 	return out
 }
 
-// evaluatePublication applies the authoritative-ACTION-MAP publication rule (R6-F1):
-// accepted AND LOCAL AND non-empty contained path resolving to an existing regular file.
-// optional:true does NOT waive this check for AUTHORITATIVE_REFERENCE.
+// findActionMapRegistryDoc locates the ACTION-MAP row by canonical path or by id,
+// so empty/escaping path fields still surface as publication failures (R7-F2)
+// rather than a silent missing-row miss.
+func findActionMapRegistryDoc(docs documentRegistryIndex) (registryDoc, bool) {
+	if d, ok := docs.byPath["docs/operations/ACTION-MAP.yaml"]; ok {
+		return d, true
+	}
+	if d, ok := docs.byID["action-map"]; ok {
+		return d, true
+	}
+	return registryDoc{}, false
+}
+
+// evaluatePublication applies the authoritative-ACTION-MAP publication rule
+// (R6-F1 / R7-F1). Order: non-empty path → join to root → EvalSymlinks (and
+// resolve root) → inside resolved root → regular file → git-tracked
+// (`git ls-files --error-unmatch`). optional:true does not waive.
 func (a *actionMapDocStatus) evaluatePublication(root string) {
 	if a.status != "accepted" || a.statusMissing || a.statusWrongType || a.statusUnrecognized || a.fieldInvalid {
 		return
+	}
+	fail := func(reason, detail string) {
+		a.publishedReason = reason
+		a.publishedDetail = reason + ": " + detail
 	}
 	loc := a.locationClass
 	if loc == "" {
 		loc = "LOCAL"
 	}
 	if loc != "LOCAL" {
-		a.publishedDetail = fmt.Sprintf("ACTION-MAP location class %q is not LOCAL", loc)
+		fail("NON_LOCAL_LOCATION", fmt.Sprintf("location class %q", loc))
 		return
 	}
 	if strings.TrimSpace(a.path) == "" {
-		a.publishedDetail = "ACTION-MAP registry path is empty"
+		fail("EMPTY_PATH", "registry path is empty")
+		return
+	}
+	// Absolute registry paths are outside the join model.
+	if filepath.IsAbs(a.path) {
+		fail("PATH_OUTSIDE_REPOSITORY", fmt.Sprintf("absolute path %q", a.path))
 		return
 	}
 	clean := filepath.Clean(a.path)
-	if filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-		a.publishedDetail = fmt.Sprintf("ACTION-MAP path escapes repo root: %q", a.path)
-		return
-	}
 	full := filepath.Join(root, clean)
-	rel, err := filepath.Rel(root, full)
-	if err != nil || strings.HasPrefix(rel, "..") {
-		a.publishedDetail = fmt.Sprintf("ACTION-MAP path escapes repo root: %q", a.path)
+
+	rootResolved := root
+	if rr, err := filepath.EvalSymlinks(root); err == nil {
+		rootResolved = rr
+	}
+
+	// Resolve symlinks; if the path (or a parent) cannot be resolved, classify.
+	resolved, err := filepath.EvalSymlinks(full)
+	if err != nil {
+		// Distinguish missing leaf vs other resolve failures after lexical join.
+		if _, statErr := os.Lstat(full); statErr != nil {
+			fail("FILE_MISSING", fmt.Sprintf("path %s", clean))
+			return
+		}
+		// Symlink present but target unresolvable / outside — treat as symlink escape.
+		fail("SYMLINK_TARGET_OUTSIDE_REPOSITORY", fmt.Sprintf("EvalSymlinks(%s): %v", clean, err))
 		return
 	}
-	fi, err := os.Stat(full)
+	resRel, err := filepath.Rel(rootResolved, resolved)
+	if err != nil || resRel == ".." || strings.HasPrefix(resRel, ".."+string(filepath.Separator)) {
+		// Prefer symlink-specific reason when the joined path was a symlink.
+		if li, lerr := os.Lstat(full); lerr == nil && li.Mode()&os.ModeSymlink != 0 {
+			fail("SYMLINK_TARGET_OUTSIDE_REPOSITORY", fmt.Sprintf("%q -> %q", clean, resolved))
+			return
+		}
+		fail("PATH_OUTSIDE_REPOSITORY", fmt.Sprintf("%q -> %q", clean, resolved))
+		return
+	}
+	fi, err := os.Stat(resolved)
 	if err != nil {
-		a.publishedDetail = fmt.Sprintf("ACTION-MAP file missing at %s", clean)
+		fail("FILE_MISSING", fmt.Sprintf("resolved %s", clean))
 		return
 	}
 	if !fi.Mode().IsRegular() {
-		a.publishedDetail = fmt.Sprintf("ACTION-MAP path is not a regular file: %s", clean)
+		fail("NOT_REGULAR_FILE", clean)
+		return
+	}
+	if !gitTrackedPath(root, clean) {
+		fail("FILE_NOT_TRACKED", clean)
 		return
 	}
 	a.publishedOK = true
+}
+
+func gitTrackedPath(root, relPath string) bool {
+	cmd := exec.Command("git", "-C", root, "ls-files", "--error-unmatch", "--", relPath)
+	cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null")
+	return cmd.Run() == nil
 }
 
 // recognizedDocStatus is the DOCUMENT-REGISTRY status vocabulary (exact match, no normalization).
