@@ -1,5 +1,9 @@
 # История изменений
 
+## 2026-10-24 — Document registry location and historical provenance (Refs #97)
+
+- Document registry gains `LOCAL` / `TRACKED_IN_OTHER_BRANCH` location, `superseded` status, historical provenance, and `LOCAL` vs `CI_STRICT` modes. Active or proposed LOCAL files are required even when optional. Ops CURRENT/OPEN-WORK move to the allowlisted external location. Historical Action Map readWhen is `HISTORICAL_INVESTIGATION` with `normativeAuthority: none`. (`TestActiveLocalMissingRejectedEvenWhenOptional`, `TestProposedMissingRejected`, `TestUnknownLocationFailsClosed`, `TestTrackedOutsideAllowlistRejected`, `TestExternalRefUnavailableCIStrictFails`, `TestExternalRefUnavailableLocalWarns`, `TestTrackedExternalAcceptedWithEvidence`, `TestEvidencePathInsideRepositoryRejected`, `TestSupersededRequiresSupersededBy`, `TestHistoricalWithoutProvenanceRejected`, `TestHistoricalPurposeProvenanceAccepted`, `TestHistoricalStructuredProvenanceAccepted`)
+
 ## 2026-10-24 — Disable production orchestration pending acceptance (Refs #96)
 
 - Production coordd composes a read-only disabled workflow facade with `orchestrationEnabled = false`. Recovery/tick/adapter/projection execution stays off, with no environment, config or flag enablement. Production fixture requests are visibly rejected before locks/transport; explicit execution exists only in the `_test.go` harness. Both ADR acceptance and a ready authenticated single write path are required before a separate enablement change (`TestOrchestrationNoProductionEnablementConfig`, `TestOrchestrationExplicitTestHarnessStillExecutes`).
