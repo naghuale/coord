@@ -65,13 +65,19 @@ func Check(opts Options) (*Result, error) {
 		}
 	}
 
-	docs := loadDocumentRegistryIndex(root, opts.DocRegistryPath)
-	actionMap := actionMapDocStatus{}
-	if d, ok := docs.byPath["docs/operations/ACTION-MAP.yaml"]; ok {
-		actionMap = actionMapDocStatus{found: true, proposed: d.Status == "proposed"}
+	docs, loadErr := loadDocumentRegistryIndex(root, opts.DocRegistryPath)
+	actionMap := actionMapDocStatus{registryOK: loadErr == nil}
+	if loadErr == nil {
+		if d, ok := docs.byPath["docs/operations/ACTION-MAP.yaml"]; ok {
+			actionMap.found = true
+			actionMap.proposed = d.Status == "proposed"
+		}
 	}
 
 	var vs []Violation
+	if loadErr != nil {
+		vs = append(vs, Violation{Code: CodeDocumentRegistryUnavailable, Detail: loadErr.Error()})
+	}
 	vs = append(vs, validateDocuments(root, reg)...)
 	vs = append(vs, validateComponents(root, reg, idx)...)
 	vs = append(vs, validateAxes(reg)...)
@@ -85,18 +91,22 @@ func Check(opts Options) (*Result, error) {
 }
 
 type actionMapDocStatus struct {
-	proposed bool
-	found    bool
+	proposed   bool
+	found      bool
+	registryOK bool // false when DOCUMENT-REGISTRY could not be loaded
 }
 
 // registryDoc is a lightweight DOCUMENT-REGISTRY row used for authority checks.
+// Pointer fields distinguish missing from false (R3-F1 / PRODUCTION-AUTHORITY-SOURCE-01).
 type registryDoc struct {
 	ID                           string
 	Path                         string
 	Status                       string
-	CanonicalProductionAuthority bool
-	CurrentOperationalAuthority  bool
-	CurrentNormativeAuthority    bool
+	CanonicalProductionAuthority *bool
+	CurrentNormativeAuthority    *bool
+	NormativeAuthority           *string
+	// FieldInvalid is set when an authority field has a wrong YAML type.
+	FieldInvalid string
 }
 
 type documentRegistryIndex struct {
@@ -104,7 +114,7 @@ type documentRegistryIndex struct {
 	byPath map[string]registryDoc
 }
 
-func loadDocumentRegistryIndex(root, docRegistryPath string) documentRegistryIndex {
+func loadDocumentRegistryIndex(root, docRegistryPath string) (documentRegistryIndex, error) {
 	out := documentRegistryIndex{byID: map[string]registryDoc{}, byPath: map[string]registryDoc{}}
 	path := docRegistryPath
 	if path == "" {
@@ -114,32 +124,62 @@ func loadDocumentRegistryIndex(root, docRegistryPath string) documentRegistryInd
 	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return out
+		return out, fmt.Errorf("document registry unavailable at %s: %w", path, err)
 	}
 	// Lightweight scan: avoid importing internal/documentregistry (cycle risk).
+	// Authority fields use interface{} so wrong types stay detectable (R3-F1).
 	var doc struct {
 		Documents []struct {
-			ID                           string `yaml:"id"`
-			Path                         string `yaml:"path"`
-			Status                       string `yaml:"status"`
-			CanonicalProductionAuthority bool   `yaml:"canonicalProductionAuthority"`
-			CurrentOperationalAuthority  bool   `yaml:"currentOperationalAuthority"`
-			CurrentNormativeAuthority    *bool  `yaml:"currentNormativeAuthority"`
+			ID                           string      `yaml:"id"`
+			Path                         string      `yaml:"path"`
+			Status                       interface{} `yaml:"status"`
+			CanonicalProductionAuthority interface{} `yaml:"canonicalProductionAuthority"`
+			CurrentNormativeAuthority    interface{} `yaml:"currentNormativeAuthority"`
+			NormativeAuthority           interface{} `yaml:"normativeAuthority"`
 		} `yaml:"documents"`
 	}
 	if err := yaml.Unmarshal(raw, &doc); err != nil {
-		return out
+		return out, fmt.Errorf("document registry malformed at %s: %w", path, err)
 	}
 	for _, d := range doc.Documents {
-		norm := false
-		if d.CurrentNormativeAuthority != nil {
-			norm = *d.CurrentNormativeAuthority
+		row := registryDoc{ID: d.ID, Path: d.Path}
+		if d.Status != nil {
+			s, ok := d.Status.(string)
+			if !ok {
+				row.FieldInvalid = fmt.Sprintf("%s: status has wrong type %T", d.ID, d.Status)
+			} else {
+				row.Status = s
+			}
 		}
-		row := registryDoc{
-			ID: d.ID, Path: d.Path, Status: d.Status,
-			CanonicalProductionAuthority: d.CanonicalProductionAuthority,
-			CurrentOperationalAuthority:  d.CurrentOperationalAuthority,
-			CurrentNormativeAuthority:    norm,
+		if d.CanonicalProductionAuthority != nil {
+			b, ok := d.CanonicalProductionAuthority.(bool)
+			if !ok {
+				if row.FieldInvalid == "" {
+					row.FieldInvalid = fmt.Sprintf("%s: canonicalProductionAuthority has wrong type %T", d.ID, d.CanonicalProductionAuthority)
+				}
+			} else {
+				row.CanonicalProductionAuthority = &b
+			}
+		}
+		if d.CurrentNormativeAuthority != nil {
+			b, ok := d.CurrentNormativeAuthority.(bool)
+			if !ok {
+				if row.FieldInvalid == "" {
+					row.FieldInvalid = fmt.Sprintf("%s: currentNormativeAuthority has wrong type %T", d.ID, d.CurrentNormativeAuthority)
+				}
+			} else {
+				row.CurrentNormativeAuthority = &b
+			}
+		}
+		if d.NormativeAuthority != nil {
+			s, ok := d.NormativeAuthority.(string)
+			if !ok {
+				if row.FieldInvalid == "" {
+					row.FieldInvalid = fmt.Sprintf("%s: normativeAuthority has wrong type %T", d.ID, d.NormativeAuthority)
+				}
+			} else {
+				row.NormativeAuthority = &s
+			}
 		}
 		if d.ID != "" {
 			out.byID[d.ID] = row
@@ -148,7 +188,10 @@ func loadDocumentRegistryIndex(root, docRegistryPath string) documentRegistryInd
 			out.byPath[d.Path] = row
 		}
 	}
-	return out
+	if len(out.byID) == 0 && len(out.byPath) == 0 {
+		return out, fmt.Errorf("document registry empty at %s", path)
+	}
+	return out, nil
 }
 
 func validateDocuments(root string, reg Registry) []Violation {
@@ -293,21 +336,9 @@ func validateAxes(reg Registry) []Violation {
 	return vs
 }
 
-// nonAuthoritativeDocStatus is true when DOCUMENT-REGISTRY status cannot authorize
-// production-use / production-connection / qualified axis claims (F97-1).
-// The requirement row's own NormativeStatus is never authoritative.
-func nonAuthoritativeDocStatus(status string) bool {
-	switch status {
-	case "proposed", "historical", "superseded":
-		return true
-	default:
-		return false
-	}
-}
-
 // componentHasForbiddenProductionClaim reports axis values that mean production
 // use, production connection, or qualification under the #97 four-axis vocabulary.
-// Mapping (RESULT semanticMapping):
+// Mapping (RESULT semanticMapping / PRODUCTION-AUTHORITY-SOURCE-01):
 //
 //	productionUse        -> Production ACTIVE | ACTIVE_WITH_LIMITATIONS
 //	productionConnection -> Connection PRODUCTION_CONNECTED
@@ -328,15 +359,36 @@ func componentHasForbiddenProductionClaim(c Component) (bool, string) {
 	return false, ""
 }
 
-// authoritativeAcceptedSource is true when DOCUMENT-REGISTRY status can authorize
-// a production claim (accepted or active). proposed/historical/superseded cannot.
-func authoritativeAcceptedSource(status string) bool {
-	switch status {
-	case "accepted", "active":
-		return true
-	default:
-		return false
+// authorizeProductionSource applies PRODUCTION-AUTHORITY-SOURCE-01:
+// one source must carry status=accepted AND canonicalProductionAuthority=true
+// AND currentNormativeAuthority=true AND normativeAuthority=product.
+// Missing is distinct from false; active is not accepted; no composition across sources.
+func authorizeProductionSource(src registryDoc) (ok bool, code, detail string) {
+	if src.FieldInvalid != "" {
+		return false, CodeProdAuthInvalidField, src.FieldInvalid
 	}
+	if src.Status != "accepted" {
+		return false, CodeProdAuthWrongStatus, fmt.Sprintf("status=%q (need accepted; active is not accepted)", src.Status)
+	}
+	if src.NormativeAuthority == nil {
+		return false, CodeProdAuthInvalidField, "missing normativeAuthority"
+	}
+	if *src.NormativeAuthority != "product" {
+		return false, CodeProdAuthWrongAuthorityClass, fmt.Sprintf("normativeAuthority=%q (need product)", *src.NormativeAuthority)
+	}
+	if src.CanonicalProductionAuthority == nil {
+		return false, CodeProdAuthMissingCanonical, "missing canonicalProductionAuthority"
+	}
+	if !*src.CanonicalProductionAuthority {
+		return false, CodeProdAuthMissingCanonical, "canonicalProductionAuthority=false"
+	}
+	if src.CurrentNormativeAuthority == nil {
+		return false, CodeProdAuthMissingCurrentNormative, "missing currentNormativeAuthority"
+	}
+	if !*src.CurrentNormativeAuthority {
+		return false, CodeProdAuthMissingCurrentNormative, "currentNormativeAuthority=false"
+	}
+	return true, "", ""
 }
 
 func validateRequirements(reg Registry, idx *CodeIndex, docs documentRegistryIndex) []Violation {
@@ -346,8 +398,8 @@ func validateRequirements(reg Registry, idx *CodeIndex, docs documentRegistryInd
 		components[c.ID] = c
 	}
 
-	// Components covered by at least one requirement whose source resolves to
-	// an authoritative (accepted/active) DOCUMENT-REGISTRY status.
+	// Components covered by at least one requirement whose SINGLE source
+	// satisfies PRODUCTION-AUTHORITY-SOURCE-01 (all four on one row).
 	authorizedComponents := map[string]bool{}
 
 	for id, req := range reg.Requirements {
@@ -365,8 +417,9 @@ func validateRequirements(reg Registry, idx *CodeIndex, docs documentRegistryInd
 			vs = append(vs, Violation{Code: CodeUnknownRequirementID, Detail: fmt.Sprintf("%s: unknown component %q", id, compID)})
 			continue
 		}
-		// Resolution chain: requirement -> sourceDocumentId -> DOCUMENT-REGISTRY -> status -> axes.
-		// The row's declared NormativeStatus never raises authority (F97-1).
+		// Resolution chain: requirement -> sourceDocumentId -> DOCUMENT-REGISTRY
+		// -> PRODUCTION-AUTHORITY-SOURCE-01 -> axes. Row NormativeStatus never
+		// raises authority (F97-1 / R3-F1).
 		srcID := strings.TrimSpace(req.SourceDocumentID)
 		if srcID == "" {
 			vs = append(vs, Violation{Code: CodeUnknownRequirementID, Detail: fmt.Sprintf("%s: missing sourceDocumentId", id)})
@@ -383,12 +436,11 @@ func validateRequirements(reg Registry, idx *CodeIndex, docs documentRegistryInd
 			}
 			continue
 		}
-		if nonAuthoritativeDocStatus(src.Status) {
-			if bad, claim := componentHasForbiddenProductionClaim(c); bad {
-				vs = append(vs, Violation{Code: CodeProposedProductionAuth, Detail: fmt.Sprintf("%s: non-authoritative source %q (status=%s) cannot authorize %s for %s", id, srcID, src.Status, claim, c.ID)})
-			}
-		} else if authoritativeAcceptedSource(src.Status) {
+		authOK, authCode, authDetail := authorizeProductionSource(src)
+		if authOK {
 			authorizedComponents[compID] = true
+		} else if bad, claim := componentHasForbiddenProductionClaim(c); bad {
+			vs = append(vs, Violation{Code: authCode, Detail: fmt.Sprintf("%s: source %q cannot authorize %s for %s: %s", id, srcID, claim, c.ID, authDetail)})
 		}
 		for _, sym := range req.ImplementationSymbols {
 			if !idx.HasSymbol(sym) {
@@ -408,8 +460,8 @@ func validateRequirements(reg Registry, idx *CodeIndex, docs documentRegistryInd
 	}
 
 	// Every component with a production claim must be linked to at least one
-	// requirement whose DOCUMENT-REGISTRY source is accepted/active.
-	// Absent or empty requirements inventory fails whenever any such claim exists.
+	// requirement whose DOCUMENT-REGISTRY source satisfies
+	// PRODUCTION-AUTHORITY-SOURCE-01. Absent/empty inventory fails closed.
 	for _, c := range reg.Components {
 		bad, claim := componentHasForbiddenProductionClaim(c)
 		if !bad {
@@ -417,9 +469,9 @@ func validateRequirements(reg Registry, idx *CodeIndex, docs documentRegistryInd
 		}
 		if !authorizedComponents[c.ID] {
 			if len(reg.Requirements) == 0 {
-				vs = append(vs, Violation{Code: CodeProposedProductionAuth, Detail: fmt.Sprintf("%s: production claim %s requires a non-empty requirements inventory with an accepted source", c.ID, claim)})
+				vs = append(vs, Violation{Code: CodeProposedProductionAuth, Detail: fmt.Sprintf("%s: production claim %s requires a non-empty requirements inventory with a PRODUCTION-AUTHORITY-SOURCE-01 source", c.ID, claim)})
 			} else {
-				vs = append(vs, Violation{Code: CodeProposedProductionAuth, Detail: fmt.Sprintf("%s: production claim %s has no requirement linked to an accepted DOCUMENT-REGISTRY source", c.ID, claim)})
+				vs = append(vs, Violation{Code: CodeProposedProductionAuth, Detail: fmt.Sprintf("%s: production claim %s has no requirement linked to a single source with accepted+canonicalProductionAuthority+currentNormativeAuthority+normativeAuthority=product", c.ID, claim)})
 			}
 		}
 	}

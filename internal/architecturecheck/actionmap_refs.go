@@ -46,8 +46,16 @@ func validateActionMapRefs(root string, reg Registry, actionMap actionMapDocStat
 		}
 		key := fmt.Sprintf("%s:%d", c.Path, c.Line)
 		classified[key] = c
-		if c.Class == "AUTHORITATIVE_REFERENCE" && actionMap.found && actionMap.proposed {
-			vs = append(vs, Violation{Code: CodeAuthoritativeActionMap, Detail: fmt.Sprintf("%s:%d AUTHORITATIVE_REFERENCE while ACTION-MAP.yaml is proposed", c.Path, c.Line)})
+		if c.Class == "AUTHORITATIVE_REFERENCE" {
+			// Fail closed when registry status is unavailable or the action-map
+			// row is missing; proposed status also fails (R3-F2).
+			if !actionMap.registryOK {
+				vs = append(vs, Violation{Code: CodeAuthoritativeActionMap, Detail: fmt.Sprintf("%s:%d AUTHORITATIVE_REFERENCE while DOCUMENT-REGISTRY status is unavailable", c.Path, c.Line)})
+			} else if !actionMap.found {
+				vs = append(vs, Violation{Code: CodeAuthoritativeActionMap, Detail: fmt.Sprintf("%s:%d AUTHORITATIVE_REFERENCE while ACTION-MAP.yaml is missing from DOCUMENT-REGISTRY", c.Path, c.Line)})
+			} else if actionMap.proposed {
+				vs = append(vs, Violation{Code: CodeAuthoritativeActionMap, Detail: fmt.Sprintf("%s:%d AUTHORITATIVE_REFERENCE while ACTION-MAP.yaml is proposed", c.Path, c.Line)})
+			}
 		}
 	}
 

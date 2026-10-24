@@ -184,8 +184,8 @@ documents:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !hasCode(res.Violations, CodeProposedProductionAuth) {
-		t.Fatalf("expected %s, got %v", CodeProposedProductionAuth, res.Violations)
+	if !hasCode(res.Violations, CodeProdAuthWrongStatus) {
+		t.Fatalf("expected %s, got %v", CodeProdAuthWrongStatus, res.Violations)
 	}
 }
 
@@ -208,8 +208,8 @@ func TestF97_1_RegistryProposedRowAcceptedProductionActiveKills(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !hasCode(res.Violations, CodeProposedProductionAuth) {
-		t.Fatalf("expected %s, got %v", CodeProposedProductionAuth, res.Violations)
+	if !hasCode(res.Violations, CodeProdAuthWrongStatus) {
+		t.Fatalf("expected %s, got %v", CodeProdAuthWrongStatus, res.Violations)
 	}
 }
 
@@ -229,7 +229,10 @@ func TestF97_1_MissingSourceDocumentKills(t *testing.T) {
 	})
 	writeDocRegistry(t, dir, `apiVersion: coord.dev/v1alpha1
 kind: DocumentRegistry
-documents: []
+documents:
+  - id: other-doc
+    path: docs/other.md
+    status: accepted
 `)
 	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
 	if err != nil {
@@ -292,14 +295,14 @@ func TestF97_1_HistoricalAndSupersededSourceKillProductionClaims(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !hasCode(res.Violations, CodeProposedProductionAuth) {
-				t.Fatalf("expected %s for status=%s, got %v", CodeProposedProductionAuth, status, res.Violations)
+			if !hasCode(res.Violations, CodeProdAuthWrongStatus) {
+				t.Fatalf("expected %s for status=%s, got %v", CodeProdAuthWrongStatus, status, res.Violations)
 			}
 		})
 	}
 }
 
-// F97-1 positive control: accepted source + production claim -> PASS (no CodeProposedProductionAuth).
+// F97-1 / R3-F1 positive control: full PRODUCTION-AUTHORITY-SOURCE-01 source -> PASS.
 func TestF97_1_AcceptedSourceAllowsProductionClaim(t *testing.T) {
 	dir := t.TempDir()
 	writeMinimalFixture(t, dir, func(reg *Registry) {
@@ -310,17 +313,22 @@ func TestF97_1_AcceptedSourceAllowsProductionClaim(t *testing.T) {
 				SourceDocumentID: "src-accepted",
 				Section:          "1",
 				Component:        "fixture-component",
-				NormativeStatus:  "PROPOSED", // row cannot lower either for this check; registry accepted wins
+				NormativeStatus:  "PROPOSED", // row cannot raise; registry four-flag rule wins
 			},
 		}
 	})
-	writeDocRegistry(t, dir, docRegistryYAML("src-accepted", "accepted"))
+	writeDocRegistry(t, dir, docRegistryAuthorityYAML("src-accepted", "accepted", true, true, "product"))
 	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if hasCode(res.Violations, CodeProposedProductionAuth) {
-		t.Fatalf("accepted source must allow production claim, got %v", res.Violations)
+	if hasCode(res.Violations, CodeProposedProductionAuth) ||
+		hasCode(res.Violations, CodeProdAuthWrongStatus) ||
+		hasCode(res.Violations, CodeProdAuthWrongAuthorityClass) ||
+		hasCode(res.Violations, CodeProdAuthMissingCanonical) ||
+		hasCode(res.Violations, CodeProdAuthMissingCurrentNormative) ||
+		hasCode(res.Violations, CodeProdAuthInvalidField) {
+		t.Fatalf("full-authority source must allow production claim, got %v", res.Violations)
 	}
 	if hasCode(res.Violations, CodeUnknownRequirementID) {
 		t.Fatalf("accepted source must resolve, got %v", res.Violations)
@@ -383,7 +391,7 @@ func TestF97_1_ProductionClaimWithoutLinkedRequirementKills(t *testing.T) {
 			Code:      "PARTIAL", Connection: "NOT_CONNECTED", Qualification: "NOT_EVALUATED", Production: "DISABLED",
 		})
 	})
-	writeDocRegistry(t, dir, docRegistryYAML("src-accepted", "accepted"))
+	writeDocRegistry(t, dir, docRegistryAuthorityYAML("src-accepted", "accepted", true, true, "product"))
 	mustWrite(t, filepath.Join(dir, "docs/ARCHITECTURE.md"), "<!-- fixture-component -->\n<!-- other-component -->\n")
 	mustWrite(t, filepath.Join(dir, "docs/TARGET-ARCHITECTURE.md"), "<!-- fixture-component -->\n<!-- other-component -->\n")
 	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
@@ -535,6 +543,301 @@ func TestF97_3_AbsentClassificationsWithHitKills(t *testing.T) {
 	}
 }
 
+// R3-F1 / PRODUCTION-AUTHORITY-SOURCE-01 cross-mutations and field failures.
+func TestR3_F1_ActiveStatusEvenWithPositiveFlagsFails(t *testing.T) {
+	assertR3F1AuthFailure(t, "active", true, true, "product", CodeProdAuthWrongStatus)
+}
+
+func TestR3_F1_AcceptedFalseCanonicalFails(t *testing.T) {
+	assertR3F1AuthFailure(t, "accepted", false, true, "product", CodeProdAuthMissingCanonical)
+}
+
+func TestR3_F1_AcceptedFalseCurrentNormativeFails(t *testing.T) {
+	assertR3F1AuthFailure(t, "accepted", true, false, "product", CodeProdAuthMissingCurrentNormative)
+}
+
+func TestR3_F1_AcceptedProcessAuthorityFails(t *testing.T) {
+	assertR3F1AuthFailure(t, "accepted", true, true, "process", CodeProdAuthWrongAuthorityClass)
+}
+
+func TestR3_F1_AcceptedProductAllFlagsPass(t *testing.T) {
+	dir := t.TempDir()
+	writeMinimalFixture(t, dir, func(reg *Registry) {
+		setAxes(&reg.Components[0], "IMPLEMENTED", "PRODUCTION_CONNECTED", "PASS", "ACTIVE")
+		reg.Components[0].ProductionEntrypoints = []string{"FixtureSymbol"}
+		reg.Requirements = map[string]Requirement{
+			"CM-R3F1-OK": {SourceDocumentID: "src-ok", Section: "1", Component: "fixture-component"},
+		}
+	})
+	writeDocRegistry(t, dir, docRegistryAuthorityYAML("src-ok", "accepted", true, true, "product"))
+	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, code := range []string{
+		CodeProposedProductionAuth, CodeProdAuthWrongStatus, CodeProdAuthWrongAuthorityClass,
+		CodeProdAuthMissingCanonical, CodeProdAuthMissingCurrentNormative, CodeProdAuthInvalidField,
+	} {
+		if hasCode(res.Violations, code) {
+			t.Fatalf("positive control must not emit %s, got %v", code, res.Violations)
+		}
+	}
+}
+
+func TestR3_F1_MissingCanonicalFieldFails(t *testing.T) {
+	dir := t.TempDir()
+	writeProductionClaimFixture(t, dir, "src-miss")
+	writeDocRegistry(t, dir, `apiVersion: coord.dev/v1alpha1
+kind: DocumentRegistry
+documents:
+  - id: src-miss
+    path: docs/src-miss.md
+    status: accepted
+    currentNormativeAuthority: true
+    normativeAuthority: product
+`)
+	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCode(res.Violations, CodeProdAuthMissingCanonical) {
+		t.Fatalf("expected %s, got %v", CodeProdAuthMissingCanonical, res.Violations)
+	}
+}
+
+func TestR3_F1_MissingCurrentNormativeFieldFails(t *testing.T) {
+	dir := t.TempDir()
+	writeProductionClaimFixture(t, dir, "src-miss")
+	writeDocRegistry(t, dir, `apiVersion: coord.dev/v1alpha1
+kind: DocumentRegistry
+documents:
+  - id: src-miss
+    path: docs/src-miss.md
+    status: accepted
+    canonicalProductionAuthority: true
+    normativeAuthority: product
+`)
+	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCode(res.Violations, CodeProdAuthMissingCurrentNormative) {
+		t.Fatalf("expected %s, got %v", CodeProdAuthMissingCurrentNormative, res.Violations)
+	}
+}
+
+func TestR3_F1_MissingNormativeAuthorityFieldFails(t *testing.T) {
+	dir := t.TempDir()
+	writeProductionClaimFixture(t, dir, "src-miss")
+	writeDocRegistry(t, dir, `apiVersion: coord.dev/v1alpha1
+kind: DocumentRegistry
+documents:
+  - id: src-miss
+    path: docs/src-miss.md
+    status: accepted
+    canonicalProductionAuthority: true
+    currentNormativeAuthority: true
+`)
+	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCode(res.Violations, CodeProdAuthInvalidField) {
+		t.Fatalf("expected %s for missing normativeAuthority, got %v", CodeProdAuthInvalidField, res.Violations)
+	}
+}
+
+func TestR3_F1_UnknownNormativeAuthorityFails(t *testing.T) {
+	assertR3F1AuthFailure(t, "accepted", true, true, "unknown_class", CodeProdAuthWrongAuthorityClass)
+}
+
+func TestR3_F1_WrongTypeCanonicalFails(t *testing.T) {
+	dir := t.TempDir()
+	writeProductionClaimFixture(t, dir, "src-badtype")
+	writeDocRegistry(t, dir, `apiVersion: coord.dev/v1alpha1
+kind: DocumentRegistry
+documents:
+  - id: src-badtype
+    path: docs/src-badtype.md
+    status: accepted
+    canonicalProductionAuthority: "yes"
+    currentNormativeAuthority: true
+    normativeAuthority: product
+`)
+	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCode(res.Violations, CodeProdAuthInvalidField) {
+		t.Fatalf("expected %s for wrong-type canonicalProductionAuthority, got %v", CodeProdAuthInvalidField, res.Violations)
+	}
+}
+
+func TestR3_F1_SplitPropertiesAcrossTwoSourcesFails(t *testing.T) {
+	dir := t.TempDir()
+	writeMinimalFixture(t, dir, func(reg *Registry) {
+		setAxes(&reg.Components[0], "IMPLEMENTED", "PRODUCTION_CONNECTED", "PASS", "ACTIVE")
+		reg.Components[0].ProductionEntrypoints = []string{"FixtureSymbol"}
+		reg.Requirements = map[string]Requirement{
+			"CM-A": {SourceDocumentID: "src-a", Section: "1", Component: "fixture-component"},
+			"CM-B": {SourceDocumentID: "src-b", Section: "1", Component: "fixture-component"},
+		}
+	})
+	// Properties split: neither source alone carries all four.
+	writeDocRegistry(t, dir, `apiVersion: coord.dev/v1alpha1
+kind: DocumentRegistry
+documents:
+  - id: src-a
+    path: docs/src-a.md
+    status: accepted
+    canonicalProductionAuthority: true
+    currentNormativeAuthority: false
+    normativeAuthority: process
+  - id: src-b
+    path: docs/src-b.md
+    status: accepted
+    canonicalProductionAuthority: false
+    currentNormativeAuthority: true
+    normativeAuthority: product
+`)
+	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Neither source alone authorizes; composition across sources is forbidden.
+	if !hasCode(res.Violations, CodeProdAuthWrongAuthorityClass) &&
+		!hasCode(res.Violations, CodeProdAuthMissingCanonical) &&
+		!hasCode(res.Violations, CodeProdAuthMissingCurrentNormative) &&
+		!hasCode(res.Violations, CodeProposedProductionAuth) {
+		t.Fatalf("split sources must fail closed, got %v", res.Violations)
+	}
+}
+
+func assertR3F1AuthFailure(t *testing.T, status string, cpa, cna bool, normativeAuthority, wantCode string) {
+	t.Helper()
+	dir := t.TempDir()
+	writeProductionClaimFixture(t, dir, "src-r3f1")
+	writeDocRegistry(t, dir, docRegistryAuthorityYAML("src-r3f1", status, cpa, cna, normativeAuthority))
+	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCode(res.Violations, wantCode) {
+		t.Fatalf("expected %s for status=%s cpa=%t cna=%t na=%s, got %v", wantCode, status, cpa, cna, normativeAuthority, res.Violations)
+	}
+}
+
+func writeProductionClaimFixture(t *testing.T, dir, srcID string) {
+	t.Helper()
+	writeMinimalFixture(t, dir, func(reg *Registry) {
+		setAxes(&reg.Components[0], "IMPLEMENTED", "PRODUCTION_CONNECTED", "PASS", "ACTIVE")
+		reg.Components[0].ProductionEntrypoints = []string{"FixtureSymbol"}
+		reg.Requirements = map[string]Requirement{
+			"CM-R3F1": {SourceDocumentID: srcID, Section: "1", Component: "fixture-component"},
+		}
+	})
+}
+
+// R3-F2: DOCUMENT-REGISTRY load failures must surface and fail closed.
+func TestR3_F2_MissingDocumentRegistryKills(t *testing.T) {
+	dir := t.TempDir()
+	writeMinimalFixture(t, dir, nil)
+	_ = os.Remove(filepath.Join(dir, "docs/DOCUMENT-REGISTRY.yaml"))
+	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCode(res.Violations, CodeDocumentRegistryUnavailable) {
+		t.Fatalf("expected %s for missing registry, got %v", CodeDocumentRegistryUnavailable, res.Violations)
+	}
+}
+
+func TestR3_F2_MalformedDocumentRegistryKills(t *testing.T) {
+	dir := t.TempDir()
+	writeMinimalFixture(t, dir, nil)
+	writeDocRegistry(t, dir, "not: [valid: yaml: [[[")
+	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCode(res.Violations, CodeDocumentRegistryUnavailable) {
+		t.Fatalf("expected %s for malformed registry, got %v", CodeDocumentRegistryUnavailable, res.Violations)
+	}
+}
+
+func TestR3_F2_EmptyDocumentRegistryKills(t *testing.T) {
+	dir := t.TempDir()
+	writeMinimalFixture(t, dir, nil)
+	writeDocRegistry(t, dir, `apiVersion: coord.dev/v1alpha1
+kind: DocumentRegistry
+documents: []
+`)
+	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCode(res.Violations, CodeDocumentRegistryUnavailable) {
+		t.Fatalf("expected %s for empty registry, got %v", CodeDocumentRegistryUnavailable, res.Violations)
+	}
+}
+
+func TestR3_F2_UnreadableDocumentRegistryKills(t *testing.T) {
+	dir := t.TempDir()
+	writeMinimalFixture(t, dir, nil)
+	path := filepath.Join(dir, "docs/DOCUMENT-REGISTRY.yaml")
+	if err := os.Chmod(path, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0600) })
+	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCode(res.Violations, CodeDocumentRegistryUnavailable) {
+		t.Fatalf("expected %s for unreadable registry, got %v", CodeDocumentRegistryUnavailable, res.Violations)
+	}
+}
+
+func TestR3_F2_AuthoritativeReferenceFailsClosedWhenRegistryUnavailable(t *testing.T) {
+	dir := t.TempDir()
+	writeMinimalFixture(t, dir, func(reg *Registry) {
+		reg.ActionMapReferenceClassifications = []ActionMapReferenceClassification{{
+			Path: "docs/ARCHITECTURE.md", Line: 1, Class: "AUTHORITATIVE_REFERENCE", Note: "test",
+		}}
+	})
+	_ = os.Remove(filepath.Join(dir, "docs/DOCUMENT-REGISTRY.yaml"))
+	mustWrite(t, filepath.Join(dir, "docs/ARCHITECTURE.md"), "<!-- fixture-component -->\nAction Map is required.\n")
+	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCode(res.Violations, CodeDocumentRegistryUnavailable) {
+		t.Fatalf("expected %s, got %v", CodeDocumentRegistryUnavailable, res.Violations)
+	}
+	if !hasCode(res.Violations, CodeAuthoritativeActionMap) {
+		t.Fatalf("expected %s fail-closed, got %v", CodeAuthoritativeActionMap, res.Violations)
+	}
+}
+
+func TestR3_F2_AuthoritativeReferenceFailsClosedWhenActionMapRowMissing(t *testing.T) {
+	dir := t.TempDir()
+	writeMinimalFixture(t, dir, func(reg *Registry) {
+		reg.ActionMapReferenceClassifications = []ActionMapReferenceClassification{{
+			Path: "docs/ARCHITECTURE.md", Line: 1, Class: "AUTHORITATIVE_REFERENCE", Note: "test",
+		}}
+	})
+	// Registry loads but has no ACTION-MAP.yaml row.
+	writeDocRegistry(t, dir, docRegistryYAML("fixture-doc", "accepted"))
+	mustWrite(t, filepath.Join(dir, "docs/ARCHITECTURE.md"), "<!-- fixture-component -->\nAction Map is required.\n")
+	res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCode(res.Violations, CodeAuthoritativeActionMap) {
+		t.Fatalf("expected %s when action-map row missing, got %v", CodeAuthoritativeActionMap, res.Violations)
+	}
+}
+
 func TestMakefileAndWorkflowUseGoBlocking(t *testing.T) {
 	root := repoRoot(t)
 	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
@@ -615,6 +918,19 @@ documents:
 `, id, id, status)
 }
 
+func docRegistryAuthorityYAML(id, status string, cpa, cna bool, normativeAuthority string) string {
+	return fmt.Sprintf(`apiVersion: coord.dev/v1alpha1
+kind: DocumentRegistry
+documents:
+  - id: %s
+    path: docs/%s.md
+    status: %s
+    canonicalProductionAuthority: %t
+    currentNormativeAuthority: %t
+    normativeAuthority: %s
+`, id, id, status, cpa, cna, normativeAuthority)
+}
+
 func writeDocRegistry(t *testing.T, dir, yaml string) {
 	t.Helper()
 	mustMkdir(t, filepath.Join(dir, "docs"))
@@ -662,6 +978,14 @@ func writeMinimalFixture(t *testing.T, dir string, mutate func(*Registry)) {
 	mustWrite(t, filepath.Join(dir, "docs/ADR-FIXTURE.md"), "fixture\n")
 	mustWrite(t, filepath.Join(dir, "fixture.go"), "package fixture\n func FixtureSymbol(){}\n")
 	mustWrite(t, filepath.Join(dir, "fixture_test.go"), "package fixture\n func TestFixtureOK(t interface{}){}\n")
+	// Default registry so R3-F2 fail-closed does not trip every fixture.
+	writeDocRegistry(t, dir, `apiVersion: coord.dev/v1alpha1
+kind: DocumentRegistry
+documents:
+  - id: fixture-doc
+    path: docs/ADR-FIXTURE.md
+    status: accepted
+`)
 }
 
 func writeYAML(t *testing.T, path string, v any) {

@@ -1,0 +1,6 @@
+apiVersion: coord.dev/v1alpha1
+kind: DocumentRegistry
+documents:
+  - id: fixture-doc
+    path: docs/ADR-FIXTURE.md
+    status: accepted
