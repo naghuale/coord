@@ -23,11 +23,38 @@ type TransportConfig struct {
 
 type runtimeAdapter struct {
 	*transport.Adapter
-	client *Client
+	client        *Client
+	signed        *transport.SignedClient
+	authenticated *transport.AuthenticatedAdapter
 }
 
 // Err reports the receive poller's terminal error, if any.
 func (a *runtimeAdapter) Err() error { return a.client.Err() }
+
+// ConfigureAgentSessionIngress binds inbound verification to the canonical
+// AgentSession registry. The coordinator then consumes this single stream;
+// it must not also start the legacy unauthenticated receiver.
+func (a *runtimeAdapter) ConfigureAgentSessionIngress(resolver transport.KeyResolver) error {
+	if a == nil || a.signed == nil || resolver == nil {
+		return fmt.Errorf("AgentSession resolver required")
+	}
+	a.signed.Resolver = resolver
+	a.authenticated = &transport.AuthenticatedAdapter{Client: a.signed, Session: a.Session}
+	return nil
+}
+
+func (a *runtimeAdapter) ReceiveAuthenticated(ctx context.Context) <-chan transport.AuthenticatedFrame {
+	if a == nil || a.authenticated == nil {
+		closed := make(chan transport.AuthenticatedFrame)
+		close(closed)
+		return closed
+	}
+	return a.authenticated.ReceiveAuthenticated(ctx)
+}
+
+func (a *runtimeAdapter) AuthenticatedIngressConfigured() bool {
+	return a != nil && a.authenticated != nil
+}
 
 // OpenTransport starts and validates the configured Telepathy MCP process and
 // returns its signed Coord transport. The close function owns Process.Close.
@@ -58,5 +85,5 @@ func OpenTransport(ctx context.Context, cfg TransportConfig) (transport.Transpor
 		return nil, closeProcess, err
 	}
 	signed := &transport.SignedClient{Client: client, PrivateKey: cfg.PrivateKey, Peers: cfg.PeerKeys}
-	return &runtimeAdapter{Adapter: &transport.Adapter{Client: signed, Session: cfg.Session}, client: client}, closeProcess, nil
+	return &runtimeAdapter{Adapter: &transport.Adapter{Client: signed, Session: cfg.Session}, client: client, signed: signed}, closeProcess, nil
 }

@@ -21,7 +21,7 @@ import (
 	"time"
 )
 
-const CanonicalSchemaVersion uint32 = 4
+const CanonicalSchemaVersion uint32 = 5
 
 // ErrFenceExhausted prevents Task.Fence from wrapping to an earlier writer epoch.
 var ErrFenceExhausted = errors.New("task fence exhausted")
@@ -50,6 +50,8 @@ type OutboxQueue struct {
 type InboxReceipt struct {
 	ActorID                 string    `json:"actor_id"`
 	MessageID               string    `json:"message_id"`
+	AgentCommandDigest      string    `json:"agent_command_digest,omitempty"`
+	AssignmentID            string    `json:"assignment_id,omitempty"`
 	OwnerCommandDigest      string    `json:"owner_command_digest,omitempty"`
 	OwnerNonce              string    `json:"owner_nonce,omitempty"`
 	OwnerCredentialRevision uint64    `json:"owner_credential_revision,omitempty"`
@@ -108,8 +110,7 @@ func EmptyCanonicalState() CanonicalState {
 }
 
 // NormalizeCanonicalState initializes collections added compatibly to older
-// canonical schemas. Schema 3 remains schema 3 in memory until the first
-// successful commit publishes schema 4.
+// canonical schemas. Older schemas remain unchanged in memory until a commit.
 func NormalizeCanonicalState(state CanonicalState) CanonicalState {
 	legacy := state.SchemaVersion == 1
 	if legacy {
@@ -209,7 +210,7 @@ func NewCanonicalWithClock(p CanonicalPersistence, now func() time.Time) (*Canon
 
 func ValidateCanonicalState(state CanonicalState) error {
 	state = NormalizeCanonicalState(state)
-	if state.SchemaVersion != CanonicalSchemaVersion && state.SchemaVersion != 3 {
+	if state.SchemaVersion != CanonicalSchemaVersion && state.SchemaVersion != 4 && state.SchemaVersion != 3 {
 		return fmt.Errorf("unsupported canonical schema version %d", state.SchemaVersion)
 	}
 	if state.SchemaVersion == 3 && len(state.OwnerCredentials) != 0 {
@@ -348,8 +349,28 @@ func validateInbox(state CanonicalState) error {
 		if !ok {
 			return fmt.Errorf("inbox receipt %q references missing Task %q", key, receipt.TaskID)
 		}
-		if receipt.RecordedAt.IsZero() || len(receipt.EventIDs) == 0 {
-			return fmt.Errorf("inbox receipt %q lacks commit time or DomainEvent references", key)
+		if receipt.RecordedAt.IsZero() {
+			return fmt.Errorf("inbox receipt %q lacks commit time", key)
+		}
+		agentFields := receipt.AgentCommandDigest != "" || receipt.AssignmentID != ""
+		if agentFields {
+			if len(receipt.AgentCommandDigest) != 64 || receipt.AssignmentID == "" || strings.TrimSpace(receipt.AssignmentID) != receipt.AssignmentID || receipt.RunID == "" {
+				return fmt.Errorf("agent command receipt %q has incomplete binding", key)
+			}
+			digest, err := hex.DecodeString(receipt.AgentCommandDigest)
+			if err != nil || len(digest) != 32 {
+				return fmt.Errorf("agent command receipt %q has invalid digest", key)
+			}
+			ledger := state.AssignmentLedger
+			assignmentRecord, exists := assignment.Record{}, false
+			if ledger != nil {
+				assignmentRecord, exists = ledger.Records[receipt.AssignmentID]
+			}
+			if !exists || assignmentRecord.RunBinding == nil || assignmentRecord.RunBinding.TaskID != receipt.TaskID.String() || assignmentRecord.RunBinding.RunID != receipt.RunID {
+				return fmt.Errorf("agent command receipt %q references missing or unrelated Assignment", key)
+			}
+		} else if receipt.AssignmentID != "" || len(receipt.EventIDs) == 0 {
+			return fmt.Errorf("inbox receipt %q lacks DomainEvent references", key)
 		}
 		ownerFields := receipt.OwnerCommandDigest != "" || receipt.OwnerNonce != "" || receipt.OwnerCredentialRevision != 0
 		if ownerFields {
@@ -366,7 +387,12 @@ func validateInbox(state CanonicalState) error {
 				return fmt.Errorf("owner task receipt %q is not bound to its credential aggregate", key)
 			}
 		}
-		if receipt.ExpectedRevision == ^uint64(0) || receipt.CommittedRevision != receipt.ExpectedRevision+1 || taskValue.Revision < receipt.CommittedRevision {
+		noAcceptance := agentFields && len(receipt.EventIDs) == 0
+		if noAcceptance {
+			if receipt.CommittedRevision != receipt.ExpectedRevision || taskValue.Revision < receipt.CommittedRevision {
+				return fmt.Errorf("no-acceptance inbox receipt %q has invalid Task revision", key)
+			}
+		} else if receipt.ExpectedRevision == ^uint64(0) || receipt.CommittedRevision != receipt.ExpectedRevision+1 || taskValue.Revision < receipt.CommittedRevision {
 			return fmt.Errorf("inbox receipt %q has invalid expected/committed Task revision", key)
 		}
 		if receipt.RunID != "" {
@@ -393,8 +419,11 @@ func validateInbox(state CanonicalState) error {
 			}
 			seen[eventID] = true
 		}
-		if !revisionEvent {
+		if !noAcceptance && !revisionEvent {
 			return fmt.Errorf("inbox receipt %q does not reference its committed Task revision", key)
+		}
+		if noAcceptance && len(receipt.EventIDs) != 0 {
+			return fmt.Errorf("no-acceptance inbox receipt %q references DomainEvents", key)
 		}
 	}
 	for principalID, aggregate := range state.OwnerCredentials {
@@ -917,8 +946,8 @@ func (s *CanonicalStore) applyInboxCommandLocked(actorID, messageID string, task
 // ValidateCanonicalTransition enforces append-only history and monotonic Task
 // versions across commits. Snapshot validation alone cannot prove these rules.
 func ValidateCanonicalTransition(previous, next CanonicalState) error {
-	if previous.SchemaVersion != next.SchemaVersion && (previous.SchemaVersion != 3 || next.SchemaVersion != CanonicalSchemaVersion) {
-		return fmt.Errorf("canonical schema may only advance from 3 to %d", CanonicalSchemaVersion)
+	if previous.SchemaVersion != next.SchemaVersion && ((previous.SchemaVersion != 3 && previous.SchemaVersion != 4) || next.SchemaVersion != CanonicalSchemaVersion) {
+		return fmt.Errorf("canonical schema may only advance from 3 or 4 to %d", CanonicalSchemaVersion)
 	}
 	if err := assignment.ValidateTransition(previous.AssignmentLedger, next.AssignmentLedger); err != nil {
 		return err
@@ -967,7 +996,22 @@ func ValidateCanonicalTransition(previous, next CanonicalState) error {
 			continue
 		}
 		if len(receipt.EventIDs) == 0 {
-			return fmt.Errorf("new Inbox receipt %q requires same-commit DomainEvent references", key)
+			if receipt.AgentCommandDigest == "" || receipt.AssignmentID == "" || receipt.CommittedRevision != receipt.ExpectedRevision {
+				return fmt.Errorf("new Inbox receipt %q requires same-commit DomainEvent references", key)
+			}
+			before := previous
+			before.Inbox = next.Inbox
+			before.Revision = next.Revision
+			before.SchemaVersion = next.SchemaVersion
+			before.SchemaMigrations = next.SchemaMigrations
+			if !reflect.DeepEqual(before, next) {
+				return fmt.Errorf("receipt-only agent command %q changed canonical state outside its receipt", key)
+			}
+			oldTask, exists := previous.Tasks[receipt.TaskID]
+			if !exists || receipt.ExpectedRevision != oldTask.Revision || receipt.CommittedRevision != oldTask.Revision {
+				return fmt.Errorf("receipt-only agent command %q changed Task revision", key)
+			}
+			continue
 		}
 		for _, eventID := range receipt.EventIDs {
 			if _, committed := newEventIDs[eventID]; !committed {
