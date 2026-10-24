@@ -4,23 +4,23 @@ import "gopkg.in/yaml.v3"
 
 // Registry is the strict YAML model for docs/architecture/COMPONENT-STATUS.yaml.
 type Registry struct {
-	APIVersion                      string                          `yaml:"apiVersion"`
-	Kind                            string                          `yaml:"kind"`
-	Metadata                        Metadata                        `yaml:"metadata"`
-	Documents                       Documents                       `yaml:"documents"`
-	ArchitectureSignificantPaths    []string                        `yaml:"architectureSignificantPaths"`
-	Components                      []Component                     `yaml:"components"`
-	Requirements                    map[string]Requirement          `yaml:"requirements,omitempty"`
+	APIVersion                        string                             `yaml:"apiVersion"`
+	Kind                              string                             `yaml:"kind"`
+	Metadata                          Metadata                           `yaml:"metadata"`
+	Documents                         Documents                          `yaml:"documents"`
+	ArchitectureSignificantPaths      []string                           `yaml:"architectureSignificantPaths"`
+	Components                        []Component                        `yaml:"components"`
+	Requirements                      map[string]Requirement             `yaml:"requirements,omitempty"`
 	ActionMapReferenceClassifications []ActionMapReferenceClassification `yaml:"actionMapReferenceClassifications,omitempty"`
 }
 
 // Metadata holds registry identity and vocabulary.
 type Metadata struct {
-	ProjectID          string   `yaml:"projectId"`
-	RegistryVersion    int      `yaml:"registryVersion"`
-	UpdatedFromCommit  string   `yaml:"updatedFromCommit"`
-	StatusVocabulary   []string `yaml:"statusVocabulary"`
-	AxisVocabulary     *AxisVocabulary `yaml:"axisVocabulary,omitempty"`
+	ProjectID         string          `yaml:"projectId"`
+	RegistryVersion   int             `yaml:"registryVersion"`
+	UpdatedFromCommit string          `yaml:"updatedFromCommit"`
+	StatusVocabulary  []string        `yaml:"statusVocabulary"`
+	AxisVocabulary    *AxisVocabulary `yaml:"axisVocabulary,omitempty"`
 }
 
 // AxisVocabulary lists allowed values for the four independent status axes.
@@ -40,21 +40,21 @@ type Documents struct {
 // Component is one architecture component row.
 // Legacy status stays during migration; axes are the OWNER vocabulary.
 type Component struct {
-	ID                         string            `yaml:"id"`
-	Title                      string            `yaml:"title"`
-	Status                     string            `yaml:"status"`
-	NormativeForCurrentProduct *bool             `yaml:"normativeForCurrentProduct,omitempty"`
-	NormativeSources           []string          `yaml:"normativeSources"`
-	Implemented                []string          `yaml:"implemented"`
-	Missing                    []string          `yaml:"missing"`
-	Evidence                   Evidence          `yaml:"evidence"`
-	Documents                  ComponentDocs     `yaml:"documents"`
-	Code                       string            `yaml:"code,omitempty"`
-	Connection                 string            `yaml:"connection,omitempty"`
-	Qualification              string            `yaml:"qualification,omitempty"`
-	Production                 string            `yaml:"production,omitempty"`
-	ProductionEntrypoints      []string          `yaml:"productionEntrypoints,omitempty"`
-	Extra                      yaml.Node         `yaml:"-"`
+	ID                         string        `yaml:"id"`
+	Title                      string        `yaml:"title"`
+	Status                     string        `yaml:"status"`
+	NormativeForCurrentProduct *bool         `yaml:"normativeForCurrentProduct,omitempty"`
+	NormativeSources           []string      `yaml:"normativeSources"`
+	Implemented                []string      `yaml:"implemented"`
+	Missing                    []string      `yaml:"missing"`
+	Evidence                   Evidence      `yaml:"evidence"`
+	Documents                  ComponentDocs `yaml:"documents"`
+	Code                       string        `yaml:"code,omitempty"`
+	Connection                 string        `yaml:"connection,omitempty"`
+	Qualification              string        `yaml:"qualification,omitempty"`
+	Production                 string        `yaml:"production,omitempty"`
+	ProductionEntrypoints      []string      `yaml:"productionEntrypoints,omitempty"`
+	Extra                      yaml.Node     `yaml:"-"`
 }
 
 // Evidence lists symbols, tests and issue numbers.

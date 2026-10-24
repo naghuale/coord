@@ -1,5 +1,9 @@
 # История изменений
 
+## 2026-10-24 — COMPONENT-STATUS axes, NV-4 and D24-F3 (Refs #97)
+
+- `COMPONENT-STATUS.yaml` gains the four OWNER axes (`code` / `connection` / `qualification` / `production`), a critical-path `requirements:` bootstrap (ADR-0001, ADR-0004, R152–R154, #90/#93/#95/#96) and NV-4 `actionMapReferenceClassifications`. Subordinate recovery docs/templates are aligned with ACTION-MAP-INTERIM-PROCEDURE-01 without weakening fail-closed. The D24-F3 recovery fixture retargets the `actionMap` source to `AGENTS.md` and keeps `docs/operations/ACTION-MAP.md` only in `rejectedAsCurrentAuthority`. (`TestLiveRegistryPasses`, `TestAuthoritativeActionMapWhileProposedKills`, `TestUnclassifiedActionMapHitKills`, `TestProposedProductionAuthorityKills`, `TestConnectedWithoutEntrypointKills`; recovery: `tests/test_recovery_checks.sh`)
+
 ## 2026-10-24 — Go architecture sync checker with golden fixtures (Refs #97)
 
 - `coord-governance check-architecture-sync` and `internal/architecturecheck` become the blocking architecture sync authority. Symbols and tests are resolved through `go/parser` and `go/ast`. Golden fixtures under `internal/architecturecheck/testdata/golden` encode the Python checker findings; Go tests compare against those fixtures and must not invoke Python. Makefile and `architecture-sync.yml` block on Go; the Python scripts remain as evidence only. (`TestLiveRegistryPasses`, `TestGoldenCases`, `TestMissingSymbolKills`, `TestMissingTestKills`, `TestPartialRequiresMissing`, `TestProposedMustBeNonNormative`, `TestConnectedWithoutEntrypointKills`, `TestActiveWithoutRuntimeKills`, `TestProposedProductionAuthorityKills`, `TestMakefileAndWorkflowUseGoBlocking`, `TestASTIndexFindsTypeFuncMethodAndTest`)

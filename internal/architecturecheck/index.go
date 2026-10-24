@@ -12,11 +12,11 @@ import (
 
 // CodeIndex holds declared Go type, function, method and test names under root.
 type CodeIndex struct {
-	Types     map[string]bool
-	Funcs     map[string]bool
-	Methods   map[string]bool
-	Tests     map[string]bool
-	AllNames  map[string]bool
+	Types    map[string]bool
+	Funcs    map[string]bool
+	Methods  map[string]bool
+	Tests    map[string]bool
+	AllNames map[string]bool
 }
 
 // BuildCodeIndex walks root for .go files and indexes declarations via go/ast.

@@ -4,7 +4,7 @@
 Восстанови прерванную агентскую сессию fail-closed.
 
 Не спрашивай «что делать дальше», пока active assignment можно восстановить из
-Git, CURRENT/OPEN-WORK, Operations Ledger, Document Registry, Action Map и
+Git, CURRENT/OPEN-WORK, Operations Ledger, Document Registry, AGENTS.md / State Machine / принятых ADR/R и
 assignment. Сначала не изменяй файлы.
 
 1. Проверь WorkspaceBinding, project root, repository/worktree и project-local

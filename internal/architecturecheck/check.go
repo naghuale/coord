@@ -13,8 +13,8 @@ import (
 
 // Options configures Check.
 type Options struct {
-	Root           string
-	RegistryPath   string
+	Root            string
+	RegistryPath    string
 	DocRegistryPath string
 	// SkipChangedDocs skips the architecture-significant path / impact check.
 	// Used by golden fixture trees that are not full git repositories.

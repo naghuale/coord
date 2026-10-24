@@ -1,2 +1,3 @@
 package fixture
-func FixtureSymbol(){}
+
+func FixtureSymbol() {}

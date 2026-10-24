@@ -1,2 +1,3 @@
 package fixture
-func TestFixtureOK(t interface{}){}
+
+func TestFixtureOK(t interface{}) {}

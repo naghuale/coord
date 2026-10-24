@@ -109,7 +109,7 @@ git commit
 
 ### 3.4 Отсутствие события или файла не означает OWNER_REQUIRED
 
-Если событие отсутствует в Action Map или обязательный источник не найден:
+Если событие отсутствует в принятых нормах (AGENTS.md, Coordinator State Machine, Document Registry, принятые ADR/R) или обязательный источник не найден:
 
 ```text
 проверить authority
@@ -350,7 +350,7 @@ transitions:
   PREPARE_CORRECTION:
     when:
       - отсутствует обязательный current-state source
-      - event отсутствует в Action Map
+      - event отсутствует в принятых нормах (AGENTS.md / State Machine / Registry / ADR/R)
       - найден документальный drift
 
   BLOCKED_EXTERNAL:
@@ -503,7 +503,7 @@ Issue до завершения восстановления.
    - AGENTS;
    - Context Index;
    - Document Registry;
-   - Action Map;
+   - промежуточный порядок вместо Action Map (ACTION-MAP-INTERIM-PROCEDURE-01);
    - CURRENT;
    - OPEN-WORK;
    - active assignment;

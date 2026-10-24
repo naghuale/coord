@@ -1,413 +1,654 @@
 apiVersion: coord.dev/v1alpha1
 kind: ArchitectureComponentRegistry
-
 metadata:
   projectId: coord
   registryVersion: 1
-  updatedFromCommit: 62f83e36d9fa5e589d19c8fe60ac9eb097df690b
+  updatedFromCommit: cb381a0e35b6ea9809ee258585a11699d45ffefa
   statusVocabulary:
-    - implemented
-    - partial
-    - missing
-    - proposed
-    - legacy
-
+  - implemented
+  - partial
+  - missing
+  - proposed
+  - legacy
+  axisVocabulary:
+    code:
+    - MISSING
+    - PARTIAL
+    - IMPLEMENTED
+    - not_applicable
+    connection:
+    - NOT_CONNECTED
+    - TEST_ONLY
+    - PRODUCTION_CONNECTED
+    - not_applicable
+    qualification:
+    - NOT_EVALUATED
+    - PARTIAL
+    - PASS
+    - FAIL
+    - ACCEPTED_WITH_LIMITATIONS
+    - not_applicable
+    production:
+    - DISABLED
+    - BLOCKED
+    - ACTIVE
+    - ACTIVE_WITH_LIMITATIONS
+    - not_applicable
 documents:
   currentArchitecture: docs/ARCHITECTURE.md
   targetArchitecture: docs/TARGET-ARCHITECTURE.md
-
 architectureSignificantPaths:
-  - store/**
-  - task/**
-  - agentsession/**
-  - transport/**
-  - checkpoint/**
-  - cmd/coordd/**
-  - internal/taskservice/**
-
+- store/**
+- task/**
+- agentsession/**
+- transport/**
+- checkpoint/**
+- cmd/coordd/**
+- internal/taskservice/**
 components:
-  - id: canonical-persistence
-    title: Canonical persistence
-    status: partial
-    normativeSources:
-      - docs/ADR-0005-STORAGE-MODEL.md
-    implemented:
-      - CanonicalState persisted as one versioned document
-      - Task, Run, DomainEvent, Inbox, Outbox, AgentSession and AgentSessionEvent are part of the durable unit
-      - ReviewResult, AuditResult and Discussion Graph data validated as part of canonical state
-      - atomic replacement uses temporary file, fsync, rename and parent-directory sync
-      - in-memory state published only after successful Save
-      - production coordd opens CanonicalStore backed by CanonicalFile
-    missing:
-      - production command paths for all canonical writers
-      - removal of remaining legacy runtime state owners
-      - full stage scheduler integration
-    evidence:
-      symbols:
-        - CanonicalState
-        - CanonicalPersistence
-        - CanonicalFile
-        - UpdateCanonical
-      tests:
-        - TestCanonicalStoreRejectsTaskMutationWithoutEvent
-        - TestCanonicalFileReadsAndRewritesCreationOnlyV1WithoutFenceField
-      issues:
-        - 5
-    documents:
-      currentAnchor: canonical-persistence
-      targetAnchor: canonical-persistence
-
-  - id: canonical-command-boundary
-    title: Canonical agent command boundary
-    status: partial
-    normativeSources:
-      - docs/ADR-0001-CANONICAL-COORDINATION-MODEL.md
-      - docs/ADR-0004-RUNTIME-AND-DAEMON-MODEL.md
-      - docs/TASK-MODEL.md
-      - docs/plans/p0-2-task/AGENT-COMMAND-BOUNDARY.md
-    implemented:
-      - authenticated frame signature and local-recipient verification
-      - current AgentSession generation and key verification
-      - trusted AgentID resolved from AgentSession rather than command body
-      - Task, Run, Fence, Attempt, role and Stage checks
-      - replay and ExpectedRevision checks
-      - atomic transition, DomainEvent, Inbox receipt and Outbox commit
-      - rejection paths avoid durable side effects
-    missing:
-      - production CLI caller
-      - production Telepathy caller
-      - OwnerCredential
-      - command-boundary AgentSession management operations
-      - Executor RESULT production path
-    evidence:
-      symbols:
-        - AuthenticatedFrame
-        - ApplyAgentCommand
-      tests:
-        - TestAgentCommandCommitsEventReceiptOutboxAtomically
-        - TestAgentCommandIgnoresActorIDFromBody
-        - TestAgentCommandRejectsWhitespaceAgentIDWithoutWriting
-        - TestAgentCommandRejectsMissingRoleSelectionBeforeRoleStage
-      issues:
-        - 26
-        - 35
-        - 36
-    documents:
-      currentAnchor: canonical-agent-command-boundary
-      targetAnchor: canonical-command-boundary
-
-  - id: agent-session
-    title: AgentSession projection, history and Run binding
-    status: partial
-    normativeSources:
-      - docs/ADR-0001-CANONICAL-COORDINATION-MODEL.md
-      - docs/TASK-MODEL.md
-    implemented:
-      - AgentSession projection and append-only event history
-      - registration, key rotation and address replacement store operations
-      - generation and key binding to Task-scoped Run
-      - startup and transition validation
-      - revoked addresses cannot be registered again
-    missing:
-      - operator command path
-      - OwnerCredential integration
-      - standalone revoke command without replacement
-      - production admission and Session Registry
-    evidence:
-      symbols:
-        - RegisterAgentSession
-        - RotateAgentSessionKey
-        - ReplaceAgentSessionAddress
-        - ValidateHistory
-        - ValidateTransition
-      tests:
-        - TestCanonicalAgentSessionRegistrationPersistsOperatorBinding
-        - TestCanonicalAgentSessionKeyRotationIncrementsGenerationAtomically
-        - TestCanonicalAssignmentTakesCurrentActiveAgentSessionBinding
-        - TestCanonicalStartupRejectsForgedRunGenerationAndAgentID
-      issues:
-        - 13
-        - 26
-        - 34
-    documents:
-      currentAnchor: agent-session
-      targetAnchor: agent-session
-
-  - id: review-audit-results
-    title: Canonical ReviewResult and AuditResult
-    status: partial
-    normativeSources:
-      - docs/ADR-0001-CANONICAL-COORDINATION-MODEL.md
-      - docs/TASK-MODEL.md
-    implemented:
-      - typed ReviewResult and AuditResult payloads
-      - atomic result, Task transition, terminal role Run, DomainEvent, receipt and RESULT_ACK commit
-      - startup and transition association validation
-      - Reviewer and Auditor independence by stable AgentID and executor history
-      - former Reviewer or Auditor cannot later become Executor for the same Task
-    missing:
-      - production agent or CLI command path
-      - supervisor stop proof
-      - stage scheduler and next-stage transition
-      - canonical Artifact metadata
-      - read-only API and Startup Card
-    evidence:
-      symbols:
-        - ReviewResult
-        - AuditResult
-      tests:
-        - TestReviewResultCommitsWithTransitionEvent
-        - TestAuditResultCommitsWithTransitionEvent
-        - TestReviewerRejectsExecutorAgentIDAcrossHistory
-        - TestAuditorRejectsExecutorAgentIDAcrossTaskRuns
-      issues:
-        - 30
-    documents:
-      currentAnchor: canonical-review-audit-results
-      targetAnchor: review-audit-results
-
-  - id: discussion-graph
-    title: Canonical Discussion Graph
-    status: partial
-    normativeSources:
-      - docs/ADR-0001-CANONICAL-COORDINATION-MODEL.md
-    implemented:
-      - typed nodes
-      - typed edges
-      - canonical persistence
-      - startup validation
-      - transition validation
-      - required Actor and Role validation
-    missing:
-      - production command path
-      - read-only projection
-      - Owner Console
-      - product Decision Resolver
-    evidence:
-      symbols:
-        - ValidateCanonicalState
-        - ValidateCanonicalTransition
-      tests:
-        - TestDiscussionNodeRequiresActor
-        - TestDiscussionNodeRequiresRole
-        - TestDiscussionEdgeRequiresActor
-        - TestDiscussionEdgeRejectsUnknownType
-      issues:
-        - 30
-    documents:
-      currentAnchor: canonical-discussion-graph
-      targetAnchor: discussion-graph
-
-  - id: daemon-runtime
-    title: Standalone canonical daemon runtime
-    status: partial
-    normativeSources:
-      - docs/ADR-0004-RUNTIME-AND-DAEMON-MODEL.md
-      - docs/ADR-0005-STORAGE-MODEL.md
-    implemented:
-      - standalone coordd executable
-      - namespace lock before store opening
-      - canonical store startup validation
-      - diagnostic-only readiness for unsupported legacy state
-      - operational readiness endpoint for the current Run coordinator
-    missing:
-      - production canonical write path
-      - complete Task-wide readiness checks
-      - full stop-proof recovery
-      - removal of legacy localchat writers
-    evidence:
-      symbols:
-        - NewCanonical
-        - CanonicalFile
-      tests:
-        - TestCoorddTakesNamespaceLockBeforeStores
-        - TestCoorddReadinessFailsClosedForActiveTaskRunWithoutAgentSessionBinding
-      issues:
-        - 6
-        - 7
-    documents:
-      currentAnchor: daemon-runtime
-      targetAnchor: daemon-runtime
-
-  - id: project-dependency-graph
-    title: Project Dependency Graph
-    status: missing
-    normativeSources:
-      - docs/ADR-0002-PROJECT-DEPENDENCY-GRAPH.md
-    implemented: []
-    missing:
-      - canonical graph representation
-      - graph revision and CAS mutation
-      - prerequisite enforcement
-      - read-only projection
-    evidence:
-      symbols: []
-      tests: []
-      issues: []
-    documents:
-      currentAnchor: project-dependency-graph
-      targetAnchor: project-dependency-graph
-
-  - id: startup-card-read-api
-    title: Startup Card and read-only Task API
-    status: proposed
-    normativeForCurrentProduct: false
-    normativeSources:
-      - docs/ADR-0001-CANONICAL-COORDINATION-MODEL.md
-      - docs/ADR-0004-RUNTIME-AND-DAEMON-MODEL.md
-    implemented: []
-    missing:
-      - ADR-0006
-      - Task read-only API
-      - Startup Card projection
-      - Dashboard projection
-    evidence:
-      symbols: []
-      tests: []
-      issues: []
-    documents:
-      currentAnchor: startup-card-read-api
-      targetAnchor: startup-card-read-api
-
-  - id: session-registry-supervisor
-    title: Session Registry and Session Supervisor
-    status: proposed
-    normativeForCurrentProduct: false
-    normativeSources:
-      - docs/rfc/RFC-0001-LOCAL-PROJECT-OPERATIONS.md
-    implemented: []
-    missing:
-      - ADR-0009 acceptance
-      - Session Registry
-      - process identity provider
-      - Session Supervisor
-      - supervised termination plan execution
-    evidence:
-      symbols: []
-      tests: []
-      issues:
-        - 34
-    documents:
-      currentAnchor: session-registry-supervisor
-      targetAnchor: session-registry-supervisor
-
-  - id: durable-orchestration-candidate
-    title: Deterministic durable orchestration candidate
-    status: partial
-    normativeSources:
-      - docs/ADR-0004-RUNTIME-AND-DAEMON-MODEL.md
-      - docs/ADR-0005-STORAGE-MODEL.md
-    implemented:
-      - canonical external actions, claims and durable dispatch-start
-      - ambiguous action recovery with observation before redispatch
-      - canonical session revocation and fake stop-proof-gated replacement intent
-      - revision-consistent rebuildable projections in the explicit test harness; production orchestration disabled (#96)
-      - read-only disabled facade preserves workflow Run fencing and snapshot data
-    missing:
-      - accepted orchestration ADR AND ready authenticated single write path before any production enablement
-      - qualified live adapters and production replacement Run binding
-      - complete Issue Review Audit CI scheduler
-      - CandidateDecision and accepted-norm evidence validation
-    evidence:
-      symbols: [EnqueueAction, RecoverActions, AcceptObservation, WorkflowRuntime]
-      tests: [TestCrashAfterDispatchBeforeResponseObservesBeforeRetry, TestConfirmedFenceAndStopProofPrecedeReplacement, TestExplicitOrchestrationHarnessPublishesCanonicalRevisionBundle, TestOrchestrationDisabledTickAndRecoveryAreReadOnly, TestOrchestrationNormalStartAndRestartPreserveSnapshot, TestOrchestrationDisabledKeepsRunFencesAndOrdinaryRuns, TestOrchestrationNoProductionEnablementConfig]
-      issues: [49, 96]
-    documents:
-      currentAnchor: durable-orchestration-candidate
-      targetAnchor: durable-orchestration-candidate
-
-  - id: run-recovery-command
-    title: ApplyRunRecoveryCommand — coordinator-driven orphaned Run recovery
-    status: partial
-    normativeSources:
-      - docs/ADR-0005-STORAGE-MODEL.md
-    implemented:
-      - MARK_INTERRUPTED transition (Run→Failed, task blocked, stop-proof gated)
-      - KSC-C stop-proof validation (Kind==Stop, Completed, Stopped, StopMethod, full binding, parent fence)
-      - fail-closed FENCE_ONLY, PREPARE_REPLACEMENT, COMPLETE_EXISTING, RESUME_OBSERVATION
-      - 7 specific violation codes plus FORBIDDEN for admission/refusal boundaries
-      - replay idempotency via inbox receipt matching
-    missing:
-      - PREPARE_REPLACEMENT transition (Q3 schedule)
-      - FENCE_ONLY transition (FO-C implementation)
-      - COMPLETE_EXISTING transition (CEE-C implementation)
-      - RESUME_OBSERVATION transition (DS-6 unblocking required)
-    evidence:
-      symbols:
-        - ApplyRunRecoveryCommand
-        - RunRecoveryCommand
-        - RunRecoveryReceipt
-      tests:
-        - TestApplyRunRecoveryMarksInterruptedAtomically
-        - TestApplyRunRecoveryExactReplayReturnsOriginalReceiptWithoutWrites
-        - TestRunRecoveryStopProofMutationMatrixFailsClosed
-        - TestRunRecoveryDuplicateTransitionRejected
-      issues: []
-    documents:
-      currentAnchor: run-recovery-command
-      targetAnchor: run-recovery-command
-
-  - id: shadow-pilot-live-entrypoint
-    title: Read-only coordd shadow pilot entrypoint
-    status: partial
-    normativeSources:
-      - AGENTS.md
-    implemented:
-      - exact coordd shadow-pilot run branch returns before daemon startup
-      - typed Telepathy adapter wraps existing version-pinned MCP client
-      - assignment and result correlation precedes completion and sealed evidence
-      - observed local startup counters reject store, daemon locks and external mutations
-      - all ten model dimensions and explicit unsupported-axis NOT_EVALUATED records
-      - pilot report cannot issue P0-3 admission
-    missing:
-      - independently accepted live c03 round trip
-      - independent implementation Review and TD-R2 Audit acceptance
-      - live process crash and restart campaign
-    evidence:
-      symbols:
-        - runShadowPilot
-        - telepathyShadowAgentAdapter
-        - startupProbe
-      tests:
-        - TestShadowCLIUsesExistingMCPClientEndToEnd
-        - TestShadowRuntimeBreachesPreventEvidenceSealing
-        - TestShadowEveryIdentityBindingHasTypedRefusal
-        - TestShadowMissingDimensionsAndUnsealedEvidenceCannotReachReport
-      issues:
-        - 70
-    documents:
-      currentAnchor: shadow-pilot-live-entrypoint
-      targetAnchor: shadow-pilot-live-entrypoint
-
-  - id: assignment-ledger
-    title: Assignment Ledger MVP
-    status: partial
-    normativeSources:
-      - docs/ADR-0004-RUNTIME-AND-DAEMON-MODEL.md
-      - docs/ADR-0005-STORAGE-MODEL.md
-      - docs/decisions/AGENT-REGISTRY-R153.yaml
-    implemented:
-      - optional versioned append-only ledger in existing canonical JSON snapshot
-      - process assignments without Task/Run and optional existing Run/fence binding
-      - terminal no-revival and exact state/TTL/session/coordinator guards
-      - atomic standalone and typed Run result completion before Inbox replay
-      - read-only canonical assignment status and LEDGER_FROZEN rollback
-    missing:
-      - authenticated production first-offer write boundary (BLOCKED_ON_WRITE_AUTHORITY); merge PR #98 at 0c6eaf469024822a34fc501b5349ddcb68b70cc2 does not activate cutover
-      - physical host/coordinator loss detection and universal pre-tool receiver guard
-      - full R153 model/eligibility/incident-clock enforcement
-    evidence:
-      symbols:
-        - OfferAssignment
-        - AcceptAssignmentResult
-        - CheckAssignmentWork
-        - FreezeAssignmentLedger
-      tests:
-        - TestAssignmentOe4StaleLateDeliveryAfterRestartDoesNoWork
-        - TestAssignmentTypedResultGateAtomicWithTask
-        - TestAssignmentStatusReadOnlyAndFailClosed
-        - TestAssignmentLedgerRollbackFrozenMode
-      issues: [90]
-    documents:
-      currentAnchor: assignment-ledger
-      targetAnchor: assignment-ledger
+- id: canonical-persistence
+  title: Canonical persistence
+  status: partial
+  normativeSources:
+  - docs/ADR-0005-STORAGE-MODEL.md
+  implemented:
+  - CanonicalState persisted as one versioned document
+  - Task, Run, DomainEvent, Inbox, Outbox, AgentSession and AgentSessionEvent are part of the durable unit
+  - ReviewResult, AuditResult and Discussion Graph data validated as part of canonical state
+  - atomic replacement uses temporary file, fsync, rename and parent-directory sync
+  - in-memory state published only after successful Save
+  - production coordd opens CanonicalStore backed by CanonicalFile
+  missing:
+  - production command paths for all canonical writers
+  - removal of remaining legacy runtime state owners
+  - full stage scheduler integration
+  evidence:
+    symbols:
+    - CanonicalState
+    - CanonicalPersistence
+    - CanonicalFile
+    - UpdateCanonical
+    tests:
+    - TestCanonicalStoreRejectsTaskMutationWithoutEvent
+    - TestCanonicalFileReadsAndRewritesCreationOnlyV1WithoutFenceField
+    issues:
+    - 5
+  documents:
+    currentAnchor: canonical-persistence
+    targetAnchor: canonical-persistence
+  code: PARTIAL
+  connection: TEST_ONLY
+  qualification: PARTIAL
+  production: DISABLED
+  productionEntrypoints: []
+- id: canonical-command-boundary
+  title: Canonical agent command boundary
+  status: partial
+  normativeSources:
+  - docs/ADR-0001-CANONICAL-COORDINATION-MODEL.md
+  - docs/ADR-0004-RUNTIME-AND-DAEMON-MODEL.md
+  - docs/TASK-MODEL.md
+  - docs/plans/p0-2-task/AGENT-COMMAND-BOUNDARY.md
+  implemented:
+  - authenticated frame signature and local-recipient verification
+  - current AgentSession generation and key verification
+  - trusted AgentID resolved from AgentSession rather than command body
+  - Task, Run, Fence, Attempt, role and Stage checks
+  - replay and ExpectedRevision checks
+  - atomic transition, DomainEvent, Inbox receipt and Outbox commit
+  - rejection paths avoid durable side effects
+  - 'OwnerCredential bootstrap, lifecycle and task.create on a separate store boundary (#93a / PR #103)'
+  missing:
+  - production CLI caller
+  - production Telepathy caller
+  - command-boundary AgentSession management operations
+  - Executor RESULT production path
+  - authenticated production agent RESULT ingress (#95; productionReachable=false)
+  - coordinator.loss.confirm OWNER path (#93b; ADR-0010 Accepted, NOT_IMPLEMENTED)
+  evidence:
+    symbols:
+    - AuthenticatedFrame
+    - ApplyAgentCommand
+    tests:
+    - TestAgentCommandCommitsEventReceiptOutboxAtomically
+    - TestAgentCommandIgnoresActorIDFromBody
+    - TestAgentCommandRejectsWhitespaceAgentIDWithoutWriting
+    - TestAgentCommandRejectsMissingRoleSelectionBeforeRoleStage
+    issues:
+    - 26
+    - 35
+    - 36
+  documents:
+    currentAnchor: canonical-agent-command-boundary
+    targetAnchor: canonical-command-boundary
+  code: PARTIAL
+  connection: TEST_ONLY
+  qualification: PARTIAL
+  production: DISABLED
+  productionEntrypoints: []
+- id: agent-session
+  title: AgentSession projection, history and Run binding
+  status: partial
+  normativeSources:
+  - docs/ADR-0001-CANONICAL-COORDINATION-MODEL.md
+  - docs/TASK-MODEL.md
+  implemented:
+  - AgentSession projection and append-only event history
+  - registration, key rotation and address replacement store operations
+  - generation and key binding to Task-scoped Run
+  - startup and transition validation
+  - revoked addresses cannot be registered again
+  missing:
+  - operator command path
+  - standalone revoke command without replacement
+  - production admission and Session Registry
+  evidence:
+    symbols:
+    - RegisterAgentSession
+    - RotateAgentSessionKey
+    - ReplaceAgentSessionAddress
+    - ValidateHistory
+    - ValidateTransition
+    tests:
+    - TestCanonicalAgentSessionRegistrationPersistsOperatorBinding
+    - TestCanonicalAgentSessionKeyRotationIncrementsGenerationAtomically
+    - TestCanonicalAssignmentTakesCurrentActiveAgentSessionBinding
+    - TestCanonicalStartupRejectsForgedRunGenerationAndAgentID
+    issues:
+    - 13
+    - 26
+    - 34
+  documents:
+    currentAnchor: agent-session
+    targetAnchor: agent-session
+  code: PARTIAL
+  connection: TEST_ONLY
+  qualification: PARTIAL
+  production: DISABLED
+  productionEntrypoints: []
+- id: review-audit-results
+  title: Canonical ReviewResult and AuditResult
+  status: partial
+  normativeSources:
+  - docs/ADR-0001-CANONICAL-COORDINATION-MODEL.md
+  - docs/TASK-MODEL.md
+  implemented:
+  - typed ReviewResult and AuditResult payloads
+  - atomic result, Task transition, terminal role Run, DomainEvent, receipt and RESULT_ACK commit
+  - startup and transition association validation
+  - Reviewer and Auditor independence by stable AgentID and executor history
+  - former Reviewer or Auditor cannot later become Executor for the same Task
+  missing:
+  - production agent or CLI command path
+  - supervisor stop proof
+  - stage scheduler and next-stage transition
+  - canonical Artifact metadata
+  - read-only API and Startup Card
+  evidence:
+    symbols:
+    - ReviewResult
+    - AuditResult
+    tests:
+    - TestReviewResultCommitsWithTransitionEvent
+    - TestAuditResultCommitsWithTransitionEvent
+    - TestReviewerRejectsExecutorAgentIDAcrossHistory
+    - TestAuditorRejectsExecutorAgentIDAcrossTaskRuns
+    issues:
+    - 30
+  documents:
+    currentAnchor: canonical-review-audit-results
+    targetAnchor: review-audit-results
+  code: PARTIAL
+  connection: TEST_ONLY
+  qualification: PARTIAL
+  production: DISABLED
+  productionEntrypoints: []
+- id: discussion-graph
+  title: Canonical Discussion Graph
+  status: partial
+  normativeSources:
+  - docs/ADR-0001-CANONICAL-COORDINATION-MODEL.md
+  implemented:
+  - typed nodes
+  - typed edges
+  - canonical persistence
+  - startup validation
+  - transition validation
+  - required Actor and Role validation
+  missing:
+  - production command path
+  - read-only projection
+  - Owner Console
+  - product Decision Resolver
+  evidence:
+    symbols:
+    - ValidateCanonicalState
+    - ValidateCanonicalTransition
+    tests:
+    - TestDiscussionNodeRequiresActor
+    - TestDiscussionNodeRequiresRole
+    - TestDiscussionEdgeRequiresActor
+    - TestDiscussionEdgeRejectsUnknownType
+    issues:
+    - 30
+  documents:
+    currentAnchor: canonical-discussion-graph
+    targetAnchor: discussion-graph
+  code: PARTIAL
+  connection: NOT_CONNECTED
+  qualification: PARTIAL
+  production: DISABLED
+  productionEntrypoints: []
+- id: daemon-runtime
+  title: Standalone canonical daemon runtime
+  status: partial
+  normativeSources:
+  - docs/ADR-0004-RUNTIME-AND-DAEMON-MODEL.md
+  - docs/ADR-0005-STORAGE-MODEL.md
+  implemented:
+  - standalone coordd executable
+  - namespace lock before store opening
+  - canonical store startup validation
+  - diagnostic-only readiness for unsupported legacy state
+  - operational readiness endpoint for the current Run coordinator
+  missing:
+  - production canonical write path
+  - complete Task-wide readiness checks
+  - full stop-proof recovery
+  - removal of legacy localchat writers
+  evidence:
+    symbols:
+    - NewCanonical
+    - CanonicalFile
+    tests:
+    - TestCoorddTakesNamespaceLockBeforeStores
+    - TestCoorddReadinessFailsClosedForActiveTaskRunWithoutAgentSessionBinding
+    issues:
+    - 6
+    - 7
+  documents:
+    currentAnchor: daemon-runtime
+    targetAnchor: daemon-runtime
+  code: PARTIAL
+  connection: TEST_ONLY
+  qualification: PARTIAL
+  production: DISABLED
+  productionEntrypoints: []
+- id: project-dependency-graph
+  title: Project Dependency Graph
+  status: missing
+  normativeSources:
+  - docs/ADR-0002-PROJECT-DEPENDENCY-GRAPH.md
+  implemented: []
+  missing:
+  - canonical graph representation
+  - graph revision and CAS mutation
+  - prerequisite enforcement
+  - read-only projection
+  evidence:
+    symbols: []
+    tests: []
+    issues: []
+  documents:
+    currentAnchor: project-dependency-graph
+    targetAnchor: project-dependency-graph
+  code: MISSING
+  connection: NOT_CONNECTED
+  qualification: NOT_EVALUATED
+  production: DISABLED
+  productionEntrypoints: []
+- id: startup-card-read-api
+  title: Startup Card and read-only Task API
+  status: proposed
+  normativeForCurrentProduct: false
+  normativeSources:
+  - docs/ADR-0001-CANONICAL-COORDINATION-MODEL.md
+  - docs/ADR-0004-RUNTIME-AND-DAEMON-MODEL.md
+  implemented: []
+  missing:
+  - ADR-0006
+  - Task read-only API
+  - Startup Card projection
+  - Dashboard projection
+  evidence:
+    symbols: []
+    tests: []
+    issues: []
+  documents:
+    currentAnchor: startup-card-read-api
+    targetAnchor: startup-card-read-api
+  code: MISSING
+  connection: NOT_CONNECTED
+  qualification: NOT_EVALUATED
+  production: DISABLED
+  productionEntrypoints: []
+- id: session-registry-supervisor
+  title: Session Registry and Session Supervisor
+  status: proposed
+  normativeForCurrentProduct: false
+  normativeSources:
+  - docs/rfc/RFC-0001-LOCAL-PROJECT-OPERATIONS.md
+  implemented: []
+  missing:
+  - ADR-0009 acceptance
+  - Session Registry
+  - process identity provider
+  - Session Supervisor
+  - supervised termination plan execution
+  evidence:
+    symbols: []
+    tests: []
+    issues:
+    - 34
+  documents:
+    currentAnchor: session-registry-supervisor
+    targetAnchor: session-registry-supervisor
+  code: MISSING
+  connection: NOT_CONNECTED
+  qualification: NOT_EVALUATED
+  production: DISABLED
+  productionEntrypoints: []
+- id: durable-orchestration-candidate
+  title: Deterministic durable orchestration candidate
+  status: partial
+  normativeSources:
+  - docs/ADR-0004-RUNTIME-AND-DAEMON-MODEL.md
+  - docs/ADR-0005-STORAGE-MODEL.md
+  implemented:
+  - canonical external actions, claims and durable dispatch-start
+  - ambiguous action recovery with observation before redispatch
+  - canonical session revocation and fake stop-proof-gated replacement intent
+  - revision-consistent rebuildable projections in the explicit test harness; production orchestration disabled (#96)
+  - read-only disabled facade preserves workflow Run fencing and snapshot data
+  missing:
+  - accepted orchestration ADR AND ready authenticated single write path before any production enablement
+  - qualified live adapters and production replacement Run binding
+  - complete Issue Review Audit CI scheduler
+  - CandidateDecision and accepted-norm evidence validation
+  evidence:
+    symbols:
+    - EnqueueAction
+    - RecoverActions
+    - AcceptObservation
+    - WorkflowRuntime
+    tests:
+    - TestCrashAfterDispatchBeforeResponseObservesBeforeRetry
+    - TestConfirmedFenceAndStopProofPrecedeReplacement
+    - TestExplicitOrchestrationHarnessPublishesCanonicalRevisionBundle
+    - TestOrchestrationDisabledTickAndRecoveryAreReadOnly
+    - TestOrchestrationNormalStartAndRestartPreserveSnapshot
+    - TestOrchestrationDisabledKeepsRunFencesAndOrdinaryRuns
+    - TestOrchestrationNoProductionEnablementConfig
+    issues:
+    - 49
+    - 96
+  documents:
+    currentAnchor: durable-orchestration-candidate
+    targetAnchor: durable-orchestration-candidate
+  code: PARTIAL
+  connection: TEST_ONLY
+  qualification: PARTIAL
+  production: DISABLED
+  productionEntrypoints: []
+- id: run-recovery-command
+  title: ApplyRunRecoveryCommand — coordinator-driven orphaned Run recovery
+  status: partial
+  normativeSources:
+  - docs/ADR-0005-STORAGE-MODEL.md
+  implemented:
+  - MARK_INTERRUPTED transition (Run→Failed, task blocked, stop-proof gated)
+  - KSC-C stop-proof validation (Kind==Stop, Completed, Stopped, StopMethod, full binding, parent fence)
+  - fail-closed FENCE_ONLY, PREPARE_REPLACEMENT, COMPLETE_EXISTING, RESUME_OBSERVATION
+  - 7 specific violation codes plus FORBIDDEN for admission/refusal boundaries
+  - replay idempotency via inbox receipt matching
+  missing:
+  - PREPARE_REPLACEMENT transition (Q3 schedule)
+  - FENCE_ONLY transition (FO-C implementation)
+  - COMPLETE_EXISTING transition (CEE-C implementation)
+  - RESUME_OBSERVATION transition (DS-6 unblocking required)
+  evidence:
+    symbols:
+    - ApplyRunRecoveryCommand
+    - RunRecoveryCommand
+    - RunRecoveryReceipt
+    tests:
+    - TestApplyRunRecoveryMarksInterruptedAtomically
+    - TestApplyRunRecoveryExactReplayReturnsOriginalReceiptWithoutWrites
+    - TestRunRecoveryStopProofMutationMatrixFailsClosed
+    - TestRunRecoveryDuplicateTransitionRejected
+    issues: []
+  documents:
+    currentAnchor: run-recovery-command
+    targetAnchor: run-recovery-command
+  code: PARTIAL
+  connection: TEST_ONLY
+  qualification: PARTIAL
+  production: DISABLED
+  productionEntrypoints: []
+- id: shadow-pilot-live-entrypoint
+  title: Read-only coordd shadow pilot entrypoint
+  status: partial
+  normativeSources:
+  - AGENTS.md
+  implemented:
+  - exact coordd shadow-pilot run branch returns before daemon startup
+  - typed Telepathy adapter wraps existing version-pinned MCP client
+  - assignment and result correlation precedes completion and sealed evidence
+  - observed local startup counters reject store, daemon locks and external mutations
+  - all ten model dimensions and explicit unsupported-axis NOT_EVALUATED records
+  - pilot report cannot issue P0-3 admission
+  missing:
+  - independently accepted live c03 round trip
+  - independent implementation Review and TD-R2 Audit acceptance
+  - live process crash and restart campaign
+  evidence:
+    symbols:
+    - runShadowPilot
+    - telepathyShadowAgentAdapter
+    - startupProbe
+    tests:
+    - TestShadowCLIUsesExistingMCPClientEndToEnd
+    - TestShadowRuntimeBreachesPreventEvidenceSealing
+    - TestShadowEveryIdentityBindingHasTypedRefusal
+    - TestShadowMissingDimensionsAndUnsealedEvidenceCannotReachReport
+    issues:
+    - 70
+  documents:
+    currentAnchor: shadow-pilot-live-entrypoint
+    targetAnchor: shadow-pilot-live-entrypoint
+  code: PARTIAL
+  connection: TEST_ONLY
+  qualification: ACCEPTED_WITH_LIMITATIONS
+  production: DISABLED
+  productionEntrypoints: []
+- id: assignment-ledger
+  title: Assignment Ledger MVP
+  status: partial
+  normativeSources:
+  - docs/ADR-0004-RUNTIME-AND-DAEMON-MODEL.md
+  - docs/ADR-0005-STORAGE-MODEL.md
+  - docs/decisions/AGENT-REGISTRY-R153.yaml
+  implemented:
+  - optional versioned append-only ledger in existing canonical JSON snapshot
+  - process assignments without Task/Run and optional existing Run/fence binding
+  - terminal no-revival and exact state/TTL/session/coordinator guards
+  - atomic standalone and typed Run result completion before Inbox replay
+  - read-only canonical assignment status and LEDGER_FROZEN rollback
+  missing:
+  - authenticated production first-offer write boundary (BLOCKED_ON_WRITE_AUTHORITY); merge PR
+  - physical host/coordinator loss detection and universal pre-tool receiver guard
+  - full R153 model/eligibility/incident-clock enforcement
+  evidence:
+    symbols:
+    - OfferAssignment
+    - AcceptAssignmentResult
+    - CheckAssignmentWork
+    - FreezeAssignmentLedger
+    tests:
+    - TestAssignmentOe4StaleLateDeliveryAfterRestartDoesNoWork
+    - TestAssignmentTypedResultGateAtomicWithTask
+    - TestAssignmentStatusReadOnlyAndFailClosed
+    - TestAssignmentLedgerRollbackFrozenMode
+    issues:
+    - 90
+  documents:
+    currentAnchor: assignment-ledger
+    targetAnchor: assignment-ledger
+  code: PARTIAL
+  connection: TEST_ONLY
+  qualification: PARTIAL
+  production: BLOCKED
+  productionEntrypoints: []
+requirements:
+  CM-01:
+    sourceDocumentId: adr-0001
+    section: canonical coordination model
+    component: canonical-command-boundary
+    normativeStatus: ACCEPTED
+    implementationSymbols:
+    - ApplyAgentCommand
+    - AuthenticatedFrame
+    productionEntrypoints: []
+    tests:
+    - TestAgentCommandCommitsEventReceiptOutboxAtomically
+    - TestAgentCommandIgnoresActorIDFromBody
+    gaps:
+    - production Telepathy/CLI agent RESULT ingress (#95)
+    - coordinator.loss.confirm OWNER path (#93b)
+    issues:
+    - 93
+    - 95
+    - 101
+    - 102
+  ST-01:
+    sourceDocumentId: adr-0004
+    section: runtime and durable commit
+    component: canonical-persistence
+    normativeStatus: ACCEPTED
+    implementationSymbols:
+    - CanonicalState
+    - CanonicalFile
+    - UpdateCanonical
+    productionEntrypoints: []
+    tests:
+    - TestCanonicalStoreRejectsTaskMutationWithoutEvent
+    - TestCanonicalFileReadsAndRewritesCreationOnlyV1WithoutFenceField
+    gaps:
+    - production command paths for all canonical writers
+    issues:
+    - 5
+  R152:
+    sourceDocumentId: agent-visibility-r152
+    section: agent visibility
+    component: assignment-ledger
+    normativeStatus: ACCEPTED
+    implementationSymbols: []
+    productionEntrypoints: []
+    tests: []
+    gaps:
+    - 'full visibility observation adapters remain outside #90 MVP'
+    issues:
+    - 90
+  R153:
+    sourceDocumentId: agent-registry-r153
+    section: assignment ledger / agent registry
+    component: assignment-ledger
+    normativeStatus: ACCEPTED
+    implementationSymbols:
+    - OfferAssignment
+    - AcceptAssignmentResult
+    - CheckAssignmentWork
+    - FreezeAssignmentLedger
+    productionEntrypoints: []
+    tests:
+    - TestAssignmentOe4StaleLateDeliveryAfterRestartDoesNoWork
+    - TestAssignmentTypedResultGateAtomicWithTask
+    - TestAssignmentStatusReadOnlyAndFailClosed
+    - TestAssignmentLedgerRollbackFrozenMode
+    gaps:
+    - authenticated production first-offer write boundary (BLOCKED_ON_WRITE_AUTHORITY)
+    - physical host/coordinator loss detection
+    issues:
+    - 90
+    - 93
+    - 95
+  R154:
+    sourceDocumentId: host-restart-clock-r154
+    section: host restart clock
+    component: assignment-ledger
+    normativeStatus: ACCEPTED
+    implementationSymbols: []
+    productionEntrypoints: []
+    tests: []
+    gaps:
+    - incident clock computation and full R154 journal remain later work
+    issues:
+    - 90
+  ORCH-DISABLE:
+    sourceDocumentId: adr-0004
+    section: durable orchestration disabled pending acceptance (#96)
+    component: durable-orchestration-candidate
+    normativeStatus: ACCEPTED
+    implementationSymbols:
+    - WorkflowRuntime
+    productionEntrypoints: []
+    tests:
+    - TestOrchestrationNoProductionEnablementConfig
+    - TestOrchestrationDisabledTickAndRecoveryAreReadOnly
+    gaps:
+    - accepted orchestration ADR AND ready authenticated single write path before enablement
+    issues:
+    - 96
+actionMapReferenceClassifications:
+- path: docs/operations/AGENT-SESSION-RECOVERY-REGULATION.md
+  line: 506
+  class: NON_NORMATIVE_CHECKLIST
+  note: interim procedure named; Action Map is not current authority
+- path: docs/operations/HUMAN-ACTION-PLAYBOOK.md
+  line: 383
+  class: NON_NORMATIVE_CHECKLIST
+  note: section header for proposed checklist mirror
+- path: docs/operations/HUMAN-ACTION-PLAYBOOK.md
+  line: 385
+  class: NON_NORMATIVE_CHECKLIST
+  note: explicit non-normative / interim note
+- path: docs/templates/COORDINATOR-RECOVERY-PROMPT.md
+  line: 110
+  class: CONDITIONAL_FUTURE_REFERENCE
+  note: interim until an accepted Action Map exists
+- path: docs/ARCHITECTURE.md
+  line: 70
+  class: NON_NORMATIVE_CHECKLIST
+  note: factual runtime statement about internal/actionmap; do not rewrite
+- path: AGENTS.md
+  line: 9
+  class: HISTORICAL_REFERENCE
+  note: states ACTION-MAP.md is historical evidence
+- path: AGENTS.md
+  line: 146
+  class: NON_NORMATIVE_CHECKLIST
+  note: ACTION-MAP-INTERIM-PROCEDURE-01 controlling heading
+- path: AGENTS.md
+  line: 155
+  class: HISTORICAL_REFERENCE
+  note: absent ACTION-MAP.md is historical evidence
+- path: AGENTS.md
+  line: 178
+  class: NON_NORMATIVE_CHECKLIST
+  note: ACTION-MAP.yaml is non-normative checklist
+- path: AGENTS.md
+  line: 201
+  class: NON_NORMATIVE_CHECKLIST
+  note: ACTION-MAP.yaml does not define the event set
+- path: AGENTS.md
+  line: 803
+  class: NON_NORMATIVE_CHECKLIST
+  note: proposed ACTION-MAP.yaml does not set the norm
+- path: AGENTS.md
+  line: 1238
+  class: CONDITIONAL_FUTURE_REFERENCE
+  note: future accepted Action Map only
+- path: AGENTS.md
+  line: 1265
+  class: NON_NORMATIVE_CHECKLIST
+  note: forbiddenActions mirror in proposed yaml
