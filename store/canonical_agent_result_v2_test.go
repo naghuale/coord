@@ -149,7 +149,7 @@ func TestAgentResultV2AcceptanceCommitsTaskInboxOutboxAndAssignmentAtomically(t 
 		t.Fatalf("missing atomic effects: task=%+v assignment=%+v outbox=%+v", state.Tasks[f.run.TaskID], state.AssignmentLedger.Records[f.assign.AssignmentID], state.Outbox[f.run.RunID])
 	}
 	ack := state.Outbox[f.run.RunID].Messages[0].Envelope
-	if ack.Kind != envelope.ResultAck || ack.SchemaVersion != envelope.SchemaVersionAgentResult || ack.ResultAckPayload.Disposition != "ACCEPTED" || ack.ResultAckPayload.AssignmentID != f.assign.AssignmentID {
+	if ack.Kind != envelope.ResultAck || ack.SchemaVersion != envelope.SchemaVersionAgentResult || ack.ResultAckPayload.Disposition != "ACCEPTED" || ack.ResultAckPayload.Outcome != "SUCCESS" || ack.ResultAckPayload.AssignmentID != f.assign.AssignmentID {
 		t.Fatalf("wrong durable response: %+v", ack)
 	}
 	saves := f.p.saveCalls
@@ -176,6 +176,81 @@ func TestAgentResultNoAcceptancePersistsReceiptOnlyAndKeepsAssignmentActive(t *t
 	after, _ := f.s.CanonicalSnapshot()
 	if after.Tasks[f.run.TaskID].Revision != before.Tasks[f.run.TaskID].Revision || after.Runs[f.run.RunID].Status != fsm.Started || after.AssignmentLedger.Records[f.assign.AssignmentID].State != assignment.Active || len(after.Outbox[f.run.RunID].Messages) != 0 {
 		t.Fatal("no-acceptance verdict changed Task, Run, Assignment or canonical outbox")
+	}
+}
+
+func TestA95NoAcceptanceVerdictsRejectVoidAndExpiredAssignmentsWithoutWrite(t *testing.T) {
+	cases := []struct {
+		name    string
+		role    roles.Role
+		verdict string
+	}{
+		{"review-not-evaluated", roles.Reviewer, "NOT_EVALUATED"},
+		{"audit-incomplete", roles.Auditor, "AUDIT_INCOMPLETE"},
+		{"audit-blocked", roles.Auditor, "AUDIT_BLOCKED"},
+	}
+	for _, state := range []string{"VOID", "EXPIRE"} {
+		for _, tc := range cases {
+			t.Run(state+"/"+tc.name, func(t *testing.T) {
+				f := newAgentResultFixture(t, tc.role)
+				if state == "EXPIRE" {
+					*f.clock = f.assign.ValidUntil.Add(time.Second)
+				}
+				if err := f.s.ChangeAssignment(f.assign.Coordinator(), f.assign.AssignmentID, f.assign.Revision, state, "a95-terminal"); err != nil {
+					t.Fatal(err)
+				}
+				frame := f.frame("a95-"+state+"-"+tc.name, tc.verdict, "")
+				before, err := f.s.CanonicalSnapshot()
+				if err != nil {
+					t.Fatal(err)
+				}
+				saves := f.p.saveCalls
+				if _, replayed, err := f.apply(frame); err == nil || replayed {
+					t.Fatalf("no-acceptance verdict accepted on %s assignment: replay=%v err=%v", state, replayed, err)
+				}
+				after, err := f.s.CanonicalSnapshot()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if f.p.saveCalls != saves || !reflect.DeepEqual(before, after) {
+					t.Fatalf("rejected no-acceptance command wrote state: saves=%d/%d", f.p.saveCalls, saves)
+				}
+			})
+		}
+	}
+}
+
+func TestA95RegisteredDifferentAgentCannotSubmitAssignmentResult(t *testing.T) {
+	f := newAgentResultFixture(t, roles.Reviewer)
+	otherAddress := "codex:other-active-agent"
+	otherPrivate := sessionTestPrivateKey(0x69)
+	if err := f.s.RegisterAgentSession(otherAddress, "other-stable-agent", otherPrivate.Public().(ed25519.PublicKey)); err != nil {
+		t.Fatal(err)
+	}
+	otherSession, ok := f.s.state.AgentSessions[otherAddress]
+	if !ok || !otherSession.Active() {
+		t.Fatal("negative control requires a registered active AgentSession")
+	}
+	frame := f.frame("a95-registered-wrong-assignee", "REVIEW_ACCEPTED", "")
+	frame.envelope.From = otherAddress
+	frame.address = otherAddress
+	frame.key = otherPrivate.Public().(ed25519.PublicKey)
+	frame.privateKey = otherPrivate
+	frame.raw, _ = envelope.Sign(frame.envelope, otherPrivate)
+	before, err := f.s.CanonicalSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	saves := f.p.saveCalls
+	if _, replayed, err := f.apply(frame); err == nil || replayed {
+		t.Fatalf("registered different active AgentSession result replay=%v err=%v", replayed, err)
+	}
+	after, err := f.s.CanonicalSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.p.saveCalls != saves || !reflect.DeepEqual(before, after) {
+		t.Fatal("registered wrong assignee rejection changed canonical state")
 	}
 }
 

@@ -17,6 +17,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -57,49 +58,62 @@ func (s *agentIngressConfigurationSpy) ConfigureAgentSessionIngress(resolver tra
 }
 
 func TestProductionCompositionDoesNotConfigureAgentSessionIngress(t *testing.T) {
+	t.Setenv("COORD_AGENT_INGRESS", "1")
 	if coord.AuthenticatedAgentIngressEnabled {
 		t.Fatal("production authenticated ingress must remain disabled pending cutover")
 	}
 	cfg := testConfig(t)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	cfg.AssignmentLedgerMode = "LEDGER_FROZEN"
+	if err := os.MkdirAll(cfg.StateDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	canonicalPath := filepath.Join(cfg.StateDir, "canonical.json")
+	legacyState := store.EmptyCanonicalState()
+	legacyState.SchemaVersion = 4
+	legacyJSON, err := json.Marshal(legacyState)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(canonicalPath, legacyJSON, 0600); err != nil {
+		t.Fatal(err)
+	}
+	seed, err := store.NewCanonical(checkpoint.CanonicalFile{Path: canonicalPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	private := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
+	if err := seed.RegisterAgentSession("codex:worker", "worker", private.Public().(ed25519.PublicKey)); err != nil {
+		t.Fatal(err)
+	}
+	seedSnapshot, err := seed.CanonicalSnapshot()
+	if err != nil || seedSnapshot.SchemaVersion != 5 || !seedSnapshot.AgentSessions["codex:worker"].Active() {
+		t.Fatalf("fixture does not contain active schema-v5 AgentSession: schema=%d err=%v", seedSnapshot.SchemaVersion, err)
+	}
+	if err := seed.Close(); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(t.TempDir(), "coordd.json")
+	configJSON, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, configJSON, 0600); err != nil {
+		t.Fatal(err)
+	}
 	spy := &agentIngressConfigurationSpy{
-		session: cfg.Transport.Session, cancel: cancel, incoming: make(chan envelope.Envelope),
+		session: cfg.Transport.Session, incoming: make(chan envelope.Envelope),
 		authIncoming: make(chan transport.AuthenticatedFrame),
 	}
-	activeV5 := false
-	openCanonical := func(path string) (store.RunStore, error) {
-		state := store.EmptyCanonicalState()
-		state.SchemaVersion = 4
-		raw, err := json.Marshal(state)
-		if err != nil {
-			return nil, err
-		}
-		if err := os.WriteFile(path, raw, 0600); err != nil {
-			return nil, err
-		}
-		canonical, err := store.NewCanonical(checkpoint.CanonicalFile{Path: path})
-		if err != nil {
-			return nil, err
-		}
-		private := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
-		if err := canonical.RegisterAgentSession("codex:worker", "worker", private.Public().(ed25519.PublicKey)); err != nil {
-			_ = canonical.Close()
-			return nil, err
-		}
-		snapshot, err := canonical.CanonicalSnapshot()
-		activeV5 = err == nil && snapshot.SchemaVersion == 5 && snapshot.AgentSessions["codex:worker"].Active()
-		return canonical, err
-	}
-	err := runWithWriterFactories(ctx, cfg, func(context.Context, coorddconfig.Config) (transport.Transport, func() error, error) {
+	close(spy.incoming)
+	exitCode := mainRunWithWriter([]string{"-config", configPath}, func(context.Context, coorddconfig.Config) (transport.Transport, func() error, error) {
 		return spy, func() error { return nil }, nil
-	}, openCanonical, roles.New, io.Discard)
-	if err != nil && !errors.Is(err, context.Canceled) {
-		t.Fatalf("startup result=%v, want normal cancellation after receiver initialization", err)
+	}, io.Discard)
+	if exitCode != 1 {
+		t.Fatalf("normal CLI startup exit=%d, want transport-closed exit after entering legacy receive", exitCode)
 	}
-	if !activeV5 || spy.configured != 0 || spy.resolver != nil || spy.legacyReads != 1 || spy.authenticatedRead != 0 {
-		t.Fatalf("normal v5 production start: activeV5=%v Configure=%d resolver=%T legacy=%d authenticated=%d",
-			activeV5, spy.configured, spy.resolver, spy.legacyReads, spy.authenticatedRead)
+	if spy.configured != 0 || spy.resolver != nil || spy.legacyReads != 1 || spy.authenticatedRead != 0 {
+		t.Fatalf("normal v5 production start: Configure=%d resolver=%T legacy=%d authenticated=%d",
+			spy.configured, spy.resolver, spy.legacyReads, spy.authenticatedRead)
 	}
 }
 

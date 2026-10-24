@@ -27,14 +27,16 @@ import (
 )
 
 type fakeTransport struct {
-	sent []envelope.Envelope
-	in   chan envelope.Envelope
-	fail bool
+	sent         []envelope.Envelope
+	sendAttempts []envelope.Envelope
+	in           chan envelope.Envelope
+	fail         bool
 }
 
 func (f *fakeTransport) WhoAmI() string                                   { return "coord" }
 func (f *fakeTransport) Receive(context.Context) <-chan envelope.Envelope { return f.in }
 func (f *fakeTransport) Send(_ context.Context, _ string, e envelope.Envelope) error {
+	f.sendAttempts = append(f.sendAttempts, e)
 	if f.fail {
 		return errors.New("unavailable")
 	}
@@ -152,6 +154,71 @@ func TestAgentResultResponseIsStableAcrossRedelivery(t *testing.T) {
 	}
 	if first.MessageID != command.MessageID+".result-ack" || first.ResultAckPayload.AssignmentID != "assignment-42" || first.ResultAckPayload.Disposition != "ACCEPTED" {
 		t.Fatalf("response lost command binding: %+v", first)
+	}
+}
+
+func TestA95AuthenticatedCoordinatorRedeliveryResendsStableReceiptOnce(t *testing.T) {
+	for _, tc := range []struct {
+		name, verdict, wantDisposition, wantOutcome string
+	}{
+		{"accepted", "REVIEW_ACCEPTED", "ACCEPTED", "SUCCESS"},
+		{"no-acceptance", "NOT_EVALUATED", "NO_ACCEPTANCE", "FAILURE"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			canonical, fixture, private := newAuthenticatedReviewFixture(t)
+			before, err := canonical.CanonicalSnapshot()
+			if err != nil {
+				t.Fatal(err)
+			}
+			frame, command := signedCoordinatorAgentResultFrame(t, canonical, fixture, private, "a95-redelivery-"+tc.name, tc.verdict)
+			tp := &ingressTestTransport{fakeTransport: &fakeTransport{fail: true}, session: fixture.Assignment.CurrentCoordinator}
+			cfg := DefaultConfig()
+			cfg.Now = func() time.Time { return fixture.Now.Add(time.Minute) }
+			coordinator, err := New(tp, canonical, cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx := context.Background()
+			firstErr := coordinator.handleAuthenticatedFrame(ctx, frame)
+			if tc.wantDisposition == "ACCEPTED" && firstErr != nil {
+				t.Fatalf("first accepted delivery: %v", firstErr)
+			}
+			if tc.wantDisposition == "NO_ACCEPTANCE" && firstErr == nil {
+				t.Fatal("first no-acceptance delivery did not report the lost response")
+			}
+			first, err := canonical.CanonicalSnapshot()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(tp.sendAttempts) != 1 || len(tp.sent) != 0 {
+				t.Fatalf("first delivery did not commit then lose its response: attempts=%d sent=%d", len(tp.sendAttempts), len(tp.sent))
+			}
+			tp.fail = false
+			if err := coordinator.handleAuthenticatedFrame(ctx, frame); err != nil {
+				t.Fatalf("redelivery: %v", err)
+			}
+			second, err := canonical.CanonicalSnapshot()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(tp.sendAttempts) != 2 || len(tp.sent) != 1 || !reflect.DeepEqual(tp.sendAttempts[0], tp.sendAttempts[1]) || !reflect.DeepEqual(tp.sent[0], tp.sendAttempts[0]) {
+				t.Fatalf("redelivery response changed or was not resent once: attempts=%+v sent=%+v", tp.sendAttempts, tp.sent)
+			}
+			ack := tp.sent[0]
+			if ack.Kind != envelope.ResultAck || ack.InReplyTo != command.MessageID || ack.ResultAckPayload == nil || ack.ResultAckPayload.Disposition != tc.wantDisposition || ack.ResultAckPayload.Outcome != tc.wantOutcome {
+				t.Fatalf("redelivery ACK=%+v; want disposition=%s outcome=%s", ack, tc.wantDisposition, tc.wantOutcome)
+			}
+			if !reflect.DeepEqual(first.Inbox, second.Inbox) || !reflect.DeepEqual(first.Tasks, second.Tasks) || !reflect.DeepEqual(first.Events, second.Events) || !reflect.DeepEqual(first.AssignmentLedger, second.AssignmentLedger) {
+				t.Fatal("redelivery changed the durable receipt or duplicated canonical effects")
+			}
+			if tc.wantDisposition == "ACCEPTED" {
+				if len(first.Events) != len(before.Events)+1 || second.Tasks[fixture.Task].Revision != before.Tasks[fixture.Task].Revision+1 || second.AssignmentLedger.Records[fixture.Assignment.AssignmentID].State != assignment.Completed {
+					t.Fatal("accepted redelivery did not preserve exactly one result effect")
+				}
+			} else if !reflect.DeepEqual(before.Tasks, second.Tasks) || !reflect.DeepEqual(before.Events, second.Events) || second.AssignmentLedger.Records[fixture.Assignment.AssignmentID].State != assignment.Active {
+				t.Fatal("no-acceptance redelivery changed Task effects or Assignment state")
+			}
+		})
 	}
 }
 
@@ -305,6 +372,48 @@ type canonicalAgentEnvelope struct {
 	SHA        string
 	Now        time.Time
 	Session    string
+}
+
+func signedCoordinatorAgentResultFrame(t *testing.T, canonical *store.CanonicalStore, fixture *canonicalAgentEnvelope, private ed25519.PrivateKey, messageID, verdict string) (transport.AuthenticatedFrame, envelope.Envelope) {
+	t.Helper()
+	snapshot, err := canonical.CanonicalSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := envelope.Envelope{
+		SchemaVersion: envelope.SchemaVersionAgentResult, MessageID: messageID,
+		Timestamp: fixture.Now, From: fixture.Session, To: fixture.Assignment.CurrentCoordinator,
+		Kind: envelope.Result, InReplyTo: "task-delivery", Task: fixture.Task.String(),
+		Run: fixture.Assignment.RunBinding.RunID, Attempt: fixture.Assignment.RunBinding.Attempt,
+		TargetSHA: fixture.SHA, Fence: fixture.Assignment.RunBinding.Fence,
+		AgentResultPayload: &envelope.AgentResultPayload{
+			AssignmentID: fixture.Assignment.AssignmentID, Issuer: fixture.Assignment.Issuer,
+			CoordinatorGeneration: fixture.Assignment.CoordinatorGeneration,
+			ExpectedRevision:      snapshot.Tasks[fixture.Task].Revision,
+			Verdict:               verdict, Summary: "result summary",
+			Findings: []envelope.AgentFinding{}, InputArtifactRefs: []string{}, OutputArtifactRefs: []string{},
+		},
+	}
+	raw, err := envelope.Sign(command, private)
+	if err != nil {
+		t.Fatal(err)
+	}
+	incoming := make(chan []byte, 1)
+	incoming <- raw
+	signed := &transport.SignedClient{
+		Client:   &ingressTestByteClient{incoming: incoming},
+		Resolver: ingressTestKeyResolver{key: transport.VerificationKey{PublicKey: private.Public().(ed25519.PublicKey), Generation: 1}},
+	}
+	adapter := &transport.AuthenticatedAdapter{Client: signed, Session: command.To}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	select {
+	case frame := <-adapter.ReceiveAuthenticated(ctx):
+		return frame, command
+	case <-time.After(time.Second):
+		t.Fatal("authenticated result frame not produced")
+		return transport.AuthenticatedFrame{}, envelope.Envelope{}
+	}
 }
 
 func TestAuthenticatedAgentResultRunsOnlyThroughExplicitHarness(t *testing.T) {

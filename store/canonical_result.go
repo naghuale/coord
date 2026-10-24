@@ -297,20 +297,16 @@ func resultAck(run fsm.Run, messageID string, now time.Time) (envelope.Envelope,
 	return ack, nil
 }
 
-func agentResultAck(command envelope.Envelope, disposition string, now time.Time) (envelope.Envelope, error) {
+func agentResultAck(command envelope.Envelope, now time.Time) (envelope.Envelope, error) {
 	if command.AgentResultPayload == nil || command.SchemaVersion != envelope.SchemaVersionAgentResult {
 		return envelope.Envelope{}, fmt.Errorf("version-2 agent result required for acknowledgement")
-	}
-	outcome := "SUCCESS"
-	if disposition == "NO_ACCEPTANCE" {
-		outcome = "FAILURE"
 	}
 	ack := envelope.Envelope{
 		SchemaVersion: envelope.SchemaVersionAgentResult, MessageID: command.MessageID + ".result-ack", InReplyTo: command.MessageID,
 		Timestamp: now.UTC(), From: command.To, To: command.From, Kind: envelope.ResultAck,
 		Task: command.Task, Run: command.Run, Attempt: command.Attempt, TargetSHA: command.TargetSHA, Fence: command.Fence,
 		ResultAckPayload: &envelope.ResultAckPayload{
-			Outcome: outcome, AssignmentID: command.AgentResultPayload.AssignmentID, Disposition: disposition,
+			Outcome: "SUCCESS", AssignmentID: command.AgentResultPayload.AssignmentID, Disposition: "ACCEPTED",
 		},
 	}
 	return ack, ack.Validate()
@@ -423,7 +419,7 @@ func applyAgentResultToState(state *CanonicalState, actorID string, run fsm.Run,
 	currentRun.Status, currentRun.LastUpdate = fsm.Done, now.UTC()
 	state.Runs[run.RunID] = currentRun
 	state.Events = append(state.Events, event)
-	ack, err := agentResultAck(command, "ACCEPTED", now.UTC())
+	ack, err := agentResultAck(command, now.UTC())
 	if err != nil {
 		return InboxReceipt{}, err
 	}
