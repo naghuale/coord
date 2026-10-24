@@ -42,11 +42,8 @@ roles:
 	go run ./examples/roles
 
 check-architecture-sync:
-	@if python3 -c "import yaml" 2>/dev/null; then \
-		python3 scripts/check-architecture-sync && python3 scripts/check-architecture-sync-test; \
-	else \
-		echo "PyYAML not installed; architecture sync check skipped (run: pip3 install pyyaml)"; \
-	fi
+	go run ./cmd/coord-governance check-architecture-sync --root . --registry docs/architecture/COMPONENT-STATUS.yaml --document-registry docs/DOCUMENT-REGISTRY.yaml
+	go test -count=1 ./internal/architecturecheck/
 
 check-defect-patterns:
 	go run ./cmd/coord-governance check-defect-patterns --patterns docs/operations/DEFECT-PATTERNS.yaml --root .

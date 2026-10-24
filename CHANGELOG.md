@@ -1,5 +1,9 @@
 # История изменений
 
+## 2026-10-24 — Go architecture sync checker with golden fixtures (Refs #97)
+
+- `coord-governance check-architecture-sync` and `internal/architecturecheck` become the blocking architecture sync authority. Symbols and tests are resolved through `go/parser` and `go/ast`. Golden fixtures under `internal/architecturecheck/testdata/golden` encode the Python checker findings; Go tests compare against those fixtures and must not invoke Python. Makefile and `architecture-sync.yml` block on Go; the Python scripts remain as evidence only. (`TestLiveRegistryPasses`, `TestGoldenCases`, `TestMissingSymbolKills`, `TestMissingTestKills`, `TestPartialRequiresMissing`, `TestProposedMustBeNonNormative`, `TestConnectedWithoutEntrypointKills`, `TestActiveWithoutRuntimeKills`, `TestProposedProductionAuthorityKills`, `TestMakefileAndWorkflowUseGoBlocking`, `TestASTIndexFindsTypeFuncMethodAndTest`)
+
 ## 2026-10-24 — Document registry location and historical provenance (Refs #97)
 
 - Document registry gains `LOCAL` / `TRACKED_IN_OTHER_BRANCH` location, `superseded` status, historical provenance, and `LOCAL` vs `CI_STRICT` modes. Active or proposed LOCAL files are required even when optional. Ops CURRENT/OPEN-WORK move to the allowlisted external location. Historical Action Map readWhen is `HISTORICAL_INVESTIGATION` with `normativeAuthority: none`. (`TestActiveLocalMissingRejectedEvenWhenOptional`, `TestProposedMissingRejected`, `TestUnknownLocationFailsClosed`, `TestTrackedOutsideAllowlistRejected`, `TestExternalRefUnavailableCIStrictFails`, `TestExternalRefUnavailableLocalWarns`, `TestTrackedExternalAcceptedWithEvidence`, `TestEvidencePathInsideRepositoryRejected`, `TestSupersededRequiresSupersededBy`, `TestHistoricalWithoutProvenanceRejected`, `TestHistoricalPurposeProvenanceAccepted`, `TestHistoricalStructuredProvenanceAccepted`)

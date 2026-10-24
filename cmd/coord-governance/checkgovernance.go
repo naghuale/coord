@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"coord/internal/actionmap"
+	"coord/internal/architecturecheck"
 	"coord/internal/defectpatterns"
 	"coord/internal/documentregistry"
 	"coord/internal/recovery"
@@ -97,6 +98,36 @@ func runCheckDefectPatterns(args []string) error {
 	}
 	fmt.Fprintln(os.Stderr, "DEFECT_PATTERNS_INVALID")
 	return fmt.Errorf("defect patterns has %d violation(s)", len(vs))
+}
+
+// runCheckArchitectureSync implements `coord-governance check-architecture-sync`.
+// Go is the blocking authority for #97; the Python script remains as evidence only.
+func runCheckArchitectureSync(args []string) error {
+	fs := flag.NewFlagSet("check-architecture-sync", flag.ContinueOnError)
+	rootFlag := fs.String("root", ".", "project root")
+	registryFlag := fs.String("registry", "docs/architecture/COMPONENT-STATUS.yaml", "path to COMPONENT-STATUS.yaml")
+	docRegistryFlag := fs.String("document-registry", "docs/DOCUMENT-REGISTRY.yaml", "path to DOCUMENT-REGISTRY.yaml")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	res, err := architecturecheck.Check(architecturecheck.Options{
+		Root:            *rootFlag,
+		RegistryPath:    *registryFlag,
+		DocRegistryPath: *docRegistryFlag,
+	})
+	if err != nil {
+		return fmt.Errorf("check-architecture-sync: %w", err)
+	}
+	if len(res.Violations) == 0 {
+		fmt.Printf("Architecture sync check PASS: %d components\n", res.Components)
+		return nil
+	}
+	fmt.Fprintln(os.Stderr, "Architecture sync check FAILED")
+	for _, v := range res.Violations {
+		fmt.Fprintf(os.Stderr, "- %s: %s\n", v.Code, v.Detail)
+	}
+	return fmt.Errorf("architecture sync has %d violation(s)", len(res.Violations))
 }
 
 // runRecoveryGovernanceCheck implements `coord-governance recovery governance-check`.

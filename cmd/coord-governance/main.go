@@ -23,7 +23,7 @@ func main() {
 
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "usage: coord-governance <command> [flags]")
-		fmt.Fprintln(os.Stderr, "commands: resolve, agent launch, run-scenarios, baseline, check-document-registry, check-action-map, check-defect-patterns, recovery governance-check")
+		fmt.Fprintln(os.Stderr, "commands: resolve, agent launch, run-scenarios, baseline, check-document-registry, check-action-map, check-architecture-sync, check-defect-patterns, recovery governance-check")
 		os.Exit(2)
 	}
 
@@ -101,6 +101,11 @@ func main() {
 		}
 	case "check-defect-patterns":
 		if err := runCheckDefectPatterns(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	case "check-architecture-sync":
+		if err := runCheckArchitectureSync(os.Args[2:]); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
