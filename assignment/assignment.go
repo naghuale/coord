@@ -120,6 +120,15 @@ func (r Record) Target() Principal {
 	return Principal{r.SessionID, r.StableAgentID, r.AssigneeGeneration}
 }
 
+// ActorSourceKind distinguishes AgentSession observers from OWNER_CREDENTIAL
+// loss confirmations on COORDINATOR_LOST (#93b / ADR-0010 §9).
+type ActorSourceKind string
+
+const (
+	ActorSourceAgentSession    ActorSourceKind = "AGENT_SESSION"
+	ActorSourceOwnerCredential ActorSourceKind = "OWNER_CREDENTIAL"
+)
+
 type Event struct {
 	AssignmentID string    `json:"assignmentId"`
 	Revision     uint64    `json:"revision"`
@@ -128,6 +137,20 @@ type Event struct {
 	EvidenceRef  string    `json:"evidenceRef"`
 	At           time.Time `json:"at"`
 	Record       Record    `json:"record"`
+	// ActorSource is omitempty. Missing on v4/v5 events loads as AGENT_SESSION.
+	ActorSource           ActorSourceKind `json:"actorSource,omitempty"`
+	OwnerPrincipalID      string          `json:"ownerPrincipalId,omitempty"`
+	OwnerCredentialID     string          `json:"ownerCredentialId,omitempty"`
+	OwnerReceiptMessageID string          `json:"ownerReceiptMessageId,omitempty"`
+	OwnerReceiptDigest    string          `json:"ownerReceiptDigest,omitempty"`
+}
+
+// EffectiveActorSource returns AGENT_SESSION when the field is absent (legacy).
+func (e Event) EffectiveActorSource() ActorSourceKind {
+	if e.ActorSource == "" {
+		return ActorSourceAgentSession
+	}
+	return e.ActorSource
 }
 
 // Ledger is persisted only inside the existing CanonicalState JSON commit.
@@ -242,6 +265,7 @@ func (l *Ledger) Append(e Event) error {
 
 // OpenCoordinatorLossObserver derives the current loss observer from history;
 // it adds no persisted field or new authority. A handoff closes that interval.
+// OWNER_CREDENTIAL losses have no AgentSession observer (ADR-0010 §9).
 func (l *Ledger) OpenCoordinatorLossObserver(id string) (Principal, bool) {
 	if l == nil || !l.Records[id].CoordinatorLost || l.Records[id].State.Terminal() {
 		return Principal{}, false
@@ -253,6 +277,9 @@ func (l *Ledger) OpenCoordinatorLossObserver(id string) (Principal, bool) {
 		}
 		switch e.Kind {
 		case "COORDINATOR_LOST":
+			if e.EffectiveActorSource() == ActorSourceOwnerCredential {
+				return Principal{}, false
+			}
 			return e.Actor, true
 		case "HANDOFF", "OFFER":
 			return Principal{}, false
@@ -329,21 +356,47 @@ func (l *Ledger) checkEvent(prior Record, exists bool, e Event) error {
 		}
 		want.WorkStartedAt = e.At
 	case "COORDINATOR_LOST":
-		if prior.CoordinatorLost || e.Actor == prior.Coordinator() || e.Actor == prior.Target() {
-			return fmt.Errorf("%w: repeated or self-interested loss observation", ErrInvalid)
-		}
-		for _, candidate := range l.Records {
-			if candidate.Coordinator() == prior.Coordinator() && !candidate.State.Terminal() && !candidate.CoordinatorLost && candidate.Target() == e.Actor {
-				return fmt.Errorf("%w: observer targets another affected assignment", ErrInvalid)
+		source := e.EffectiveActorSource()
+		switch source {
+		case ActorSourceAgentSession:
+			if e.ActorSource != "" && e.ActorSource != ActorSourceAgentSession {
+				return fmt.Errorf("%w: invalid actor source", ErrInvalid)
 			}
+			if prior.CoordinatorLost || e.Actor == prior.Coordinator() || e.Actor == prior.Target() {
+				return fmt.Errorf("%w: repeated or self-interested loss observation", ErrInvalid)
+			}
+			for _, candidate := range l.Records {
+				if candidate.Coordinator() == prior.Coordinator() && !candidate.State.Terminal() && !candidate.CoordinatorLost && candidate.Target() == e.Actor {
+					return fmt.Errorf("%w: observer targets another affected assignment", ErrInvalid)
+				}
+			}
+		case ActorSourceOwnerCredential:
+			if prior.CoordinatorLost {
+				return fmt.Errorf("%w: repeated or closed loss", ErrInvalid)
+			}
+			if e.Actor == prior.Target() {
+				return fmt.Errorf("%w: affected target cannot record loss", ErrInvalid)
+			}
+			if e.OwnerPrincipalID == "" || e.OwnerCredentialID == "" || e.OwnerReceiptMessageID == "" || e.OwnerReceiptDigest == "" {
+				return fmt.Errorf("%w: OWNER_CREDENTIAL loss requires receipt binding", ErrInvalid)
+			}
+			// OWNER principal is never a successor; Target exclusion retained.
+		default:
+			return fmt.Errorf("%w: unknown actor source", ErrInvalid)
 		}
 		want.CoordinatorLost = true
 	case "HANDOFF":
 		actor := prior.Coordinator()
 		if prior.CoordinatorLost {
 			observer, lossOpen := l.OpenCoordinatorLossObserver(e.AssignmentID)
-			if !lossOpen || r.Coordinator() == observer || r.Coordinator() == prior.Target() {
-				return fmt.Errorf("%w: loss observer or target cannot recover to itself", ErrInvalid)
+			if lossOpen {
+				// OWNER-originated loss has no AgentSession observer to exclude as successor
+				// beyond the Target exclusion and barred-coordinator checks at the grant gate.
+				if r.Coordinator() == observer || r.Coordinator() == prior.Target() {
+					return fmt.Errorf("%w: loss observer or target cannot recover to itself", ErrInvalid)
+				}
+			} else if r.Coordinator() == prior.Target() {
+				return fmt.Errorf("%w: target cannot recover to itself", ErrInvalid)
 			}
 			actor = r.Coordinator()
 		}

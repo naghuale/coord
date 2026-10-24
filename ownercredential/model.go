@@ -310,7 +310,8 @@ func (a Aggregate) Validate() error {
 		} else if receipt.Nonce == "" || receipt.CredentialID == "" || receipt.ExpectedCredentialRevision == 0 {
 			return errors.New("signed OwnerCredential receipt requires a nonce")
 		}
-		if receipt.CommandKind == "task.create" && receipt.CredentialRevision != receipt.ExpectedCredentialRevision || (receipt.CommandKind == "owner.credential.register" || receipt.CommandKind == "owner.credential.revoke") && (receipt.ExpectedCredentialRevision == ^uint64(0) || receipt.CredentialRevision != receipt.ExpectedCredentialRevision+1) {
+		receiptOnly := receipt.CommandKind == "task.create" || IsDelegationCommand(receipt.CommandKind)
+		if receiptOnly && receipt.CredentialRevision != receipt.ExpectedCredentialRevision || (receipt.CommandKind == "owner.credential.register" || receipt.CommandKind == "owner.credential.revoke") && (receipt.ExpectedCredentialRevision == ^uint64(0) || receipt.CredentialRevision != receipt.ExpectedCredentialRevision+1) {
 			return errors.New("OwnerCredential receipt revision does not match command kind")
 		}
 		if receipt.Nonce != "" {
@@ -319,14 +320,17 @@ func (a Aggregate) Validate() error {
 			}
 			receiptNonces[receipt.Nonce] = true
 		}
-		if receipt.EventSequence == 0 && receipt.CommandKind != "task.create" {
+		if receipt.EventSequence == 0 && !receiptOnly {
 			return errors.New("OwnerCredential lifecycle receipt must reference an event")
 		}
-		if receipt.EventSequence > 0 && receipt.CommandKind == "task.create" {
-			return errors.New("owner task receipt cannot reference a credential event")
+		if receipt.EventSequence > 0 && receiptOnly {
+			return errors.New("owner receipt-only command cannot reference a credential event")
 		}
 		if (receipt.CommandKind == "task.create") != (receipt.TaskID != "") {
 			return errors.New("owner task receipt must bind exactly one Task ID")
+		}
+		if IsDelegationCommand(receipt.CommandKind) && receipt.TaskID != "" {
+			return errors.New("delegation Owner command cannot bind a Task ID")
 		}
 		if receipt.EventSequence > 0 && receipt.CommandKind != "bootstrap" && receipt.CredentialID == "" {
 			return errors.New("OwnerCredential event receipt must name its signer")
@@ -340,7 +344,7 @@ func (a Aggregate) Validate() error {
 		if receipt.CommandKind == "bootstrap" {
 			continue
 		}
-		if receipt.CommandKind != "owner.credential.register" && receipt.CommandKind != "owner.credential.revoke" && receipt.CommandKind != "task.create" {
+		if receipt.CommandKind != "owner.credential.register" && receipt.CommandKind != "owner.credential.revoke" && receipt.CommandKind != "task.create" && !IsDelegationCommand(receipt.CommandKind) {
 			return errors.New("unknown OwnerCredential command receipt kind")
 		}
 		if _, ok := a.Credentials[receipt.CredentialID]; !ok {
@@ -415,8 +419,8 @@ func ValidateTransition(previous, next map[string]Aggregate) error {
 				return fmt.Errorf("OwnerCredential lifecycle command must advance revision and event sequence once")
 			}
 		} else {
-			if current.CredentialRevision != old.CredentialRevision || current.Sequence != old.Sequence || addedReceipt.CommandKind != "task.create" {
-				return fmt.Errorf("receipt-only Owner command must be a Task command and cannot change credential lifecycle revision")
+			if current.CredentialRevision != old.CredentialRevision || current.Sequence != old.Sequence || (addedReceipt.CommandKind != "task.create" && !IsDelegationCommand(addedReceipt.CommandKind)) {
+				return fmt.Errorf("receipt-only Owner command must be a Task or delegation command and cannot change credential lifecycle revision")
 			}
 		}
 		for id, c := range current.Credentials {

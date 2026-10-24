@@ -63,7 +63,7 @@ func (s *CanonicalStore) IssueOwnerCommandChallenge(request ownercredential.Comm
 	if s.failed != nil {
 		return ownercredential.Command{}, fmt.Errorf("store requires reopen after durability failure: %w", s.failed)
 	}
-	if s.ownerRPID == "" || (request.Kind != ownercredential.CommandRegisterCredential && request.Kind != ownercredential.CommandRevokeCredential && request.Kind != ownercredential.CommandCreateTask) {
+	if s.ownerRPID == "" || !ownercredential.SupportedCommandKind(request.Kind) {
 		return ownercredential.Command{}, ErrOwnerCommandInvalid
 	}
 	aggregate, ok := s.state.OwnerCredentials[request.PrincipalID]
@@ -158,8 +158,12 @@ func (s *CanonicalStore) ApplyOwnerCredentialCommand(challengeID string, submitt
 	if !s.now().Before(challenge.ExpiresAt) {
 		return ownercredential.Receipt{}, false, ErrOwnerChallengeExpired
 	}
-	if challenge.Kind != ownercredential.CommandRegisterCredential && challenge.Kind != ownercredential.CommandRevokeCredential && challenge.Kind != ownercredential.CommandCreateTask {
+	if !ownercredential.SupportedCommandKind(challenge.Kind) {
 		return ownercredential.Receipt{}, false, ErrOwnerCommandInvalid
+	}
+	// G95-1 lesson: disable gate BEFORE anything route-specific.
+	if ownercredential.IsDelegationCommand(challenge.Kind) && !coordinatorDelegationActive() {
+		return ownercredential.Receipt{}, false, ErrCoordinatorDelegationDisabled
 	}
 	aggregate, ok := s.state.OwnerCredentials[challenge.PrincipalID]
 	if !ok {
@@ -200,6 +204,9 @@ func (s *CanonicalStore) ApplyOwnerCredentialCommand(challengeID string, submitt
 	}
 	if challenge.Kind == ownercredential.CommandCreateTask {
 		return s.applyOwnerTaskCreateLocked(challenge, credential, signCount)
+	}
+	if ownercredential.IsDelegationCommand(challenge.Kind) {
+		return s.applyOwnerDelegationCommandLocked(challenge, credential, signCount)
 	}
 
 	now := s.now().UTC()

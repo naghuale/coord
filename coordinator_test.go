@@ -576,8 +576,8 @@ func TestSchemaFourMigrationKeepsLegacyIngressAndDoesNotEnableAgentIngress(t *te
 		t.Fatal(err)
 	}
 	before, err := canonical.CanonicalSnapshot()
-	if err != nil || before.SchemaVersion != 5 || !before.AgentSessions["registered-agent"].Active() {
-		t.Fatalf("fixture did not migrate to schema 5 with active AgentSession: schema=%d err=%v", before.SchemaVersion, err)
+	if err != nil || before.SchemaVersion != store.CanonicalSchemaVersion || !before.AgentSessions["registered-agent"].Active() {
+		t.Fatalf("fixture did not migrate to current schema with active AgentSession: schema=%d err=%v", before.SchemaVersion, err)
 	}
 	probe := &ingressTestTransport{
 		fakeTransport: &fakeTransport{in: make(chan envelope.Envelope, 1)}, session: "coord",
@@ -615,7 +615,7 @@ func TestSchemaFourMigrationKeepsLegacyIngressAndDoesNotEnableAgentIngress(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if after.SchemaVersion != 5 || len(after.Inbox) != 0 || probe.legacyReads != 1 || probe.authReads != 0 {
+	if after.SchemaVersion != store.CanonicalSchemaVersion || len(after.Inbox) != 0 || probe.legacyReads != 1 || probe.authReads != 0 {
 		t.Fatalf("migration enabled/changed ingress: schema=%d inbox=%v legacy=%d authenticated=%d", after.SchemaVersion, after.Inbox, probe.legacyReads, probe.authReads)
 	}
 	if len(probe.sent) != 1 || probe.sent[0].SchemaVersion != envelope.SchemaVersionLegacyAgent || probe.sent[0].Kind != envelope.ResultAck || probe.sent[0].ResultAckPayload.AssignmentID != "" || probe.sent[0].ResultAckPayload.Disposition != "" {

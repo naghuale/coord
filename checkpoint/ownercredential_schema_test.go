@@ -62,19 +62,19 @@ func TestSchemaThreeSnapshotLoadsWithoutWriteAndFirstCommitPublishesFive(t *test
 	if err := json.Unmarshal(upgraded, &current); err != nil {
 		t.Fatal(err)
 	}
-	if current.SchemaVersion != 5 || len(current.OwnerCredentials) != 0 {
-		t.Fatalf("schema 4 first commit=%+v", current)
+	if current.SchemaVersion != 6 || len(current.OwnerCredentials) != 0 {
+		t.Fatalf("schema 3 first commit=%+v", current)
 	}
 }
 
-func TestSchemaFiveRejectsUnknownFutureAndOldWriterDowngrade(t *testing.T) {
+func TestSchemaSixRejectsUnknownFutureAndOldWriterDowngrade(t *testing.T) {
 	state := store.EmptyCanonicalState()
 	encoded, err := json.Marshal(state)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded, err := DecodeCanonicalSnapshot(encoded); err != nil || loaded.SchemaVersion != 5 {
-		t.Fatalf("schema 5 decode version=%d err=%v", loaded.SchemaVersion, err)
+	if loaded, err := DecodeCanonicalSnapshot(encoded); err != nil || loaded.SchemaVersion != 6 {
+		t.Fatalf("schema 6 decode version=%d err=%v", loaded.SchemaVersion, err)
 	}
 	if err := CheckSchemaTarget(4, 3); !errors.Is(err, ErrUnsafeDowngrade) {
 		t.Fatalf("old schema 3 writer downgrade error=%v", err)
@@ -82,13 +82,16 @@ func TestSchemaFiveRejectsUnknownFutureAndOldWriterDowngrade(t *testing.T) {
 	if err := CheckSchemaTarget(5, 4); !errors.Is(err, ErrUnsafeDowngrade) {
 		t.Fatalf("schema 4 writer downgrade error=%v", err)
 	}
-	state.SchemaVersion = 6
+	if err := CheckSchemaTarget(6, 5); !errors.Is(err, ErrUnsafeDowngrade) {
+		t.Fatalf("schema 5 writer downgrade error=%v", err)
+	}
+	state.SchemaVersion = 7
 	encoded, err = json.Marshal(state)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := DecodeCanonicalSnapshot(encoded); err == nil {
-		t.Fatal("unknown schema 6 decoded")
+		t.Fatal("unknown schema 7 decoded")
 	}
 }
 
@@ -124,7 +127,44 @@ func TestSchemaFourSnapshotLoadsWithoutWriteAndAdvancesOnCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 	var upgraded store.CanonicalState
-	if err := json.Unmarshal(current, &upgraded); err != nil || upgraded.SchemaVersion != 5 {
+	if err := json.Unmarshal(current, &upgraded); err != nil || upgraded.SchemaVersion != 6 {
 		t.Fatalf("schema 4 first commit version=%d err=%v", upgraded.SchemaVersion, err)
+	}
+}
+
+func TestSchemaFiveSnapshotLoadsWithoutWriteAndAdvancesOnCommit(t *testing.T) {
+	file := migrationTestFile(t)
+	state := store.EmptyCanonicalState()
+	state.SchemaVersion = 5
+	raw, err := json.Marshal(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file.Path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := DecodeCanonicalSnapshot(raw)
+	if err != nil || loaded.SchemaVersion != 5 {
+		t.Fatalf("schema 5 decode version=%d err=%v", loaded.SchemaVersion, err)
+	}
+	s, err := store.NewCanonical(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	unchanged, err := os.ReadFile(file.Path)
+	if err != nil || string(unchanged) != string(raw) {
+		t.Fatalf("schema 5 open wrote snapshot: err=%v", err)
+	}
+	if err := s.UpdateCanonical(func(*store.CanonicalState) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	current, err := os.ReadFile(file.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var upgraded store.CanonicalState
+	if err := json.Unmarshal(current, &upgraded); err != nil || upgraded.SchemaVersion != 6 {
+		t.Fatalf("schema 5 first commit version=%d err=%v", upgraded.SchemaVersion, err)
 	}
 }

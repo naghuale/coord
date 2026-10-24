@@ -166,6 +166,12 @@ func (s *CanonicalStore) OfferAssignment(actor assignment.Principal, r assignmen
 		if r.Coordinator() != actor || r.State != assignment.Offered || r.IssuedAt.After(now) || !now.Before(r.ValidUntil) {
 			return assignment.ErrInvalid
 		}
+		if err := enforceDelegatedOfferOrAccept(*state, actor, DelegatedActionOffer, now); err != nil {
+			return err
+		}
+		if err := enforceDelegatedMutation(*state, actor, DelegatedActionOffer, r, now); err != nil {
+			return err
+		}
 		// Issuance precedes commit in real callers. Preserve the explicit issuedAt
 		// and deadline; only the commit observation is owned by this store clock.
 		r.UpdatedAt = now
@@ -212,6 +218,16 @@ func (s *CanonicalStore) ChangeAssignment(actor assignment.Principal, id string,
 		default:
 			return fmt.Errorf("%w: unsupported authority command", assignment.ErrInvalid)
 		}
+		// ACK is the target's command; delegation gates apply to coordinator actions.
+		if kind != "ACK" {
+			action := kind
+			if kind == "ACTIVATE" {
+				action = DelegatedActionActivate
+			}
+			if err := enforceDelegatedMutation(*state, actor, action, r, now); err != nil {
+				return err
+			}
+		}
 		return appendAssignment(state, actor, r, next, kind, evidence, now)
 	})
 }
@@ -251,6 +267,18 @@ func (s *CanonicalStore) ObserveAssignmentCoordinatorLoss(observer, coordinator 
 		if observer == coordinator {
 			return fmt.Errorf("%w: coordinator cannot observe its own loss", assignment.ErrInvalid)
 		}
+		now := s.now().UTC()
+		// Under an active grant, path (a) observer cannot later become successor for that loss;
+		// restarted primary session cannot observe own prior loss (ADR §8/§9).
+		if grant, ok := findGrantCoveringCoordinator(*state, coordinator, now); ok {
+			obs := principalFromAssignment(observer)
+			if grant.hasSuccessor(obs) {
+				return fmt.Errorf("%w: path (a) observer cannot be a named successor for that loss", ErrCoordinatorDelegationInvalid)
+			}
+			if grant.PrimaryRestart != nil && observer.AgentID == grant.PrimaryRestart.StableAgentID {
+				return fmt.Errorf("%w: restarted session cannot observe own prior loss", ErrCoordinatorDelegationInvalid)
+			}
+		}
 		// Preflight the whole batch before appending any loss observation.
 		for _, r := range state.AssignmentLedger.Records {
 			if r.Coordinator() == coordinator && !r.State.Terminal() && !r.CoordinatorLost && observer == r.Target() {
@@ -263,7 +291,7 @@ func (s *CanonicalStore) ObserveAssignmentCoordinatorLoss(observer, coordinator 
 			}
 			next := r
 			next.CoordinatorLost = true
-			if err := appendAssignment(state, observer, r, next, "COORDINATOR_LOST", evidence, s.now().UTC()); err != nil {
+			if err := appendAssignment(state, observer, r, next, "COORDINATOR_LOST", evidence, now); err != nil {
 				return err
 			}
 		}
@@ -289,7 +317,11 @@ func (s *CanonicalStore) HandoffAssignment(previous, nextCoordinator assignment.
 		actor := previous
 		if r.CoordinatorLost {
 			observer, open := state.AssignmentLedger.OpenCoordinatorLossObserver(id)
-			if !open || nextCoordinator == observer || nextCoordinator == r.Target() {
+			if open && (nextCoordinator == observer || nextCoordinator == r.Target()) {
+				return fmt.Errorf("%w: loss observer or target cannot recover to itself", assignment.ErrInvalid)
+			}
+			// OWNER_CREDENTIAL loss has no AgentSession observer; Target remains excluded.
+			if !open && nextCoordinator == r.Target() {
 				return fmt.Errorf("%w: loss observer or target cannot recover to itself", assignment.ErrInvalid)
 			}
 			actor = nextCoordinator
@@ -300,6 +332,9 @@ func (s *CanonicalStore) HandoffAssignment(previous, nextCoordinator assignment.
 			return err
 		}
 		now := s.now().UTC()
+		if err := enforceDelegatedHandoff(state, previous, nextCoordinator, id, now); err != nil {
+			return err
+		}
 		next := r
 		next.CurrentCoordinator, next.CoordinatorAgentID, next.CoordinatorGeneration = nextCoordinator.SessionID, nextCoordinator.AgentID, nextCoordinator.Generation
 		next.HandoffEvidence = append(append([]assignment.Handoff{}, r.HandoffEvidence...), assignment.Handoff{From: previous, To: nextCoordinator, EvidenceRef: evidence, At: now})
@@ -371,6 +406,12 @@ func (s *CanonicalStore) AcceptAssignmentResult(coordinator, sender assignment.P
 		}
 		now := s.now().UTC()
 		if err := assignmentReady(*state, r, now); err != nil {
+			return err
+		}
+		if err := enforceDelegatedOfferOrAccept(*state, coordinator, DelegatedActionAccept, now); err != nil {
+			return err
+		}
+		if err := enforceDelegatedMutation(*state, coordinator, DelegatedActionAccept, r, now); err != nil {
 			return err
 		}
 		next := r

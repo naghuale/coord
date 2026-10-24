@@ -25,6 +25,10 @@ const (
 	CommandRegisterCredential = "owner.credential.register"
 	CommandRevokeCredential   = "owner.credential.revoke"
 	CommandCreateTask         = "task.create"
+	CommandDelegationGrant    = "coordinator.delegation.grant"
+	CommandDelegationRevoke   = "coordinator.delegation.revoke"
+	CommandLossConfirm        = "coordinator.loss.confirm"
+	CommandVisibilityConfirm  = "coordinator.visibility.confirm"
 )
 
 type RegisterCredentialPayload struct {
@@ -42,6 +46,71 @@ type CreateTaskPayload struct {
 	Title       string         `json:"title"`
 	Description string         `json:"description,omitempty"`
 	StagePlan   task.StagePlan `json:"stage_plan"`
+}
+
+// DelegationPrincipalPayload is the exact triple used by #93b OWNER commands.
+type DelegationPrincipalPayload struct {
+	StableAgentID string `json:"stableAgentId"`
+	SessionID     string `json:"sessionId"`
+	Generation    uint64 `json:"generation"`
+}
+
+// DelegationGrantPayload is the OWNER-signed grant body (ADR §3).
+type DelegationGrantPayload struct {
+	DelegationID         string                       `json:"delegationId"`
+	Scope                DelegationScopePayload       `json:"scope"`
+	PrimaryCoordinator   DelegationPrincipalPayload   `json:"primaryCoordinator"`
+	Validity             DelegationValidityPayload    `json:"validity"`
+	Successors           []DelegationPrincipalPayload `json:"successors"`
+	PrimaryRestart       *PrimaryRestartPayload       `json:"primaryRestart,omitempty"`
+	Evidence             DelegationEvidencePayload    `json:"evidence"`
+	CutoverAssignmentIDs []string                     `json:"cutoverAssignmentIds,omitempty"`
+}
+
+type DelegationScopePayload struct {
+	Repository       string   `json:"repository"`
+	Project          string   `json:"project"`
+	AllowedWorkItems []string `json:"allowedWorkItems"`
+	AllowedActions   []string `json:"allowedActions"`
+}
+
+type DelegationValidityPayload struct {
+	NotBefore time.Time `json:"notBefore"`
+	ExpiresAt time.Time `json:"expiresAt"`
+}
+
+type PrimaryRestartPayload struct {
+	StableAgentID string `json:"stableAgentId"`
+}
+
+type DelegationEvidencePayload struct {
+	OwnerDecisionRef   string `json:"ownerDecisionRef"`
+	VisibilityEvidence string `json:"visibilityEvidence"`
+}
+
+// DelegationRevokePayload revokes one grant (OWNER only).
+type DelegationRevokePayload struct {
+	DelegationID string `json:"delegationId"`
+	Reason       string `json:"reason"`
+}
+
+// LossConfirmPayload is OWNER path (b) loss recording (ADR §9).
+type LossConfirmPayload struct {
+	DelegationID string                     `json:"delegationId"`
+	Coordinator  DelegationPrincipalPayload `json:"coordinator"`
+	Reason       string                     `json:"reason"`
+	ObservedAt   time.Time                  `json:"observedAt"`
+}
+
+// VisibilityConfirmPayload is the transitional OWNER visibility carrier.
+// authorityCreating=false: proves OWNER saw the triple at issuedAt only.
+type VisibilityConfirmPayload struct {
+	DelegationID  string                      `json:"delegationId"`
+	Successor     *DelegationPrincipalPayload `json:"successor,omitempty"`
+	StableAgentID string                      `json:"stableAgentId,omitempty"` // primaryRestart
+	IssuedAt      time.Time                   `json:"issuedAt"`
+	ExpiresAt     time.Time                   `json:"expiresAt"`
+	SingleUse     bool                        `json:"singleUse"`
 }
 
 // CommandRequest is the immutable command input used to mint one daemon
@@ -119,7 +188,7 @@ func (c Command) Same(other Command) bool {
 }
 
 func NewChallenge(request CommandRequest, now time.Time, ttl time.Duration) (Command, error) {
-	if request.Kind != CommandRegisterCredential && request.Kind != CommandRevokeCredential && request.Kind != CommandCreateTask {
+	if !SupportedCommandKind(request.Kind) {
 		return Command{}, fmt.Errorf("unsupported Owner command kind %q", request.Kind)
 	}
 	if strings.TrimSpace(request.MessageID) != request.MessageID || request.MessageID == "" || strings.TrimSpace(request.PrincipalID) != request.PrincipalID || request.PrincipalID == "" || strings.TrimSpace(request.CredentialID) != request.CredentialID || request.CredentialID == "" || request.ExpectedCredentialRevision == 0 || now.IsZero() || ttl <= 0 || ttl > ChallengeLifetime {
@@ -226,6 +295,27 @@ func VerifyAssertion(command Command, credential Credential, assertion Assertion
 func signedHash(data []byte) []byte {
 	h := sha256.Sum256(data)
 	return h[:]
+}
+
+// SupportedCommandKind reports whether kind is a known OwnerCredential command.
+func SupportedCommandKind(kind string) bool {
+	switch kind {
+	case CommandRegisterCredential, CommandRevokeCredential, CommandCreateTask,
+		CommandDelegationGrant, CommandDelegationRevoke, CommandLossConfirm, CommandVisibilityConfirm:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsDelegationCommand reports #93b OWNER command kinds gated by the disable const.
+func IsDelegationCommand(kind string) bool {
+	switch kind {
+	case CommandDelegationGrant, CommandDelegationRevoke, CommandLossConfirm, CommandVisibilityConfirm:
+		return true
+	default:
+		return false
+	}
 }
 
 func ValidatePayload(payload []byte) error {

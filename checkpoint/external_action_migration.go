@@ -24,7 +24,7 @@ func CheckSchemaTarget(current, target uint32) error {
 	if current >= 3 && target < current {
 		return ErrUnsafeDowngrade
 	}
-	if target != 3 && target != 4 && target != 5 {
+	if target != 3 && target != 4 && target != 5 && target != 6 {
 		return fmt.Errorf("unsupported target schema")
 	}
 	return nil
