@@ -287,6 +287,47 @@ func validateOwnerCredentialLossReceipts(state CanonicalState, d DelegationRecor
 	return nil
 }
 
+// ownerCredentialLossAllowsHandoffWithoutObserver is the G93b-1 gate for recovery
+// after COORDINATOR_LOST when OpenCoordinatorLossObserver reports !open.
+// At const=false it is always false (main/#90 parity). When delegation is active
+// it requires the assignment's latest COORDINATOR_LOST to be OWNER_CREDENTIAL
+// with a matching same-commit OwnerCredential receipt.
+func ownerCredentialLossAllowsHandoffWithoutObserver(state CanonicalState, assignmentID string) bool {
+	if !coordinatorDelegationActive() || state.AssignmentLedger == nil {
+		return false
+	}
+	rec, ok := state.AssignmentLedger.Records[assignmentID]
+	if !ok || !rec.CoordinatorLost {
+		return false
+	}
+	var lost *assignment.Event
+	for i := range state.AssignmentLedger.Events {
+		e := &state.AssignmentLedger.Events[i]
+		if e.AssignmentID == assignmentID && e.Kind == "COORDINATOR_LOST" {
+			lost = e
+		}
+	}
+	if lost == nil || lost.ActorSource != assignment.ActorSourceOwnerCredential {
+		return false
+	}
+	// Receipt must bind this loss record, this assignment, and the current generation.
+	if lost.Record.AssignmentID != assignmentID || lost.Record.Coordinator() != rec.Coordinator() {
+		return false
+	}
+	if lost.OwnerReceiptMessageID == "" || lost.OwnerReceiptDigest == "" || lost.OwnerPrincipalID == "" || lost.OwnerCredentialID == "" {
+		return false
+	}
+	agg, ok := state.OwnerCredentials[lost.OwnerPrincipalID]
+	if !ok {
+		return false
+	}
+	receipt, ok := agg.Receipts[lost.OwnerReceiptMessageID]
+	if !ok || receipt.CommandDigest != lost.OwnerReceiptDigest || receipt.CommandKind != ownercredential.CommandLossConfirm {
+		return false
+	}
+	return true
+}
+
 // Delegated action names used in grant allowlists (ADR §5).
 const (
 	DelegatedActionOffer    = "OFFER"

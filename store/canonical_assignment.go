@@ -317,12 +317,20 @@ func (s *CanonicalStore) HandoffAssignment(previous, nextCoordinator assignment.
 		actor := previous
 		if r.CoordinatorLost {
 			observer, open := state.AssignmentLedger.OpenCoordinatorLossObserver(id)
-			if open && (nextCoordinator == observer || nextCoordinator == r.Target()) {
-				return fmt.Errorf("%w: loss observer or target cannot recover to itself", assignment.ErrInvalid)
-			}
-			// OWNER_CREDENTIAL loss has no AgentSession observer; Target remains excluded.
-			if !open && nextCoordinator == r.Target() {
-				return fmt.Errorf("%w: loss observer or target cannot recover to itself", assignment.ErrInvalid)
+			if open {
+				if nextCoordinator == observer || nextCoordinator == r.Target() {
+					return fmt.Errorf("%w: loss observer or target cannot recover to itself", assignment.ErrInvalid)
+				}
+			} else {
+				// Main/#90 parity at const=false: no open AGENT_SESSION observer => reject.
+				// OWNER_CREDENTIAL loss may proceed only when delegation is active and the
+				// same-commit receipt is verified (G93b-1).
+				if !ownerCredentialLossAllowsHandoffWithoutObserver(*state, id) {
+					return fmt.Errorf("%w: loss observer or target cannot recover to itself", assignment.ErrInvalid)
+				}
+				if nextCoordinator == r.Target() {
+					return fmt.Errorf("%w: loss observer or target cannot recover to itself", assignment.ErrInvalid)
+				}
 			}
 			actor = nextCoordinator
 		} else if err := assignmentPrincipal(*state, previous); err != nil {

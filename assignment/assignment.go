@@ -288,6 +288,28 @@ func (l *Ledger) OpenCoordinatorLossObserver(id string) (Principal, bool) {
 	return Principal{}, false
 }
 
+// latestCoordinatorLossIsOwnerCredential reports whether the latest
+// COORDINATOR_LOST event for id (before any later HANDOFF/OFFER) is
+// OWNER_CREDENTIAL. Used by HANDOFF checkEvent for G93b-1 parity.
+func latestCoordinatorLossIsOwnerCredential(l *Ledger, id string) bool {
+	if l == nil {
+		return false
+	}
+	for i := len(l.Events) - 1; i >= 0; i-- {
+		e := l.Events[i]
+		if e.AssignmentID != id {
+			continue
+		}
+		switch e.Kind {
+		case "COORDINATOR_LOST":
+			return e.EffectiveActorSource() == ActorSourceOwnerCredential
+		case "HANDOFF", "OFFER":
+			return false
+		}
+	}
+	return false
+}
+
 func (l *Ledger) checkEvent(prior Record, exists bool, e Event) error {
 	r := e.Record
 	if e.AssignmentID != r.AssignmentID || e.Revision != r.Revision || !e.At.Equal(r.UpdatedAt) || !e.Actor.Valid() || !clean(e.EvidenceRef) {
@@ -390,13 +412,19 @@ func (l *Ledger) checkEvent(prior Record, exists bool, e Event) error {
 		if prior.CoordinatorLost {
 			observer, lossOpen := l.OpenCoordinatorLossObserver(e.AssignmentID)
 			if lossOpen {
-				// OWNER-originated loss has no AgentSession observer to exclude as successor
-				// beyond the Target exclusion and barred-coordinator checks at the grant gate.
 				if r.Coordinator() == observer || r.Coordinator() == prior.Target() {
 					return fmt.Errorf("%w: loss observer or target cannot recover to itself", ErrInvalid)
 				}
-			} else if r.Coordinator() == prior.Target() {
-				return fmt.Errorf("%w: target cannot recover to itself", ErrInvalid)
+			} else if latestCoordinatorLossIsOwnerCredential(l, e.AssignmentID) {
+				// OWNER_CREDENTIAL losses report !open by design; Target remains excluded.
+				// Receipt binding is enforced at canonical validate (G93b-1).
+				if r.Coordinator() == prior.Target() {
+					return fmt.Errorf("%w: target cannot recover to itself", ErrInvalid)
+				}
+			} else {
+				// Main/#90 parity: CoordinatorLost without an open AGENT_SESSION
+				// observer rejects handoff (G93b-1).
+				return fmt.Errorf("%w: loss observer or target cannot recover to itself", ErrInvalid)
 			}
 			actor = r.Coordinator()
 		}
