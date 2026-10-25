@@ -205,9 +205,8 @@ func TestRecovery5_RestartedPrimaryMayReceiveCoveredLostAssignmentsWithoutNewVis
 
 func recovery5TwoRestartSnapshot(t *testing.T, grantID string) (CanonicalState, time.Time, DelegationPrincipal, DelegationPrincipal, DelegationPrincipal) {
 	t.Helper()
-	f, now, a, b, _ := recovery4Setup(t, grantID, false)
-	var a2 assignment.Principal
-	a, a2, b, _ = recovery5RestartPrimary(t, f, grantID, now)
+	f, now, _, _, _ := recovery4Setup(t, grantID, false)
+	a, a2, b, _ := recovery5RestartPrimary(t, f, grantID, now)
 	seedDelegatedAssignment(t, f, "asg-r5-n3-between-restarts", a2, now)
 	confirmVisibility(t, f, grantID, "vis-r5-n3-to-b", ownercredential.DelegationPrincipalPayload{StableAgentID: b.AgentID, SessionID: b.SessionID, Generation: b.Generation}, now)
 	if err := recovery4Handoff(t, f, a2, b, "asg-r5-n3-between-restarts", "move-primary-to-successor-between-restarts"); err != nil {
