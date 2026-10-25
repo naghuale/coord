@@ -176,9 +176,10 @@ func findActionMapRegistryDoc(docs documentRegistryIndex) (registryDoc, bool) {
 
 // evaluatePublication applies the authoritative-ACTION-MAP publication rule
 // (R6-F1 / R7-F1 / R8-F2). Order: non-empty path → join to root → EvalSymlinks
-// (and resolve root) → inside resolved root → regular file → blob present in
-// the checked HEAD tree (`git rev-parse --verify HEAD:path`). Index membership
-// is not publication. optional:true does not waive.
+// (and resolve root) → inside resolved root → regular file → regular-file
+// blob (mode 100644/100755) present in the checked HEAD tree (`git ls-tree`).
+// Index membership is not publication. A HEAD symlink is not a regular-file
+// blob. optional:true does not waive.
 func (a *actionMapDocStatus) evaluatePublication(root string) {
 	if a.status != "accepted" || a.statusMissing || a.statusWrongType || a.statusUnrecognized || a.fieldInvalid {
 		return
@@ -261,22 +262,42 @@ func (a *actionMapDocStatus) evaluatePublication(root string) {
 }
 
 func gitTrackedPath(root, relPath string) bool {
-	_, ok := gitHeadBlobSHA(root, relPath)
-	return ok
+	_, typ, _, ok := gitHeadTreeEntry(root, relPath)
+	return ok && typ == "blob"
 }
 
-// gitHeadBlobSHA returns the blob SHA of relPath in the checked HEAD tree.
-// Staged-only and untracked paths return false (R8-F2).
-func gitHeadBlobSHA(root, relPath string) (string, bool) {
+func gitHeadTreeEntry(root, relPath string) (mode, typ, sha string, ok bool) {
 	gitPath := filepath.ToSlash(relPath)
-	cmd := exec.Command("git", "-C", root, "rev-parse", "--verify", "--quiet", "HEAD:"+gitPath)
+	cmd := exec.Command("git", "-C", root, "ls-tree", "--full-tree", "HEAD", "--", gitPath)
 	cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null")
-	out, err := cmd.Output()
+	raw, err := cmd.Output()
 	if err != nil {
-		return "", false
+		return "", "", "", false
 	}
-	sha := strings.TrimSpace(string(out))
-	if sha == "" {
+	line := strings.TrimSpace(string(raw))
+	if line == "" {
+		return "", "", "", false
+	}
+	if i := strings.IndexByte(line, '\n'); i >= 0 {
+		line = line[:i]
+	}
+	tab := strings.IndexByte(line, '\t')
+	if tab < 0 {
+		return "", "", "", false
+	}
+	meta := strings.Fields(line[:tab])
+	if len(meta) != 3 || meta[2] == "" {
+		return "", "", "", false
+	}
+	return meta[0], meta[1], meta[2], true
+}
+
+// gitHeadBlobSHA returns the SHA of a regular-file blob (mode 100644 or
+// 100755) for relPath in the checked HEAD tree. Symlink (120000), gitlink,
+// tree, staged-only, and untracked paths return false (R8-F2 / G97-R8-1b).
+func gitHeadBlobSHA(root, relPath string) (string, bool) {
+	mode, typ, sha, ok := gitHeadTreeEntry(root, relPath)
+	if !ok || typ != "blob" || (mode != "100644" && mode != "100755") {
 		return "", false
 	}
 	return sha, true
