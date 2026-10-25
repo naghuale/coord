@@ -154,23 +154,31 @@ func classifyActionMapDoc(d registryDoc) actionMapDocStatus {
 	return out
 }
 
-// findActionMapRegistryDoc locates the ACTION-MAP row by canonical path or by id,
-// so empty/escaping path fields still surface as publication failures (R7-F2)
-// rather than a silent missing-row miss.
+// Canonical ACTION-MAP.yaml registry identity (R8-F1). Historical
+// `action-map` (ACTION-MAP.md) is never selected.
+const (
+	canonicalActionMapYAMLID   = "action-map-yaml"
+	canonicalActionMapYAMLPath = "docs/operations/ACTION-MAP.yaml"
+)
+
+// findActionMapRegistryDoc locates only the ACTION-MAP.yaml registry row.
+// Identity is action-map-yaml. Empty/escaping path fields on that row still
+// surface as publication failures (R7-F2) rather than a missing-row miss.
 func findActionMapRegistryDoc(docs documentRegistryIndex) (registryDoc, bool) {
-	if d, ok := docs.byPath["docs/operations/ACTION-MAP.yaml"]; ok {
+	if d, ok := docs.byID[canonicalActionMapYAMLID]; ok {
 		return d, true
 	}
-	if d, ok := docs.byID["action-map"]; ok {
+	if d, ok := docs.byPath[canonicalActionMapYAMLPath]; ok && d.ID == canonicalActionMapYAMLID {
 		return d, true
 	}
 	return registryDoc{}, false
 }
 
 // evaluatePublication applies the authoritative-ACTION-MAP publication rule
-// (R6-F1 / R7-F1). Order: non-empty path → join to root → EvalSymlinks (and
-// resolve root) → inside resolved root → regular file → git-tracked
-// (`git ls-files --error-unmatch`). optional:true does not waive.
+// (R6-F1 / R7-F1 / R8-F2). Order: non-empty path → join to root → EvalSymlinks
+// (and resolve root) → inside resolved root → regular file → blob present in
+// the checked HEAD tree (`git rev-parse --verify HEAD:path`). Index membership
+// is not publication. optional:true does not waive.
 func (a *actionMapDocStatus) evaluatePublication(root string) {
 	if a.status != "accepted" || a.statusMissing || a.statusWrongType || a.statusUnrecognized || a.fieldInvalid {
 		return
@@ -235,17 +243,35 @@ func (a *actionMapDocStatus) evaluatePublication(root string) {
 		fail("NOT_REGULAR_FILE", clean)
 		return
 	}
-	if !gitTrackedPath(root, clean) {
+	sha, ok := gitHeadBlobSHA(root, clean)
+	if !ok {
 		fail("FILE_NOT_TRACKED", clean)
 		return
 	}
 	a.publishedOK = true
+	a.publishedDetail = "HEAD_BLOB " + sha
 }
 
 func gitTrackedPath(root, relPath string) bool {
-	cmd := exec.Command("git", "-C", root, "ls-files", "--error-unmatch", "--", relPath)
+	_, ok := gitHeadBlobSHA(root, relPath)
+	return ok
+}
+
+// gitHeadBlobSHA returns the blob SHA of relPath in the checked HEAD tree.
+// Staged-only and untracked paths return false (R8-F2).
+func gitHeadBlobSHA(root, relPath string) (string, bool) {
+	gitPath := filepath.ToSlash(relPath)
+	cmd := exec.Command("git", "-C", root, "rev-parse", "--verify", "--quiet", "HEAD:"+gitPath)
 	cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null")
-	return cmd.Run() == nil
+	out, err := cmd.Output()
+	if err != nil {
+		return "", false
+	}
+	sha := strings.TrimSpace(string(out))
+	if sha == "" {
+		return "", false
+	}
+	return sha, true
 }
 
 // recognizedDocStatus is the DOCUMENT-REGISTRY status vocabulary (exact match, no normalization).

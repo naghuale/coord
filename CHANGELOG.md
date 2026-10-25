@@ -1,5 +1,10 @@
 # История изменений
 
+## 2026-10-25 — ACTION-MAP.yaml identity and HEAD-tree publication (Refs #97)
+
+- Architecture checker resolves the Action Map registry row only as `action-map-yaml`. Historical `action-map` (`ACTION-MAP.md`) is never a fallback. Empty path on the YAML row is `EMPTY_PATH` even when the historical row is accepted and committed. (`TestR8_F1_YAMLIdentityNotHistoricalActionMap`)
+- Publication requires a blob in the checked `HEAD` tree (`git rev-parse --verify HEAD:path`). Staged-only and untracked files are `FILE_NOT_TRACKED`. A HEAD blob deleted from the worktree is `FILE_MISSING`. (`TestR8_F2_PublicationIsHEADTreeNotIndex`)
+
 ## 2026-10-24 — COMPONENT-STATUS axes, NV-4 and D24-F3 (Refs #97)
 
 - `COMPONENT-STATUS.yaml` gains the four OWNER axes (`code` / `connection` / `qualification` / `production`), a critical-path `requirements:` bootstrap (ADR-0001, ADR-0004, R152–R154, #90/#93/#95/#96) and NV-4 `actionMapReferenceClassifications`. Subordinate recovery docs/templates are aligned with ACTION-MAP-INTERIM-PROCEDURE-01 without weakening fail-closed. The D24-F3 recovery fixture retargets the `actionMap` source to `AGENTS.md` and keeps `docs/operations/ACTION-MAP.md` only in `rejectedAsCurrentAuthority`. (`TestLiveRegistryPasses`, `TestAuthoritativeActionMapWhileProposedKills`, `TestUnclassifiedActionMapHitKills`, `TestProposedProductionAuthorityKills`, `TestConnectedWithoutEntrypointKills`; recovery: `tests/test_recovery_checks.sh`)

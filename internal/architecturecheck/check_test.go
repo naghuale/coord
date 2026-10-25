@@ -850,7 +850,7 @@ func TestR4_F1_ActionMapStatusWrongTypeFails(t *testing.T) {
 	writeDocRegistry(t, dir, `apiVersion: coord.dev/v1alpha1
 kind: DocumentRegistry
 documents:
-  - id: action-map
+  - id: action-map-yaml
     path: docs/operations/ACTION-MAP.yaml
     status: true
 `)
@@ -915,7 +915,7 @@ func TestR7_F2_ActionMapAcceptedEmptyPathFailsAtCheck(t *testing.T) {
 		writeDocRegistry(t, dir, `apiVersion: coord.dev/v1alpha1
 kind: DocumentRegistry
 documents:
-  - id: action-map
+  - id: action-map-yaml
     path: ""
     status: accepted
 `)
@@ -979,6 +979,181 @@ func TestR7_F1_ActionMapUntrackedRegularFileFails(t *testing.T) {
 	if !hasCode(res.Violations, CodeActionMapNotPublished) || !detailHas(res.Violations, CodeActionMapNotPublished, "FILE_NOT_TRACKED") {
 		t.Fatalf("expected FILE_NOT_TRACKED, got %v", res.Violations)
 	}
+}
+
+func TestR8_F1_YAMLIdentityNotHistoricalActionMap(t *testing.T) {
+	t.Run("empty_path_on_yaml_row_not_historical_fallback", func(t *testing.T) {
+		dir := t.TempDir()
+		writeAuthoritativeActionMapFixture(t, dir)
+		mustMkdir(t, filepath.Join(dir, "docs/operations"))
+		mustWrite(t, filepath.Join(dir, "docs/operations/ACTION-MAP.md"), "# historical\n")
+		writeDocRegistry(t, dir, `apiVersion: coord.dev/v1alpha1
+kind: DocumentRegistry
+documents:
+  - id: action-map
+    path: docs/operations/ACTION-MAP.md
+    status: accepted
+  - id: action-map-yaml
+    path: ""
+    status: accepted
+`)
+		initFixtureGit(t, dir)
+		res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !hasCode(res.Violations, CodeActionMapNotPublished) || !detailHas(res.Violations, CodeActionMapNotPublished, "EMPTY_PATH") {
+			t.Fatalf("expected EMPTY_PATH on action-map-yaml, not historical fallback, got %v", res.Violations)
+		}
+	})
+	t.Run("historical_accepted_committed_yaml_row_absent", func(t *testing.T) {
+		dir := t.TempDir()
+		writeAuthoritativeActionMapFixture(t, dir)
+		mustMkdir(t, filepath.Join(dir, "docs/operations"))
+		mustWrite(t, filepath.Join(dir, "docs/operations/ACTION-MAP.md"), "# historical\n")
+		writeDocRegistry(t, dir, `apiVersion: coord.dev/v1alpha1
+kind: DocumentRegistry
+documents:
+  - id: action-map
+    path: docs/operations/ACTION-MAP.md
+    status: accepted
+`)
+		initFixtureGit(t, dir)
+		res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !hasCode(res.Violations, CodeAuthoritativeActionMap) {
+			t.Fatalf("expected row-missing %s, got %v", CodeAuthoritativeActionMap, res.Violations)
+		}
+		if hasCode(res.Violations, CodeActionMapNotPublished) {
+			t.Fatalf("historical action-map must not be published as YAML row, got %v", res.Violations)
+		}
+	})
+	t.Run("both_rows_yaml_validated_regardless_of_order", func(t *testing.T) {
+		for _, yamlFirst := range []bool{true, false} {
+			dir := t.TempDir()
+			writeAuthoritativeActionMapFixture(t, dir)
+			mustMkdir(t, filepath.Join(dir, "docs/operations"))
+			mustWrite(t, filepath.Join(dir, "docs/operations/ACTION-MAP.yaml"), "apiVersion: v1\nkinds: []\n")
+			mustWrite(t, filepath.Join(dir, "docs/operations/ACTION-MAP.md"), "# historical\n")
+			hist := `  - id: action-map
+    path: docs/operations/ACTION-MAP.md
+    status: accepted
+`
+			yamlRow := `  - id: action-map-yaml
+    path: docs/operations/ACTION-MAP.yaml
+    status: accepted
+`
+			body := hist + yamlRow
+			if yamlFirst {
+				body = yamlRow + hist
+			}
+			writeDocRegistry(t, dir, "apiVersion: coord.dev/v1alpha1\nkind: DocumentRegistry\ndocuments:\n"+body)
+			initFixtureGit(t, dir)
+			res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, code := range []string{CodeAuthoritativeActionMap, CodeActionMapStatusInvalid, CodeActionMapNotPublished} {
+				if hasCode(res.Violations, code) {
+					t.Fatalf("yamlFirst=%v: expected pass, got %v", yamlFirst, res.Violations)
+				}
+			}
+			sha, ok := gitHeadBlobSHA(dir, "docs/operations/ACTION-MAP.yaml")
+			if !ok || sha == "" {
+				t.Fatal("expected HEAD blob SHA for published yaml")
+			}
+		}
+	})
+	t.Run("positive_valid_yaml_row", func(t *testing.T) {
+		assertR6Publication(t, false, "docs/operations/ACTION-MAP.yaml", true, true, "")
+	})
+}
+
+func TestR8_F2_PublicationIsHEADTreeNotIndex(t *testing.T) {
+	t.Run("staged_only_file_not_tracked", func(t *testing.T) {
+		dir := t.TempDir()
+		writeAuthoritativeActionMapFixture(t, dir)
+		writeDocRegistry(t, dir, actionMapRegistryYAML("accepted", false, "docs/operations/ACTION-MAP.yaml"))
+		initFixtureGit(t, dir)
+		mustMkdir(t, filepath.Join(dir, "docs/operations"))
+		mustWrite(t, filepath.Join(dir, "docs/operations/ACTION-MAP.yaml"), "apiVersion: v1\nkinds: []\n")
+		runGit(t, dir, "add", "docs/operations/ACTION-MAP.yaml")
+		res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !hasCode(res.Violations, CodeActionMapNotPublished) || !detailHas(res.Violations, CodeActionMapNotPublished, "FILE_NOT_TRACKED") {
+			t.Fatalf("expected FILE_NOT_TRACKED for staged-only file, got %v", res.Violations)
+		}
+		if gitTrackedPath(dir, "docs/operations/ACTION-MAP.yaml") {
+			t.Fatal("index membership must not count as HEAD publication")
+		}
+	})
+	t.Run("untracked_file_not_tracked", func(t *testing.T) {
+		dir := t.TempDir()
+		writeAuthoritativeActionMapFixture(t, dir)
+		writeDocRegistry(t, dir, actionMapRegistryYAML("accepted", false, "docs/operations/ACTION-MAP.yaml"))
+		initFixtureGit(t, dir)
+		mustMkdir(t, filepath.Join(dir, "docs/operations"))
+		mustWrite(t, filepath.Join(dir, "docs/operations/ACTION-MAP.yaml"), "apiVersion: v1\nkinds: []\n")
+		res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !hasCode(res.Violations, CodeActionMapNotPublished) || !detailHas(res.Violations, CodeActionMapNotPublished, "FILE_NOT_TRACKED") {
+			t.Fatalf("expected FILE_NOT_TRACKED for untracked file, got %v", res.Violations)
+		}
+	})
+	t.Run("in_head_deleted_from_worktree", func(t *testing.T) {
+		dir := t.TempDir()
+		writeAuthoritativeActionMapFixture(t, dir)
+		mustMkdir(t, filepath.Join(dir, "docs/operations"))
+		mustWrite(t, filepath.Join(dir, "docs/operations/ACTION-MAP.yaml"), "apiVersion: v1\nkinds: []\n")
+		writeDocRegistry(t, dir, actionMapRegistryYAML("accepted", false, "docs/operations/ACTION-MAP.yaml"))
+		initFixtureGit(t, dir)
+		if err := os.Remove(filepath.Join(dir, "docs/operations/ACTION-MAP.yaml")); err != nil {
+			t.Fatal(err)
+		}
+		res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !hasCode(res.Violations, CodeActionMapNotPublished) || !detailHas(res.Violations, CodeActionMapNotPublished, "FILE_MISSING") {
+			t.Fatalf("expected FILE_MISSING when HEAD blob exists but worktree file is gone, got %v", res.Violations)
+		}
+	})
+	t.Run("positive_committed_blob_on_disk", func(t *testing.T) {
+		dir := t.TempDir()
+		writeAuthoritativeActionMapFixture(t, dir)
+		mustMkdir(t, filepath.Join(dir, "docs/operations"))
+		mustWrite(t, filepath.Join(dir, "docs/operations/ACTION-MAP.yaml"), "apiVersion: v1\nkinds: []\n")
+		writeDocRegistry(t, dir, actionMapRegistryYAML("accepted", false, "docs/operations/ACTION-MAP.yaml"))
+		initFixtureGit(t, dir)
+		res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, code := range []string{CodeAuthoritativeActionMap, CodeActionMapStatusInvalid, CodeActionMapNotPublished} {
+			if hasCode(res.Violations, code) {
+				t.Fatalf("committed HEAD blob + on-disk file must pass, got %v", res.Violations)
+			}
+		}
+		sha, ok := gitHeadBlobSHA(dir, "docs/operations/ACTION-MAP.yaml")
+		if !ok || len(sha) != 40 {
+			t.Fatalf("expected 40-char HEAD blob SHA, got %q ok=%v", sha, ok)
+		}
+		cmd := exec.Command("git", "-C", dir, "rev-parse", "--verify", "HEAD:docs/operations/ACTION-MAP.yaml")
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null")
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.TrimSpace(string(out)) != sha {
+			t.Fatalf("published SHA %s != git rev-parse %s", sha, strings.TrimSpace(string(out)))
+		}
+	})
 }
 
 func TestR6_F1_ActionMapAcceptedOtherFileDoesNotSubstitute(t *testing.T) {
@@ -1077,7 +1252,7 @@ func actionMapRegistryYAMLLoc(status string, optional bool, path, locationClass 
 	return fmt.Sprintf(`apiVersion: coord.dev/v1alpha1
 kind: DocumentRegistry
 documents:
-  - id: action-map
+  - id: action-map-yaml
     path: %q
     status: %s
     optional: %t%s
@@ -1132,14 +1307,14 @@ func assertR4F1ActionMapStatus(t *testing.T, status, wantCode string, omitStatus
 		yaml = `apiVersion: coord.dev/v1alpha1
 kind: DocumentRegistry
 documents:
-  - id: action-map
+  - id: action-map-yaml
     path: docs/operations/ACTION-MAP.yaml
 `
 	} else {
 		yaml = fmt.Sprintf(`apiVersion: coord.dev/v1alpha1
 kind: DocumentRegistry
 documents:
-  - id: action-map
+  - id: action-map-yaml
     path: docs/operations/ACTION-MAP.yaml
     status: %s
 `, status)
