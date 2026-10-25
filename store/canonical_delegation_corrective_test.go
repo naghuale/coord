@@ -8,6 +8,7 @@ import (
 	"coord/taskid"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -1023,8 +1024,6 @@ func TestRecoveryA93B1_GenericWriterCannotReuseOwnerLossReceipt(t *testing.T) {
 		// event insertion deliberately bypasses Ledger.Append so the writer gate
 		// itself must reject the authority-bearing event.
 		prior := state.AssignmentLedger.Events[len(state.AssignmentLedger.Events)-1]
-		prior.AssignmentID = "forged-second-assignment"
-		prior.Record.AssignmentID = prior.AssignmentID
 		state.AssignmentLedger.Events = append(state.AssignmentLedger.Events, prior)
 		return nil
 	})
@@ -1096,6 +1095,16 @@ func TestRecoveryA93B1_SnapshotRejectsReceiptContextSubstitution(t *testing.T) {
 		{"receipt_assignment_set", func(s *CanonicalState) {
 			s.OwnerCredentials["owner-1"].Receipts["loss-recovery-snapshot"].OwnerLossBinding.AssignmentIDs = []string{"unrelated"}
 		}},
+		{"receipt_command_kind", func(s *CanonicalState) {
+			agg := s.OwnerCredentials["owner-1"]
+			receipt := agg.Receipts["loss-recovery-snapshot"]
+			// Visibility confirmation is a valid receipt-only Owner command shape.
+			// Keep its normal fields intact so the loss-kind binding is the only
+			// property this forged receipt violates.
+			receipt.CommandKind = ownercredential.CommandVisibilityConfirm
+			agg.Receipts[receipt.MessageID] = receipt
+			s.OwnerCredentials["owner-1"] = agg
+		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			enableDelegationHarness(t)
@@ -1119,8 +1128,43 @@ func TestRecoveryA93B1_SnapshotRejectsReceiptContextSubstitution(t *testing.T) {
 	}
 }
 
+func TestRecoveryA93B1_LegacySnapshotsAndNonDelegationReceiptsRemainCompatible(t *testing.T) {
+	for _, version := range []uint32{4, 5} {
+		t.Run(fmt.Sprintf("schema_v%d", version), func(t *testing.T) {
+			state := taskStateWithRun()
+			state.SchemaVersion = version
+			state.CoordinatorDelegations = nil
+			state.OwnerCredentials = map[string]ownercredential.Aggregate{}
+			p := &canonicalMemory{state: state}
+			beforeSaves := p.saveCalls
+			s, err := NewCanonical(p)
+			if err != nil {
+				t.Fatalf("legacy schema %d rejected: %v", version, err)
+			}
+			if p.saveCalls != beforeSaves || s.state.SchemaVersion != version {
+				t.Fatalf("legacy load wrote/migrated unexpectedly: saves=%d/%d schema=%d", p.saveCalls, beforeSaves, s.state.SchemaVersion)
+			}
+			if err := s.Close(); err != nil {
+				t.Errorf("close legacy store: %v", err)
+			}
+		})
+	}
+
+	enableDelegationHarness(t)
+	f := newOwnerCommandFixture(t)
+	snapshot, err := copyCanonicalState(f.s.state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot.SchemaVersion = 5
+	snapshot.CoordinatorDelegations = nil
+	if err := ValidateCanonicalState(snapshot); err != nil {
+		t.Fatalf("legacy non-delegation OwnerCredential receipt rejected: %v", err)
+	}
+}
+
 func TestRecoveryA93B2_SnapshotControlStateIsDerivedFromHistory(t *testing.T) {
-	for _, name := range []string{"foreign_acting_coordinator", "lost_coordinator_removed_from_bar", "consumed_visibility_reset", "primary_restart_history_removed", "grant_without_owner_receipt", "revocation_removed"} {
+	for _, name := range []string{"foreign_acting_coordinator", "lost_coordinator_removed_from_bar", "consumed_visibility_reset", "unconsumed_visibility_marked_consumed", "primary_restart_history_removed", "grant_without_owner_receipt", "revocation_removed"} {
 		t.Run(name, func(t *testing.T) {
 			enableDelegationHarness(t)
 			f := newOwnerCommandFixture(t)
@@ -1132,12 +1176,14 @@ func TestRecoveryA93B2_SnapshotControlStateIsDerivedFromHistory(t *testing.T) {
 			if name == "lost_coordinator_removed_from_bar" || name == "consumed_visibility_reset" || name == "primary_restart_history_removed" {
 				lossConfirm(t, f, "del-derived", "loss-derived", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1}, now)
 			}
-			if name == "consumed_visibility_reset" || name == "primary_restart_history_removed" {
+			if name == "consumed_visibility_reset" || name == "unconsumed_visibility_marked_consumed" || name == "primary_restart_history_removed" {
 				registerSession(t, f, "claude:a2", "agent-a")
 				bumpSessionGeneration(t, f, "claude:a2", 2)
 				confirmVisibility(t, f, "del-derived", "vis-derived", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a2", Generation: 2}, now)
-				if err := f.s.ApplyPrimaryRestart("del-derived", assignment.Principal{SessionID: "claude:a2", AgentID: "agent-a", Generation: 2}, "restart-derived"); err != nil {
-					t.Fatalf("valid restart setup: %v", err)
+				if name != "unconsumed_visibility_marked_consumed" {
+					if err := f.s.ApplyPrimaryRestart("del-derived", assignment.Principal{SessionID: "claude:a2", AgentID: "agent-a", Generation: 2}, "restart-derived"); err != nil {
+						t.Fatalf("valid restart setup: %v", err)
+					}
 				}
 			}
 			if name == "revocation_removed" {
@@ -1165,8 +1211,19 @@ func TestRecoveryA93B2_SnapshotControlStateIsDerivedFromHistory(t *testing.T) {
 				d.BarredCoordinators = nil
 			case "consumed_visibility_reset":
 				for i := range d.VisibilityReceipts {
+					if d.VisibilityReceipts[i].ConsumedAt.IsZero() {
+						t.Fatal("setup did not consume visibility receipt")
+					}
 					d.VisibilityReceipts[i].ConsumedAt = time.Time{}
 					d.VisibilityReceipts[i].ConsumedBy = ""
+				}
+			case "unconsumed_visibility_marked_consumed":
+				for i := range d.VisibilityReceipts {
+					if !d.VisibilityReceipts[i].ConsumedAt.IsZero() {
+						t.Fatal("setup unexpectedly consumed visibility receipt")
+					}
+					d.VisibilityReceipts[i].ConsumedAt = now
+					d.VisibilityReceipts[i].ConsumedBy = "fabricated-consumer"
 				}
 			case "primary_restart_history_removed":
 				filtered := d.History[:0]
@@ -1178,7 +1235,19 @@ func TestRecoveryA93B2_SnapshotControlStateIsDerivedFromHistory(t *testing.T) {
 				d.History = filtered
 			case "grant_without_owner_receipt":
 				agg := snapshot.OwnerCredentials["owner-1"]
-				delete(agg.Receipts, "grant-del-derived")
+				grantReceiptID := d.History[0].ReceiptID
+				if grantReceiptID == "" {
+					t.Fatal("grant history has no receipt id")
+				}
+				if _, ok := agg.Receipts[grantReceiptID]; !ok {
+					t.Fatalf("grant receipt %q missing before tamper", grantReceiptID)
+				}
+				grantReceipt := agg.Receipts[grantReceiptID]
+				// Keep the OwnerCredential aggregate well-formed and command sequence
+				// intact while removing the authoritative GRANT receipt kind.
+				grantReceipt.CommandKind = "task.create"
+				grantReceipt.TaskID = "task_01ARZ3NDEKTSV4RRFFQ69G5FAV"
+				agg.Receipts[grantReceiptID] = grantReceipt
 				snapshot.OwnerCredentials["owner-1"] = agg
 			case "revocation_removed":
 				d.RevokedAt = time.Time{}

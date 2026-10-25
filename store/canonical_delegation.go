@@ -597,7 +597,7 @@ func validateDelegationDerivedState(state CanonicalState, d DelegationRecord) er
 			for _, id := range h.AssignmentIDs {
 				eventFound := false
 				for _, event := range state.AssignmentLedger.Events {
-					if event.AssignmentID == id && event.Kind == "COORDINATOR_LOST" && event.OwnerReceiptMessageID == h.ReceiptID && event.OwnerCommitRevision == h.CanonicalRevision {
+					if event.AssignmentID == id && event.Kind == "COORDINATOR_LOST" && event.EffectiveActorSource() == assignment.ActorSourceOwnerCredential && event.OwnerReceiptMessageID == h.ReceiptID && event.OwnerCommitRevision == h.CanonicalRevision && event.OwnerDelegationID == d.DelegationID && event.OwnerGrantGeneration == d.Generation {
 						eventFound = true
 						break
 					}
@@ -605,6 +605,25 @@ func validateDelegationDerivedState(state CanonicalState, d DelegationRecord) er
 				if !eventFound {
 					return fmt.Errorf("%w: loss history assignment event missing", ErrCoordinatorDelegationInvalid)
 				}
+			}
+			// Check the reverse direction too: no extra OWNER loss event may
+			// reuse this receipt outside the signed assignment set. This keeps
+			// snapshot derivation fail-closed even if a separate receipt validator
+			// loses one of its matching predicates.
+			expectedAssignments := append([]string(nil), h.AssignmentIDs...)
+			sort.Strings(expectedAssignments)
+			var eventAssignments []string
+			for _, event := range state.AssignmentLedger.Events {
+				if event.Kind == "COORDINATOR_LOST" && event.EffectiveActorSource() == assignment.ActorSourceOwnerCredential && event.OwnerReceiptMessageID == h.ReceiptID {
+					if event.OwnerCommitRevision != h.CanonicalRevision || event.OwnerDelegationID != d.DelegationID || event.OwnerGrantGeneration != d.Generation {
+						return fmt.Errorf("%w: loss event differs from derived history commit", ErrCoordinatorDelegationInvalid)
+					}
+					eventAssignments = append(eventAssignments, event.AssignmentID)
+				}
+			}
+			sort.Strings(eventAssignments)
+			if !reflect.DeepEqual(eventAssignments, expectedAssignments) {
+				return fmt.Errorf("%w: loss event assignment set differs from derived history", ErrCoordinatorDelegationInvalid)
 			}
 			if !barredSet[*h.From] {
 				barredSet[*h.From] = true
