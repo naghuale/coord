@@ -21,6 +21,7 @@ vocabulary:
     proposed: Предложение; не является действующей capability или нормой.
     legacy: Документ действующего legacy-контура; не применяется к новой canonical разработке.
     historical: Зафиксированный исторический снимок; не обновляется под текущий код.
+    superseded: Документ заменён другим; supersededBy обязателен.
     generated: Производная проекция; источник задаётся отдельно.
   roles:
     - OWNER
@@ -177,6 +178,7 @@ validation:
     - proposed
     - legacy
     - historical
+    - superseded
     - generated
   requiredFields:
     - id
@@ -195,7 +197,7 @@ validation:
   invariants:
     - document ids are unique
     - document paths are unique
-    - every path exists unless optional=true
+    - active or proposed LOCAL path exists even when optional=true; historical requires provenance; TRACKED_IN_OTHER_BRANCH uses the allowlisted external check
     - every normative document declares normativeAuthority
     - proposed documents set currentNormativeAuthority=false
     - legacy and historical documents set canonicalProductionAuthority=false
@@ -211,6 +213,9 @@ documents:
     path: docs/decisions/SHADOW-VALIDATION-PILOT-R1.yaml
     class: historical
     status: historical
+    provenance:
+      sourceDigest: sha256:9933226dbf5393a29754c41e4b461544078c4f62322f409566a7194087c0049b
+      reconciliationRef: issue97-impl-grok-a38
     purpose:
       - Exact Issue 70 completion-report source pointer and captured-text digest
       - POINTER_ONLY; not original decision acceptance or current normative authority
@@ -1227,12 +1232,15 @@ documents:
     class: active_context
     status: active
     optional: true
+    location:
+      class: TRACKED_IN_OTHER_BRANCH
+      repository: naghuale/coord
+      branch: ops/coord/project
     purpose:
       - current integration HEAD
       - active task
       - next safe action
       - context readiness
-      - "location TRACKED_IN_OTHER_BRANCH: naghuale/coord branch ops/coord/project path operations/project/CURRENT.yaml; stays active and optional until #97; OPS-BRANCH-DOCUMENT-LOCATION-01; semanticChange false"
     usedBy:
       - COORDINATOR
       - REVIEWER
@@ -1261,11 +1269,14 @@ documents:
     class: active_context
     status: active
     optional: true
+    location:
+      class: TRACKED_IN_OTHER_BRANCH
+      repository: naghuale/coord
+      branch: ops/coord/project
     purpose:
       - open work and blockers
       - owner-reserved decisions
       - milestone readiness
-      - "location TRACKED_IN_OTHER_BRANCH: naghuale/coord branch ops/coord/project path operations/project/OPEN-WORK.yaml; stays active and optional until #97; OPS-BRANCH-DOCUMENT-LOCATION-01; semanticChange false"
     usedBy:
       - COORDINATOR
       - REVIEWER
@@ -1293,6 +1304,9 @@ documents:
     path: docs/CURRENT_VERSION.md
     class: historical
     status: historical
+    provenance:
+      sourceDigest: sha256:9322869a3dd8bacd128693de0940fcb13ea6300c26aaf1f53b39f78d750e9252
+      reconciliationRef: issue97-impl-grok-a38
     purpose:
       - historical legacy runtime snapshot
       - historical Telepathy baseline evidence
@@ -1320,6 +1334,9 @@ documents:
     path: docs/UX_AUDIT.md
     class: historical
     status: historical
+    provenance:
+      sourceDigest: sha256:7a0387a3e26471a02414cc1078a91b68126187eb9d9280eb53b0cf214b8237e3
+      reconciliationRef: issue97-impl-grok-a38
     purpose:
       - historical UX audit
       - legacy RoleSession and TUI findings
@@ -1347,6 +1364,9 @@ documents:
     path: docs/EXPERIMENTS.md
     class: historical
     status: historical
+    provenance:
+      sourceDigest: sha256:7f01c51b0b9860e2b042f778c2c300a3e681d2774889c29d58933567cf30f98e
+      reconciliationRef: issue97-impl-grok-a38
     purpose:
       - reproducible legacy transport experiment descriptions
       - evidence boundaries
@@ -1441,14 +1461,13 @@ documents:
       - REVIEWER
       - AUDITOR
     readWhen:
-      - SESSION_START
-      - ISSUE_PLANNING
+      - HISTORICAL_INVESTIGATION
     updateWhen:
       - PROCESS_NORM_CHANGED
       - ISSUE_STATE_CHANGED
     currentOperationalAuthority: false
     canonicalProductionAuthority: false
-    normativeAuthority: process
+    normativeAuthority: none
     ownership:
       creates: COORDINATOR
       updates: COORDINATOR
@@ -2534,6 +2553,9 @@ documents:
     path: docs/plans/p0-review-audit/RA-1.md
     class: design
     status: historical
+    provenance:
+      sourceDigest: sha256:50e45573dc38671c6ff9356c9a5ac1eb32be45ea00fde96af5255c1c7b108e0f
+      reconciliationRef: issue97-impl-grok-a38
     purpose:
       - implementation slice record for typed Review/Audit result core
     usedBy:
@@ -2561,6 +2583,9 @@ documents:
     path: docs/plans/p0-review-audit/RA-2.md
     class: historical
     status: historical
+    provenance:
+      sourceDigest: sha256:59020cb5fdfaae37cb193ddedcca15ee35e9996960051860774742ff6f3b0ae7
+      reconciliationRef: issue97-impl-grok-a38
     purpose:
       - implementation slice record for role independence
     usedBy:
@@ -2588,6 +2613,9 @@ documents:
     path: docs/plans/ux-first-scenario/ALIGNED_UX.md
     class: design
     status: historical
+    provenance:
+      sourceDigest: sha256:a3eae812b0ddfea2d3dde282635009377c5683447a6bf5d2d719693f78467186
+      reconciliationRef: issue97-impl-grok-a38
     purpose:
       - historical UX alignment proposal
     usedBy:
@@ -2615,6 +2643,9 @@ documents:
     path: docs/plans/ux-first-scenario/PLAN.md
     class: design
     status: historical
+    provenance:
+      sourceDigest: sha256:094f5c292818bd410120557b91fe7681ef09d5ba285340f56c95b36d7190bc28
+      reconciliationRef: issue97-impl-grok-a38
     purpose:
       - historical UX implementation plan
     usedBy:
@@ -2642,6 +2673,9 @@ documents:
     path: docs/plans/ux-first-scenario/UX_TASK.md
     class: design
     status: historical
+    provenance:
+      sourceDigest: sha256:ca041e874fa3fe104935ddde53702b1ba28166bbdd87287bb0daf933b9d68487
+      reconciliationRef: issue97-impl-grok-a38
     purpose:
       - historical UX task definition
     usedBy:

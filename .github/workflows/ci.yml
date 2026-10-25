@@ -54,4 +54,22 @@ jobs:
       # GO-TEST-HARNESS-RETIREMENT-R1 does not retire their dependencies.
       - name: Install recovery and architecture check dependencies
         run: python -m pip install --disable-pip-version-check PyYAML jsonschema
+      - name: Fetch ops/coord/project for document registry CI_STRICT
+        run: git fetch --no-tags origin refs/heads/ops/coord/project:refs/remotes/origin/ops/coord/project
+      - name: Document registry CI_STRICT evidence
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/coord-registry-evidence.json"
+          go run ./cmd/coord-governance check-document-registry \
+            --registry docs/DOCUMENT-REGISTRY.yaml \
+            --root . \
+            --mode CI_STRICT \
+            --evidence "$evidence"
+      - name: Upload registry evidence artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coord-registry-evidence-${{ matrix.os }}
+          path: ${{ runner.temp }}/coord-registry-evidence.json
+          if-no-files-found: ignore
       - run: make check

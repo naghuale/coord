@@ -7,33 +7,49 @@ import (
 	"strings"
 
 	"coord/internal/actionmap"
+	"coord/internal/architecturecheck"
 	"coord/internal/defectpatterns"
 	"coord/internal/documentregistry"
 	"coord/internal/recovery"
 )
 
 // runCheckDocumentRegistry implements `coord-governance check-document-registry`.
+// Default mode is LOCAL so developer make check does not need network.
+// CI sets --mode CI_STRICT and an evidence path outside the work tree.
 func runCheckDocumentRegistry(args []string) error {
 	fs := flag.NewFlagSet("check-document-registry", flag.ContinueOnError)
 	registryFlag := fs.String("registry", "docs/DOCUMENT-REGISTRY.yaml", "path to DOCUMENT-REGISTRY.yaml")
 	rootFlag := fs.String("root", ".", "project root for file-existence checks")
+	modeFlag := fs.String("mode", string(documentregistry.ModeLocal), "LOCAL (default) or CI_STRICT")
+	evidenceFlag := fs.String("evidence", "", "coord.registry-evidence/v1 path; required for CI_STRICT; must be outside the repository")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
-	vs, err := documentregistry.Validate(*registryFlag, *rootFlag)
+	res, err := documentregistry.ValidateWithOptions(*registryFlag, documentregistry.Options{
+		Root:         *rootFlag,
+		Mode:         documentregistry.Mode(*modeFlag),
+		EvidencePath: *evidenceFlag,
+	})
 	if err != nil {
 		return fmt.Errorf("check-document-registry: %w", err)
 	}
-	if len(vs) == 0 {
+	for _, w := range res.Warnings {
+		fmt.Fprintf(os.Stderr, "- [%s] %s\n", w.Code, w.Detail)
+	}
+	if len(res.Violations) == 0 {
+		if len(res.Warnings) > 0 {
+			fmt.Println("DOCUMENT_REGISTRY_NOT_EVALUATED")
+			return nil
+		}
 		fmt.Println("DOCUMENT_REGISTRY_VALID")
 		return nil
 	}
-	for _, v := range vs {
+	for _, v := range res.Violations {
 		fmt.Fprintf(os.Stderr, "- [%s] %s\n", v.Code, v.Detail)
 	}
 	fmt.Fprintln(os.Stderr, "DOCUMENT_REGISTRY_INVALID")
-	return fmt.Errorf("document registry has %d violation(s)", len(vs))
+	return fmt.Errorf("document registry has %d violation(s)", len(res.Violations))
 }
 
 // runCheckActionMap implements `coord-governance check-action-map`.
@@ -82,6 +98,36 @@ func runCheckDefectPatterns(args []string) error {
 	}
 	fmt.Fprintln(os.Stderr, "DEFECT_PATTERNS_INVALID")
 	return fmt.Errorf("defect patterns has %d violation(s)", len(vs))
+}
+
+// runCheckArchitectureSync implements `coord-governance check-architecture-sync`.
+// Go is the blocking authority for #97; the Python script remains as evidence only.
+func runCheckArchitectureSync(args []string) error {
+	fs := flag.NewFlagSet("check-architecture-sync", flag.ContinueOnError)
+	rootFlag := fs.String("root", ".", "project root")
+	registryFlag := fs.String("registry", "docs/architecture/COMPONENT-STATUS.yaml", "path to COMPONENT-STATUS.yaml")
+	docRegistryFlag := fs.String("document-registry", "docs/DOCUMENT-REGISTRY.yaml", "path to DOCUMENT-REGISTRY.yaml")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	res, err := architecturecheck.Check(architecturecheck.Options{
+		Root:            *rootFlag,
+		RegistryPath:    *registryFlag,
+		DocRegistryPath: *docRegistryFlag,
+	})
+	if err != nil {
+		return fmt.Errorf("check-architecture-sync: %w", err)
+	}
+	if len(res.Violations) == 0 {
+		fmt.Printf("Architecture sync check PASS: %d components\n", res.Components)
+		return nil
+	}
+	fmt.Fprintln(os.Stderr, "Architecture sync check FAILED")
+	for _, v := range res.Violations {
+		fmt.Fprintf(os.Stderr, "- %s: %s\n", v.Code, v.Detail)
+	}
+	return fmt.Errorf("architecture sync has %d violation(s)", len(res.Violations))
 }
 
 // runRecoveryGovernanceCheck implements `coord-governance recovery governance-check`.

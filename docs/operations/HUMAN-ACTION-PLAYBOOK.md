@@ -382,6 +382,9 @@ COORDINATOR_UNCERTAIN
 
 ## 11. Action Map
 
+Ненормативный checklist / зеркало proposed `ACTION-MAP.yaml`. Не задаёт production-переход. До принятой карты действует ACTION-MAP-INTERIM-PROCEDURE-01 в AGENTS.md.
+
+
 ```yaml
 events:
   AUTOMATION_ACTION_DENIED:

@@ -1,5 +1,22 @@
 # История изменений
 
+## 2026-10-25 — ACTION-MAP.yaml identity and HEAD-tree publication (Refs #97)
+
+- Architecture checker resolves the Action Map registry row only as `action-map-yaml`. Historical `action-map` (`ACTION-MAP.md`) is never a fallback. Empty path on the YAML row is `EMPTY_PATH` even when the historical row is accepted and committed. (`TestR8_F1_YAMLIdentityNotHistoricalActionMap`)
+- Publication requires a regular-file blob (mode `100644`/`100755`) in the checked `HEAD` tree (`git ls-tree`). Staged-only, untracked, HEAD symlink (`120000`), and uncommitted symlink-to-committed-target paths are `FILE_NOT_TRACKED`. A HEAD blob deleted from the worktree is `FILE_MISSING`. The evaluated file is the resolved target: a committed symlink to an untracked regular file is `FILE_NOT_TRACKED`; a committed symlink to a committed regular file publishes. A dangling symlink is classified by its lexical Readlink target: inside the repository `FILE_MISSING`, outside `SYMLINK_TARGET_OUTSIDE_REPOSITORY`. (`TestR8_F2_PublicationIsHEADTreeNotIndex`, `TestA97_R1_DanglingSymlinkToMissingTargetFails`, `TestA97_R2_DanglingSymlinkOutsideFails`)
+
+## 2026-10-24 — COMPONENT-STATUS axes, NV-4 and D24-F3 (Refs #97)
+
+- `COMPONENT-STATUS.yaml` gains the four OWNER axes (`code` / `connection` / `qualification` / `production`), a critical-path `requirements:` bootstrap (ADR-0001, ADR-0004, R152–R154, #90/#93/#95/#96) and NV-4 `actionMapReferenceClassifications`. Subordinate recovery docs/templates are aligned with ACTION-MAP-INTERIM-PROCEDURE-01 without weakening fail-closed. The D24-F3 recovery fixture retargets the `actionMap` source to `AGENTS.md` and keeps `docs/operations/ACTION-MAP.md` only in `rejectedAsCurrentAuthority`. (`TestLiveRegistryPasses`, `TestAuthoritativeActionMapWhileProposedKills`, `TestUnclassifiedActionMapHitKills`, `TestProposedProductionAuthorityKills`, `TestConnectedWithoutEntrypointKills`; recovery: `tests/test_recovery_checks.sh`)
+
+## 2026-10-24 — Go architecture sync checker with golden fixtures (Refs #97)
+
+- `coord-governance check-architecture-sync` and `internal/architecturecheck` become the blocking architecture sync authority. Symbols and tests are resolved through `go/parser` and `go/ast`. Golden fixtures under `internal/architecturecheck/testdata/golden` encode the Python checker findings; Go tests compare against those fixtures and must not invoke Python. Makefile and `architecture-sync.yml` block on Go; the Python scripts remain as evidence only. (`TestLiveRegistryPasses`, `TestGoldenCases`, `TestMissingSymbolKills`, `TestMissingTestKills`, `TestPartialRequiresMissing`, `TestProposedMustBeNonNormative`, `TestConnectedWithoutEntrypointKills`, `TestActiveWithoutRuntimeKills`, `TestProposedProductionAuthorityKills`, `TestMakefileAndWorkflowUseGoBlocking`, `TestASTIndexFindsTypeFuncMethodAndTest`)
+
+## 2026-10-24 — Document registry location and historical provenance (Refs #97)
+
+- Document registry gains `LOCAL` / `TRACKED_IN_OTHER_BRANCH` location, `superseded` status, historical provenance, and `LOCAL` vs `CI_STRICT` modes. Active or proposed LOCAL files are required even when optional. Ops CURRENT/OPEN-WORK move to the allowlisted external location. Historical Action Map readWhen is `HISTORICAL_INVESTIGATION` with `normativeAuthority: none`. (`TestActiveLocalMissingRejectedEvenWhenOptional`, `TestProposedMissingRejected`, `TestUnknownLocationFailsClosed`, `TestTrackedOutsideAllowlistRejected`, `TestExternalRefUnavailableCIStrictFails`, `TestExternalRefUnavailableLocalWarns`, `TestTrackedExternalAcceptedWithEvidence`, `TestEvidencePathInsideRepositoryRejected`, `TestSupersededRequiresSupersededBy`, `TestHistoricalWithoutProvenanceRejected`, `TestHistoricalPurposeProvenanceAccepted`, `TestHistoricalStructuredProvenanceAccepted`)
+
 ## 2026-10-24 — Authenticated agent result ingress (Refs #95)
 
 - Added Telepathy signed-envelope intake resolved against active canonical AgentSession keys. Version-2 agent RESULT binds assignment, issuer, coordinator generation, task revision, Run, fence, attempt and subject; v1 remains available only to the legacy path and is rejected by authenticated ingress. (`TestSignedClientIncomingAuthenticatedCarriesResolvedSessionEvidence`, `TestAgentResultV2AcceptanceCommitsTaskInboxOutboxAndAssignmentAtomically`)
@@ -25,6 +42,7 @@
 ## 2026-10-24 — Proposed ADR-0010 bounded coordinator delegation (Refs #102)
 
 - Добавлен Proposed ADR-0010 и запись реестра со статусом proposed. Модель D и упорядоченный список преемников записаны как черновик по решению OWNER. Принятые ADR не изменены. Код, схема и действующий ручной процесс координатора не изменены. (документация)
+
 
 ## 2026-10-24 — Disable production orchestration pending acceptance (Refs #96)
 

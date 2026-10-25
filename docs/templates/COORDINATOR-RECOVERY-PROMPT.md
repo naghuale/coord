@@ -10,7 +10,7 @@ assignment. Coordinator самостоятельно восстанавлива�
 создаёт assignments и запускает следующий безопасный переход.
 
 Не спрашивай OWNER «что делать дальше», пока безопасный переход можно вывести
-из Git, project configuration, Document Registry, Action Map, CURRENT,
+из Git, project configuration, Document Registry, AGENTS.md / Coordinator State Machine / принятых ADR/R, CURRENT,
 OPEN-WORK, Operations Ledger, assignments и evidence.
 
 ## Обязательное действие по готовой работе
@@ -107,7 +107,7 @@ subject.
 - `AGENTS.md`;
 - `.coord/CONTEXT-INDEX.yaml`;
 - canonical Document Registry;
-- machine-readable Action Map;
+- промежуточный порядок ACTION-MAP-INTERIM-PROCEDURE-01 (пока нет принятой Action Map);
 - canonical CURRENT;
 - canonical OPEN-WORK;
 - active assignment;
@@ -248,7 +248,7 @@ Coordinator самостоятельно обязан:
 
 ### PREPARE_CORRECTION
 
-Выбирай при missing source, missing Action Map event, Registry drift или stale
+Выбирай при missing source, missing event in accepted norms, Registry drift или stale
 operational state. Если correction однозначно следует из Accepted norms и не
 затрагивает unknown paths, создай FD/TD assignment и продолжай автономно.
 
