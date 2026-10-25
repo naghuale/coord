@@ -234,6 +234,25 @@ func TestRecoveryG3_Q12_InactiveHistoricalGrantDoesNotCaptureNewSession(t *testi
 	grantDelegation(t, f, "del-g3-q12", now)
 	seedDelegatedAssignment(t, f, "asg-g3-q12-old", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now)
 	revokeRecoveryR2Grant(t, f, "del-g3-q12", "revoke-g3-q12")
+	old := f.s.state.AssignmentLedger.Records["asg-g3-q12-old"]
+	oldUse := old
+	oldUse.AssignmentID = "asg-g3-q12-old-grant-use"
+	oldUse.State = assignment.Offered
+	oldUse.Revision = 1
+	oldUse.CoordinatorLost = false
+	oldUse.AcknowledgedAt = time.Time{}
+	oldUse.WorkStartedAt = time.Time{}
+	oldUse.AcceptedResult = nil
+	oldUse.HandoffEvidence = []assignment.Handoff{}
+	oldUse.IssuedAt = now.Add(-time.Minute)
+	oldUse.UpdatedAt = oldUse.IssuedAt
+	beforeOldGrantUse := ownerStateBytes(t, f.s)
+	if err := f.s.OfferAssignment(old.Coordinator(), oldUse, "old-grant-after-revoke"); !errors.Is(err, ErrCoordinatorDelegationExhausted) {
+		t.Fatalf("using old grant after revoke err=%v", err)
+	}
+	if !bytes.Equal(beforeOldGrantUse, ownerStateBytes(t, f.s)) {
+		t.Fatal("rejected old-grant offer changed canonical state")
+	}
 	if err := f.s.ReplaceAgentSessionAddress("claude:a", "claude:a-new", ed25519.PublicKey(strings.Repeat("q", ed25519.PublicKeySize)), "test fresh address after delegation revoke"); err != nil {
 		t.Fatal(err)
 	}
