@@ -982,9 +982,34 @@ func TestA97_R2_DanglingSymlinkOutsideFails(t *testing.T) {
 	}, "SYMLINK_TARGET_OUTSIDE_REPOSITORY")
 }
 
+func TestA97_R2_DanglingRelativeEscapeFails(t *testing.T) {
+	// From docs/operations, ../../ is the repo root (still inside). Three hops
+	// (../../../) leave the repository — that is the D3 relative-escape branch.
+	assertActionMapNotPublishedReason(t, func(dir string) {
+		mustMkdir(t, filepath.Join(dir, "docs/operations"))
+		link := filepath.Join(dir, "docs/operations/ACTION-MAP.yaml")
+		if err := os.Symlink("../../../outside-missing.yaml", link); err != nil {
+			t.Fatal(err)
+		}
+		writeDocRegistry(t, dir, actionMapRegistryYAML("accepted", false, "docs/operations/ACTION-MAP.yaml"))
+	}, "SYMLINK_TARGET_OUTSIDE_REPOSITORY")
+}
+
+func TestA97_R2_DanglingAbsoluteInsideMissingFails(t *testing.T) {
+	assertActionMapNotPublishedReason(t, func(dir string) {
+		mustMkdir(t, filepath.Join(dir, "docs/operations"))
+		link := filepath.Join(dir, "docs/operations/ACTION-MAP.yaml")
+		abs := filepath.Join(dir, "docs/operations/missing.yaml")
+		if err := os.Symlink(abs, link); err != nil {
+			t.Fatal(err)
+		}
+		writeDocRegistry(t, dir, actionMapRegistryYAML("accepted", false, "docs/operations/ACTION-MAP.yaml"))
+	}, "FILE_MISSING")
+}
+
 func TestR8_M12_HostileGitConfigDoesNotChangePublication(t *testing.T) {
 	cfg := filepath.Join(t.TempDir(), "hostile-gitconfig")
-	mustWrite(t, cfg, "[core]\n\tquotepath = false\n[alias]\n\tls-tree = status\n")
+	mustWrite(t, cfg, "this is not a gitconfig\n")
 	t.Setenv("GIT_CONFIG_GLOBAL", cfg)
 	t.Setenv("GIT_CONFIG_SYSTEM", cfg)
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "0")
