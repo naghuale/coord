@@ -293,6 +293,31 @@ func TestRecoveryN2_PrimaryRestartCannotLoadWhileSuccessorActs(t *testing.T) {
 	})
 }
 
+func TestRecoveryX05_DelegatedMutationRequiresExactActingGeneration(t *testing.T) {
+	enableDelegationHarness(t)
+	f := newOwnerCommandFixture(t)
+	now := f.s.now().UTC()
+	grantDelegation(t, f, "del-r4-x05", now)
+	actor := assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}
+	seedDelegatedAssignment(t, f, "asg-r4-x05", actor, now)
+	record := f.s.state.AssignmentLedger.Records["asg-r4-x05"]
+
+	if err := enforceDelegatedMutation(f.s.state, actor, "OFFER", record, now); err != nil {
+		t.Fatalf("exact acting principal positive control: %v", err)
+	}
+
+	wrongGeneration := actor
+	wrongGeneration.Generation++
+	before := ownerStateBytes(t, f.s)
+	err := enforceDelegatedMutation(f.s.state, wrongGeneration, "OFFER", record, now)
+	if !errors.Is(err, ErrCoordinatorDelegationInvalid) || !strings.Contains(err.Error(), "binding requires exact acting triple") {
+		t.Fatalf("same agent/session with stale generation err=%v", err)
+	}
+	if !bytes.Equal(before, ownerStateBytes(t, f.s)) {
+		t.Fatal("rejected stale acting generation changed canonical state")
+	}
+}
+
 func forgeRecoveryHandoff(t *testing.T, state *CanonicalState, grantID, assignmentID string, from, to assignment.Principal, visibilityID string, now time.Time) {
 	t.Helper()
 	prior, ok := state.AssignmentLedger.Records[assignmentID]
