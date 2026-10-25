@@ -85,6 +85,13 @@ func TestRecoveryG4_NewLossCaptureRequiresCurrentActingSuccessor(t *testing.T) {
 			t.Fatalf("initial handoff to B: %v", err)
 		}
 		lossConfirm(t, f, "del-r5-capture-live", "loss-r5-d-live", ownercredential.DelegationPrincipalPayload{StableAgentID: d.AgentID, SessionID: d.SessionID, Generation: d.Generation}, now)
+		state, err := copyCanonicalState(f.s.state)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := enforceDelegatedHandoff(&state, d, c, "asg-r5-d", now); !errors.Is(err, ErrCoordinatorDelegationInvalid) || !strings.Contains(err.Error(), "new loss capture must use the acting successor") {
+			t.Fatalf("live enforcement allowed a different successor to capture new loss: %v", err)
+		}
 		before := ownerStateBytes(t, f.s)
 		if err := recovery4Handoff(t, f, d, c, "asg-r5-d", "wrong-successor-for-new-loss"); !errors.Is(err, ErrCoordinatorDelegationInvalid) || !strings.Contains(err.Error(), "new loss capture must use the acting successor") {
 			t.Fatalf("new loss captured by a different successor: %v", err)
@@ -122,8 +129,15 @@ func TestRecoveryG4_NewLossEndsNoVisibilitySiblingContext(t *testing.T) {
 			t.Fatalf("initial handoff to B: %v", err)
 		}
 		lossConfirm(t, f, "del-r5-context-live", "loss-r5-context-d", ownercredential.DelegationPrincipalPayload{StableAgentID: d.AgentID, SessionID: d.SessionID, Generation: d.Generation}, now)
+		state, err := copyCanonicalState(f.s.state)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := enforceDelegatedHandoff(&state, a, b, "asg-r4-y", now); !errors.Is(err, ErrCoordinatorDelegationInvalid) || !strings.Contains(err.Error(), "another unbarred coordinator is acting") {
+			t.Fatalf("live enforcement retained pre-loss sibling context: %v", err)
+		}
 		before := ownerStateBytes(t, f.s)
-		err := recovery4Handoff(t, f, a, b, "asg-r4-y", "stale-sibling-context-after-new-loss")
+		err = recovery4Handoff(t, f, a, b, "asg-r4-y", "stale-sibling-context-after-new-loss")
 		if !errors.Is(err, ErrCoordinatorDelegationInvalid) || !strings.Contains(err.Error(), "another unbarred coordinator is acting") {
 			t.Fatalf("sibling reused old no-visibility context after distinct loss: %v", err)
 		}
