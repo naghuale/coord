@@ -1164,6 +1164,28 @@ func TestR8_F2_PublicationIsHEADTreeNotIndex(t *testing.T) {
 			t.Fatalf("expected FILE_NOT_TRACKED for uncommitted symlink to committed target, got %v", res.Violations)
 		}
 	})
+	t.Run("head_tree_replaced_by_symlink_to_committed_file", func(t *testing.T) {
+		dir := t.TempDir()
+		writeAuthoritativeActionMapFixture(t, dir)
+		mustMkdir(t, filepath.Join(dir, "docs/operations/ACTION-MAP.yaml"))
+		mustWrite(t, filepath.Join(dir, "docs/operations/ACTION-MAP.yaml/inside.txt"), "nested\n")
+		mustWrite(t, filepath.Join(dir, "docs/operations/real.yaml"), "apiVersion: v1\nkinds: []\n")
+		writeDocRegistry(t, dir, actionMapRegistryYAML("accepted", false, "docs/operations/ACTION-MAP.yaml"))
+		initFixtureGit(t, dir)
+		if err := os.RemoveAll(filepath.Join(dir, "docs/operations/ACTION-MAP.yaml")); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink("real.yaml", filepath.Join(dir, "docs/operations/ACTION-MAP.yaml")); err != nil {
+			t.Fatal(err)
+		}
+		res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !hasCode(res.Violations, CodeActionMapNotPublished) || !detailHas(res.Violations, CodeActionMapNotPublished, "FILE_NOT_TRACKED") {
+			t.Fatalf("expected FILE_NOT_TRACKED when HEAD registry path is a tree and worktree is a symlink to a committed file, got %v", res.Violations)
+		}
+	})
 	t.Run("head_symlink_replaced_by_uncommitted_regular_file", func(t *testing.T) {
 		dir := t.TempDir()
 		writeAuthoritativeActionMapFixture(t, dir)
