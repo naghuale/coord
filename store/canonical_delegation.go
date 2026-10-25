@@ -161,7 +161,7 @@ func bindAssignmentScopeFromGrant(state CanonicalState, actor assignment.Princip
 	} else {
 		matches := actingGrantsFor(state, actor, now)
 		if len(matches) == 0 {
-			if grantMentionsStableCoordinator(state, actor.AgentID) {
+			if grantMentionsStableCoordinator(state, actor.AgentID, now) {
 				return fmt.Errorf("%w: coordinator generation/session is not authorized by grant", ErrCoordinatorDelegationInvalid)
 			}
 			return nil
@@ -201,11 +201,14 @@ func bindAssignmentScopeFromGrant(state CanonicalState, actor assignment.Princip
 	return nil
 }
 
-func grantMentionsStableCoordinator(state CanonicalState, stableAgentID string) bool {
+func grantMentionsStableCoordinator(state CanonicalState, stableAgentID string, now time.Time) bool {
 	if stableAgentID == "" || state.CoordinatorDelegations == nil {
 		return false
 	}
 	for _, grant := range state.CoordinatorDelegations {
+		if !grant.Active(now) {
+			continue
+		}
 		if grant.PrimaryCoordinator.StableAgentID == stableAgentID || grant.CurrentActing().StableAgentID == stableAgentID {
 			return true
 		}
@@ -1286,7 +1289,7 @@ func enforceDelegatedMutation(state CanonicalState, actor assignment.Principal, 
 	}
 	actorP := principalFromAssignment(actor)
 	if record.DelegationBinding == nil {
-		if _, covered := findAnyGrantCoveringCoordinator(state, record.Coordinator()); covered || grantMentionsStableCoordinator(state, record.CoordinatorAgentID) {
+		if _, covered := findAnyGrantCoveringCoordinator(state, record.Coordinator()); covered || grantMentionsStableCoordinator(state, record.CoordinatorAgentID, now) {
 			return fmt.Errorf("%w: persisted assignment grant binding required", ErrCoordinatorDelegationInvalid)
 		}
 		return nil
