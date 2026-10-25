@@ -1,5 +1,10 @@
 # История изменений
 
+## 2026-10-25 — Delegation recovery boundary evidence (Refs #93b)
+
+- Reload rejects handoff and primary restart after OWNER revocation, and capture by a barred coordinator even when its exact triple is on the successor list. Valid revoked snapshots, exact receipt retry and a new grant to the same primary still work. (`TestRecovery6_RevokedGrantCannotRecoverThroughFreshVisibilityOnReload`, `TestRecovery6_RevokeRejectsAuthorityHistory`, `TestRecovery6_ReloadCannotReenterBarredListedPrimary`, `TestRecovery6_RevokePreservesExactRetryAndNewGrantAfterReload`)
+- A-2 receipt, callback-seam and restart-context boundaries have isolated positive/negative controls; reload session tests cover lost and barred sessions that were never used for a prior primary restart. (`TestRecovery6_A2CommitSeamChecksEachBoundary`, `TestRecovery6_ReloadRestartContextEndsAtPlannedOrLossCapture`, `TestRecovery6_ReloadRejectsLostOrBarredSessionWithoutPriorRestart`)
+
 ## 2026-10-25 — #93b recovery: bind OWNER loss and derive delegation state (Refs #93b / #102)
 
 - Подписанный `coordinator.loss.confirm` теперь несёт точный отсортированный набор затрагиваемых assignment IDs. Receipt, loss events и grant history записываются одним canonical commit и связываются по delegation ID/generation, coordinator triple, assignment set и revision; generic writers не могут подделать или повторно использовать OWNER loss receipt. (`TestRecoveryA93B1_LossReceiptAndEventsShareExactCommit`, `TestRecoveryA93B1_SignedAssignmentSetMustMatchLossEffect`, `TestRecoveryA93B1_GenericWriterCannotReuseOwnerLossReceipt`, `TestRecoveryA93B1_InboxWriterCannotAppendOwnerCredentialLoss`, `TestSnapshotReloadRejectsOwnerCredentialLossWithoutReceipt`)

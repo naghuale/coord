@@ -575,6 +575,12 @@ func validateDelegationDerivedState(state CanonicalState, d DelegationRecord) er
 		if h.CanonicalRevision == 0 || h.CanonicalRevision > state.Revision {
 			return fmt.Errorf("%w: delegation history lacks canonical commit binding", ErrCoordinatorDelegationInvalid)
 		}
+		// An old visibility cannot restore acting authority in this revoked
+		// grant. Receipt replay and non-executable records retain their own
+		// validation; a replacement grant has a separate history.
+		if !revokedAt.IsZero() && (h.Kind == DelegationHistoryHandoff || h.Kind == DelegationHistoryPrimaryRestart) {
+			return fmt.Errorf("%w: authority transition after revocation", ErrCoordinatorDelegationInvalid)
+		}
 		switch h.Kind {
 		case DelegationHistoryGrant:
 			if i != 0 {
@@ -660,6 +666,9 @@ func validateDelegationDerivedState(state CanonicalState, d DelegationRecord) er
 		case DelegationHistoryHandoff:
 			if h.From == nil || h.To == nil || h.AssignmentID == "" || h.ReceiptDig == "" {
 				return fmt.Errorf("%w: incomplete HANDOFF history", ErrCoordinatorDelegationInvalid)
+			}
+			if barredSet[*h.To] {
+				return fmt.Errorf("%w: HANDOFF target is barred", ErrCoordinatorDelegationInvalid)
 			}
 			var coveredLoss *DelegationHistoryEntry
 			for j := len(lossesByAssignment[h.AssignmentID]) - 1; j >= 0; j-- {

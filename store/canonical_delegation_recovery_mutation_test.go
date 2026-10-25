@@ -755,7 +755,7 @@ func TestRecoveryA93BMutationKillers_HandoffCannotFollowRevokeWithoutLoss(t *tes
 	d.History = append(d.History, DelegationHistoryEntry{Kind: DelegationHistoryHandoff, At: now, Actor: from.SessionID, AssignmentID: "forged-handoff", From: &from, To: &to, ReceiptDig: "vis-n13", CanonicalRevision: snapshot.Revision})
 	d.ActingCoordinator = &to
 	snapshot.CoordinatorDelegations[d.DelegationID] = d
-	if err := ValidateCanonicalState(snapshot); err == nil || !strings.Contains(err.Error(), "HANDOFF lacks a corresponding loss") {
+	if err := ValidateCanonicalState(snapshot); err == nil || !strings.Contains(err.Error(), "authority transition after revocation") {
 		t.Fatalf("handoff after revoke without loss err=%v", err)
 	}
 }
