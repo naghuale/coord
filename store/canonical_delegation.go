@@ -161,7 +161,7 @@ func bindAssignmentScopeFromGrant(state CanonicalState, actor assignment.Princip
 	} else {
 		matches := actingGrantsFor(state, actor, now)
 		if len(matches) == 0 {
-			if grantMentionsStableCoordinator(state, actor.AgentID, now) {
+			if grantMentionsStableCoordinator(state, actor.AgentID) {
 				return fmt.Errorf("%w: coordinator generation/session is not authorized by grant", ErrCoordinatorDelegationInvalid)
 			}
 			return nil
@@ -201,14 +201,11 @@ func bindAssignmentScopeFromGrant(state CanonicalState, actor assignment.Princip
 	return nil
 }
 
-func grantMentionsStableCoordinator(state CanonicalState, stableAgentID string, now time.Time) bool {
+func grantMentionsStableCoordinator(state CanonicalState, stableAgentID string) bool {
 	if stableAgentID == "" || state.CoordinatorDelegations == nil {
 		return false
 	}
 	for _, grant := range state.CoordinatorDelegations {
-		if !grant.Active(now) {
-			continue
-		}
 		if grant.PrimaryCoordinator.StableAgentID == stableAgentID || grant.CurrentActing().StableAgentID == stableAgentID {
 			return true
 		}
@@ -560,6 +557,8 @@ func validateDelegationDerivedState(state CanonicalState, d DelegationRecord) er
 	visibleHistory := map[string]DelegationHistoryEntry{}
 	consumedVisibility := map[string]string{}
 	var lastLoss *DelegationHistoryEntry
+	lossesByAssignment := map[string][]DelegationHistoryEntry{}
+	handedOffForLoss := map[string]map[string]bool{}
 	for i, h := range d.History {
 		if h.CanonicalRevision == 0 || h.CanonicalRevision > state.Revision {
 			return fmt.Errorf("%w: delegation history lacks canonical commit binding", ErrCoordinatorDelegationInvalid)
@@ -634,14 +633,27 @@ func validateDelegationDerivedState(state CanonicalState, d DelegationRecord) er
 			}
 			copy := h
 			lastLoss = &copy
+			for _, id := range h.AssignmentIDs {
+				lossesByAssignment[id] = append(lossesByAssignment[id], copy)
+			}
 		case DelegationHistoryHandoff:
 			if h.From == nil || h.To == nil || !d.hasSuccessor(*h.To) || h.AssignmentID == "" || h.ReceiptDig == "" {
 				return fmt.Errorf("%w: incomplete HANDOFF history", ErrCoordinatorDelegationInvalid)
 			}
-			if !acting.Valid() {
-				if lastLoss == nil || lastLoss.From == nil || !lastLoss.From.Equal(*h.From) {
-					return fmt.Errorf("%w: HANDOFF lacks a corresponding loss", ErrCoordinatorDelegationInvalid)
+			var coveredLoss *DelegationHistoryEntry
+			for j := len(lossesByAssignment[h.AssignmentID]) - 1; j >= 0; j-- {
+				candidate := &lossesByAssignment[h.AssignmentID][j]
+				if candidate.From != nil && candidate.From.Equal(*h.From) {
+					coveredLoss = candidate
+					break
 				}
+			}
+			if coveredLoss != nil {
+				if handedOffForLoss[coveredLoss.ReceiptID][h.AssignmentID] {
+					return fmt.Errorf("%w: assignment already handed off for loss", ErrCoordinatorDelegationInvalid)
+				}
+			} else if !acting.Valid() {
+				return fmt.Errorf("%w: HANDOFF lacks a corresponding loss", ErrCoordinatorDelegationInvalid)
 			} else if !acting.Equal(*h.From) {
 				return fmt.Errorf("%w: HANDOFF source differs from derived coordinator", ErrCoordinatorDelegationInvalid)
 			}
@@ -649,7 +661,15 @@ func validateDelegationDerivedState(state CanonicalState, d DelegationRecord) er
 				return err
 			}
 			acting = *h.To
-			lastLoss = nil
+			if coveredLoss != nil {
+				if handedOffForLoss[coveredLoss.ReceiptID] == nil {
+					handedOffForLoss[coveredLoss.ReceiptID] = map[string]bool{}
+				}
+				handedOffForLoss[coveredLoss.ReceiptID][h.AssignmentID] = true
+				if lastLoss != nil && lastLoss.ReceiptID == coveredLoss.ReceiptID {
+					lastLoss = nil
+				}
+			}
 		case DelegationHistoryPrimaryRestart:
 			if h.From == nil || h.To == nil || lastLoss == nil || h.ReceiptID == "" || h.ReceiptDig == "" || h.ReceiptID != lastLoss.ReceiptID || !h.From.Equal(*lastLoss.From) || h.To.StableAgentID != d.PrimaryCoordinator.StableAgentID || h.To.Generation <= h.From.Generation {
 				return fmt.Errorf("%w: invalid PRIMARY_RESTART history", ErrCoordinatorDelegationInvalid)
@@ -1265,17 +1285,14 @@ func enforceDelegatedMutation(state CanonicalState, actor assignment.Principal, 
 		return nil
 	}
 	actorP := principalFromAssignment(actor)
-	// Revoked/expired/barred grants still block the former acting triple (ADR §7/§11).
-	if prior, ok := findAnyGrantCoveringCoordinator(state, actor); ok {
-		if !prior.Active(now) || prior.IsBarred(actorP) {
-			return fmt.Errorf("%w: exhausted, revoked, expired or barred", ErrCoordinatorDelegationExhausted)
-		}
-	}
 	if record.DelegationBinding == nil {
-		if _, covered := findAnyGrantCoveringCoordinator(state, record.Coordinator()); covered || grantMentionsStableCoordinator(state, record.CoordinatorAgentID, now) {
+		if _, covered := findAnyGrantCoveringCoordinator(state, record.Coordinator()); covered || grantMentionsStableCoordinator(state, record.CoordinatorAgentID) {
 			return fmt.Errorf("%w: persisted assignment grant binding required", ErrCoordinatorDelegationInvalid)
 		}
 		return nil
+	}
+	if bound, ok := state.CoordinatorDelegations[record.DelegationBinding.GrantID]; ok && !bound.Active(now) {
+		return fmt.Errorf("%w: originating grant revoked or expired", ErrCoordinatorDelegationExhausted)
 	}
 	bound, err := assignmentBoundGrant(state, record)
 	if err != nil {
@@ -1373,13 +1390,39 @@ func enforceDelegatedHandoff(state *CanonicalState, previous, next assignment.Pr
 	if !coordinatorDelegationActive() {
 		return nil
 	}
-	grant, ok := findGrantCoveringCoordinator(*state, previous, now)
-	if !ok {
-		// No grant: #90 handoff unchanged. Absence of delegation does not mint authority (#18).
+	var grant DelegationRecord
+	if state.AssignmentLedger != nil {
+		if record, exists := state.AssignmentLedger.Records[id]; exists && record.DelegationBinding != nil {
+			bound, err := assignmentBoundGrant(*state, record)
+			if err != nil {
+				return err
+			}
+			grant = bound
+		} else if prior, covered := findAnyGrantCoveringCoordinator(*state, previous); covered {
+			return fmt.Errorf("%w: assignment %s requires persisted grant binding (grant %s)", ErrCoordinatorDelegationInvalid, id, prior.DelegationID)
+		} else {
+			// No grant: #90 handoff unchanged. Absence of delegation does not mint authority (#18).
+			return nil
+		}
+	} else if prior, covered := findAnyGrantCoveringCoordinator(*state, previous); covered {
+		return fmt.Errorf("%w: assignment ledger missing for grant %s", ErrCoordinatorDelegationInvalid, prior.DelegationID)
+	} else {
 		return nil
 	}
 	if !grant.Active(now) {
 		return fmt.Errorf("%w: grant expired or revoked", ErrCoordinatorDelegationExhausted)
+	}
+	previousP := principalFromAssignment(previous)
+	if !grant.PrimaryCoordinator.Equal(previousP) && !grant.CurrentActing().Equal(previousP) && !grant.hasSuccessor(previousP) && !grant.IsBarred(previousP) {
+		return fmt.Errorf("%w: handoff predecessor is outside bound grant", ErrCoordinatorDelegationInvalid)
+	}
+	if !grant.CurrentActing().Equal(previousP) {
+		record, exists := state.AssignmentLedger.Records[id]
+		_, observerLossOpen := state.AssignmentLedger.OpenCoordinatorLossObserver(id)
+		ownerLossOpen := exists && record.CoordinatorLost && ownerCredentialLossAllowsHandoffWithoutObserver(*state, id)
+		if !exists || !record.CoordinatorLost || (!ownerLossOpen && !observerLossOpen) {
+			return fmt.Errorf("%w: handoff source is not acting coordinator and assignment has no matching loss", ErrCoordinatorDelegationInvalid)
+		}
 	}
 	nextP := principalFromAssignment(next)
 	if !grant.hasSuccessor(nextP) {
@@ -1435,8 +1478,11 @@ func enforceDelegatedOfferOrAccept(state CanonicalState, actor assignment.Princi
 	if !coordinatorDelegationActive() || state.CoordinatorDelegations == nil {
 		return nil
 	}
-	// If actor matches a barred or formerly-acting triple under a non-active grant, reject.
+	// The later offer/result checks bind the action to one exact grant. A revoked
+	// historical grant cannot veto a new active grant, but remains a blocker when
+	// no active grant covers the actor.
 	want := principalFromAssignment(actor)
+	activeAllowed, activeBarred, inactiveCovered := false, false, false
 	for _, d := range state.CoordinatorDelegations {
 		covered := d.PrimaryCoordinator.Equal(want) || d.hasSuccessor(want)
 		if d.ActingCoordinator != nil && d.ActingCoordinator.Equal(want) {
@@ -1445,10 +1491,22 @@ func enforceDelegatedOfferOrAccept(state CanonicalState, actor assignment.Princi
 		if !covered && !d.IsBarred(want) {
 			continue
 		}
-		if !d.Active(now) || d.IsBarred(want) {
-			return fmt.Errorf("%w: exhausted, revoked, expired or barred", ErrCoordinatorDelegationExhausted)
+		if !d.Active(now) {
+			inactiveCovered = true
+			continue
 		}
+		if d.IsBarred(want) {
+			activeBarred = true
+		} else {
+			activeAllowed = true
+		}
+	}
+	if activeAllowed {
 		_ = action
+		return nil
+	}
+	if activeBarred || inactiveCovered {
+		return fmt.Errorf("%w: exhausted, revoked, expired or barred", ErrCoordinatorDelegationExhausted)
 	}
 	return nil
 }
