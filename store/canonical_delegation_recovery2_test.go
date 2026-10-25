@@ -72,7 +72,11 @@ func TestRecoveryR1_OneLossCoversEachListedAssignment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reload after first sibling handoff: %v", err)
 	}
-	defer loaded.Close()
+	t.Cleanup(func() {
+		if err := loaded.Close(); err != nil {
+			t.Errorf("close reloaded canonical store: %v", err)
+		}
+	})
 	y := loaded.state.AssignmentLedger.Records["asg-r1-y"]
 	if err := loaded.HandoffAssignment(coord, next, y.AssignmentID, y.Revision, "handoff-r1-y"); err != nil {
 		t.Fatalf("one_loss_two_assignments after reload: second handoff: %v", err)
