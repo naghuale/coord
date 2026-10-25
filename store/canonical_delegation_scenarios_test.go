@@ -1320,6 +1320,16 @@ func TestRecoveryA93B3_DelegationSaveFailurePublishesNothing(t *testing.T) {
 	if f.p.saveCalls != saves+1 || !bytes.Equal(beforeStore, ownerStateBytes(t, f.s)) || !bytes.Equal(beforeDisk, afterDisk) {
 		t.Fatal("failed delegation Save published in-memory or persisted state")
 	}
+	// A persistence failure leaves durability uncertain. The same live store
+	// must remain poisoned until reopened instead of retrying and claiming a
+	// commit whose first Save may have partially reached durable storage.
+	f.p.fail = false
+	if _, _, err := f.s.ApplyOwnerCredentialCommand(cmd.ChallengeID, cmd, assertionFor(cmd, f.private["owner-primary"], sign)); !errors.Is(err, ErrPersistence) {
+		t.Fatalf("retry after delegation Save failure err=%v, want latched persistence error", err)
+	}
+	if f.p.saveCalls != saves+1 || !bytes.Equal(beforeStore, ownerStateBytes(t, f.s)) {
+		t.Fatal("retry after failed Save wrote or published state")
+	}
 }
 
 // --- helpers ---

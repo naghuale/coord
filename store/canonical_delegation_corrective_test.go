@@ -1039,7 +1039,11 @@ func TestRecoveryA93B1_InboxWriterCannotAppendOwnerCredentialLoss(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
+	defer func() {
+		if err := s.Close(); err != nil {
+			t.Errorf("close canonical store: %v", err)
+		}
+	}()
 	id := taskid.ID("task_01ARZ3NDEKTSV4RRFFQ69G5FAV")
 	before, err := copyCanonicalState(s.state)
 	if err != nil {
@@ -1185,7 +1189,9 @@ func TestRecoveryA93B2_SnapshotControlStateIsDerivedFromHistory(t *testing.T) {
 				t.Fatal("snapshot state not derived from history was accepted")
 			}
 			if loaded, err := NewCanonical(&canonicalMemory{state: snapshot}); err == nil {
-				loaded.Close()
+				if closeErr := loaded.Close(); closeErr != nil {
+					t.Errorf("close loaded canonical store: %v", closeErr)
+				}
 				t.Fatal("NewCanonical loaded snapshot state not derived from history")
 			}
 		})
@@ -1240,7 +1246,9 @@ func TestRecoveryA93B2_SnapshotRejectsDelegationEnvelopeDrift(t *testing.T) {
 				t.Fatal("invalid delegation envelope accepted")
 			}
 			if loaded, err := NewCanonical(&canonicalMemory{state: snapshot}); err == nil {
-				loaded.Close()
+				if closeErr := loaded.Close(); closeErr != nil {
+					t.Errorf("close loaded canonical store: %v", closeErr)
+				}
 				t.Fatal("NewCanonical loaded invalid delegation envelope")
 			}
 		})
