@@ -163,16 +163,36 @@ func TestRecoveryG4_NewLossEndsNoVisibilitySiblingContext(t *testing.T) {
 }
 
 func TestRecoveryG4_SiblingHandoffMustReuseSelectedVisibilityOnReload(t *testing.T) {
-	f, now, a, b, _ := recovery4Setup(t, "del-r5-visibility-binding", true)
-	if err := recovery4Handoff(t, f, a, b, "asg-r4-x", "r5-visibility-first-capture"); err != nil {
-		t.Fatalf("initial handoff to B: %v", err)
-	}
-	snapshot, err := copyCanonicalState(f.s.state)
-	if err != nil {
-		t.Fatal(err)
-	}
-	forgeRecoverySiblingWithoutReconsuming(t, &snapshot, "del-r5-visibility-binding", "asg-r4-y", a, b, "vis-r4-c", now)
-	assertRecoveryReloadRejectsWithText(t, snapshot, "sibling cites different unconsumed visibility", "sibling handoff must retain selected successor and visibility")
+	t.Run("sibling_handoff_different_visibility_receipt", func(t *testing.T) {
+		f, now, a, b, _ := recovery4Setup(t, "del-r5-visibility-binding-negative", true)
+		if err := recovery4Handoff(t, f, a, b, "asg-r4-x", "r5-visibility-first-capture-negative"); err != nil {
+			t.Fatalf("initial handoff to B: %v", err)
+		}
+		snapshot, err := copyCanonicalState(f.s.state)
+		if err != nil {
+			t.Fatal(err)
+		}
+		forgeRecoverySiblingWithoutReconsuming(t, &snapshot, "del-r5-visibility-binding-negative", "asg-r4-y", a, b, "vis-r4-c", now)
+		assertRecoveryReloadRejectsWithText(t, snapshot, "sibling cites different unconsumed visibility", "sibling handoff must retain selected successor and visibility")
+	})
+
+	t.Run("sibling_handoff_same_visibility_receipt", func(t *testing.T) {
+		f, now, a, b, _ := recovery4Setup(t, "del-r5-visibility-binding-positive", false)
+		if err := recovery4Handoff(t, f, a, b, "asg-r4-x", "r5-visibility-first-capture-positive"); err != nil {
+			t.Fatalf("initial handoff to B: %v", err)
+		}
+		snapshot, err := copyCanonicalState(f.s.state)
+		if err != nil {
+			t.Fatal(err)
+		}
+		forgeRecoverySiblingWithoutReconsuming(t, &snapshot, "del-r5-visibility-binding-positive", "asg-r4-y", a, b, "vis-r4-b", now)
+		if err := ValidateCanonicalState(snapshot); err != nil {
+			t.Fatalf("same selected visibility receipt sibling rejected: %v", err)
+		}
+		if _, err := NewCanonical(&canonicalMemory{state: snapshot}); err != nil {
+			t.Fatalf("reload of sibling with same visibility receipt: %v", err)
+		}
+	})
 }
 
 func TestRecoveryG4_HandoffCommitSeamRequiresAlreadyActingSuccessorForSibling(t *testing.T) {
