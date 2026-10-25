@@ -1124,6 +1124,52 @@ func TestR8_F2_PublicationIsHEADTreeNotIndex(t *testing.T) {
 			t.Fatalf("expected FILE_MISSING when HEAD blob exists but worktree file is gone, got %v", res.Violations)
 		}
 	})
+	t.Run("committed_symlink_to_untracked_target", func(t *testing.T) {
+		dir := t.TempDir()
+		writeAuthoritativeActionMapFixture(t, dir)
+		mustMkdir(t, filepath.Join(dir, "docs/operations"))
+		mustWrite(t, filepath.Join(dir, "docs/operations/real.yaml"), "apiVersion: v1\nkinds: []\n")
+		link := filepath.Join(dir, "docs/operations/ACTION-MAP.yaml")
+		if err := os.Symlink("real.yaml", link); err != nil {
+			t.Fatal(err)
+		}
+		writeDocRegistry(t, dir, actionMapRegistryYAML("accepted", false, "docs/operations/ACTION-MAP.yaml"))
+		initFixtureGit(t, dir)
+		runGit(t, dir, "rm", "--cached", "docs/operations/real.yaml")
+		runGit(t, dir, "commit", "-m", "drop target from HEAD")
+		res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !hasCode(res.Violations, CodeActionMapNotPublished) || !detailHas(res.Violations, CodeActionMapNotPublished, "FILE_NOT_TRACKED") {
+			t.Fatalf("expected FILE_NOT_TRACKED for committed symlink to untracked target, got %v", res.Violations)
+		}
+	})
+	t.Run("committed_symlink_to_committed_target", func(t *testing.T) {
+		dir := t.TempDir()
+		writeAuthoritativeActionMapFixture(t, dir)
+		mustMkdir(t, filepath.Join(dir, "docs/operations"))
+		mustWrite(t, filepath.Join(dir, "docs/operations/real.yaml"), "apiVersion: v1\nkinds: []\n")
+		link := filepath.Join(dir, "docs/operations/ACTION-MAP.yaml")
+		if err := os.Symlink("real.yaml", link); err != nil {
+			t.Fatal(err)
+		}
+		writeDocRegistry(t, dir, actionMapRegistryYAML("accepted", false, "docs/operations/ACTION-MAP.yaml"))
+		initFixtureGit(t, dir)
+		res, err := Check(Options{Root: dir, SkipChangedDocs: true, DocRegistryPath: "docs/DOCUMENT-REGISTRY.yaml"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, code := range []string{CodeAuthoritativeActionMap, CodeActionMapStatusInvalid, CodeActionMapNotPublished} {
+			if hasCode(res.Violations, code) {
+				t.Fatalf("committed symlink to committed target must pass, got %v", res.Violations)
+			}
+		}
+		sha, ok := gitHeadBlobSHA(dir, "docs/operations/real.yaml")
+		if !ok || len(sha) != 40 {
+			t.Fatalf("expected HEAD blob SHA of resolved target, got %q ok=%v", sha, ok)
+		}
+	})
 	t.Run("positive_committed_blob_on_disk", func(t *testing.T) {
 		dir := t.TempDir()
 		writeAuthoritativeActionMapFixture(t, dir)

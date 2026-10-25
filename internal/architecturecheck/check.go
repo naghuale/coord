@@ -243,9 +243,17 @@ func (a *actionMapDocStatus) evaluatePublication(root string) {
 		fail("NOT_REGULAR_FILE", clean)
 		return
 	}
-	sha, ok := gitHeadBlobSHA(root, clean)
+	// Publication is the evaluated content: the resolved target must be a
+	// regular-file blob in HEAD. A committed symlink to an untracked target
+	// is not publication (G97-R8-1). Index membership is not enough.
+	contentRel := filepath.ToSlash(resRel)
+	if !gitTrackedPath(root, filepath.ToSlash(clean)) {
+		fail("FILE_NOT_TRACKED", filepath.ToSlash(clean))
+		return
+	}
+	sha, ok := gitHeadBlobSHA(root, contentRel)
 	if !ok {
-		fail("FILE_NOT_TRACKED", clean)
+		fail("FILE_NOT_TRACKED", contentRel)
 		return
 	}
 	a.publishedOK = true
