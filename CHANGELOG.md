@@ -3,7 +3,7 @@
 ## 2026-10-25 — ACTION-MAP.yaml identity and HEAD-tree publication (Refs #97)
 
 - Architecture checker resolves the Action Map registry row only as `action-map-yaml`. Historical `action-map` (`ACTION-MAP.md`) is never a fallback. Empty path on the YAML row is `EMPTY_PATH` even when the historical row is accepted and committed. (`TestR8_F1_YAMLIdentityNotHistoricalActionMap`)
-- Publication requires a regular-file blob (mode `100644`/`100755`) in the checked `HEAD` tree (`git ls-tree`). Staged-only, untracked, HEAD symlink (`120000`), and uncommitted symlink-to-committed-target paths are `FILE_NOT_TRACKED`. A HEAD blob deleted from the worktree is `FILE_MISSING`. The evaluated file is the resolved target: a committed symlink to an untracked regular file is `FILE_NOT_TRACKED`; a committed symlink to a committed regular file publishes. (`TestR8_F2_PublicationIsHEADTreeNotIndex`)
+- Publication requires a regular-file blob (mode `100644`/`100755`) in the checked `HEAD` tree (`git ls-tree`). Staged-only, untracked, HEAD symlink (`120000`), and uncommitted symlink-to-committed-target paths are `FILE_NOT_TRACKED`. A HEAD blob deleted from the worktree is `FILE_MISSING`. The evaluated file is the resolved target: a committed symlink to an untracked regular file is `FILE_NOT_TRACKED`; a committed symlink to a committed regular file publishes. A dangling symlink is classified by its lexical Readlink target: inside the repository `FILE_MISSING`, outside `SYMLINK_TARGET_OUTSIDE_REPOSITORY`. (`TestR8_F2_PublicationIsHEADTreeNotIndex`, `TestA97_R1_DanglingSymlinkToMissingTargetFails`, `TestA97_R2_DanglingSymlinkOutsideFails`)
 
 ## 2026-10-24 — COMPONENT-STATUS axes, NV-4 and D24-F3 (Refs #97)
 

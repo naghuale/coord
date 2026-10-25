@@ -960,6 +960,37 @@ func TestR7_F1_ActionMapSymlinkEscapeExistingOutsideFails(t *testing.T) {
 	}, "SYMLINK_TARGET_OUTSIDE_REPOSITORY")
 }
 
+func TestA97_R1_DanglingSymlinkToMissingTargetFails(t *testing.T) {
+	assertActionMapNotPublishedReason(t, func(dir string) {
+		mustMkdir(t, filepath.Join(dir, "docs/operations"))
+		link := filepath.Join(dir, "docs/operations/ACTION-MAP.yaml")
+		if err := os.Symlink("missing-target.yaml", link); err != nil {
+			t.Fatal(err)
+		}
+		writeDocRegistry(t, dir, actionMapRegistryYAML("accepted", false, "docs/operations/ACTION-MAP.yaml"))
+	}, "FILE_MISSING")
+}
+
+func TestA97_R2_DanglingSymlinkOutsideFails(t *testing.T) {
+	assertActionMapNotPublishedReason(t, func(dir string) {
+		mustMkdir(t, filepath.Join(dir, "docs/operations"))
+		link := filepath.Join(dir, "docs/operations/ACTION-MAP.yaml")
+		if err := os.Symlink("/tmp/coord-a97-r2-missing-outside.yaml", link); err != nil {
+			t.Fatal(err)
+		}
+		writeDocRegistry(t, dir, actionMapRegistryYAML("accepted", false, "docs/operations/ACTION-MAP.yaml"))
+	}, "SYMLINK_TARGET_OUTSIDE_REPOSITORY")
+}
+
+func TestR8_M12_HostileGitConfigDoesNotChangePublication(t *testing.T) {
+	cfg := filepath.Join(t.TempDir(), "hostile-gitconfig")
+	mustWrite(t, cfg, "[core]\n\tquotepath = false\n[alias]\n\tls-tree = status\n")
+	t.Setenv("GIT_CONFIG_GLOBAL", cfg)
+	t.Setenv("GIT_CONFIG_SYSTEM", cfg)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "0")
+	assertR6Publication(t, false, "docs/operations/ACTION-MAP.yaml", true, true, "")
+}
+
 func TestR7_F1_ActionMapUntrackedRegularFileFails(t *testing.T) {
 	dir := t.TempDir()
 	writeAuthoritativeActionMapFixture(t, dir)

@@ -221,8 +221,10 @@ func (a *actionMapDocStatus) evaluatePublication(root string) {
 			fail("FILE_MISSING", fmt.Sprintf("path %s", clean))
 			return
 		}
-		// Symlink present but target unresolvable / outside — treat as symlink escape.
-		fail("SYMLINK_TARGET_OUTSIDE_REPOSITORY", fmt.Sprintf("EvalSymlinks(%s): %v", clean, err))
+		// Present but unresolvable: usually a dangling symlink. Classify by
+		// lexical Readlink target vs resolved root (A97-R-1 / A97-R-2).
+		reason, detail := danglingSymlinkReason(root, rootResolved, full, clean, err)
+		fail(reason, detail)
 		return
 	}
 	resRel, err := filepath.Rel(rootResolved, resolved)
@@ -261,6 +263,37 @@ func (a *actionMapDocStatus) evaluatePublication(root string) {
 	a.publishedDetail = "HEAD_BLOB " + sha
 }
 
+// danglingSymlinkReason classifies a path that Lstat can see but EvalSymlinks
+// cannot. Lexical os.Readlink target, joined to the symlink directory, is
+// checked against the repository root: inside → FILE_MISSING, outside →
+// SYMLINK_TARGET_OUTSIDE_REPOSITORY.
+func danglingSymlinkReason(root, rootResolved, full, clean string, evalErr error) (reason, detail string) {
+	target, err := os.Readlink(full)
+	if err != nil {
+		return "SYMLINK_TARGET_OUTSIDE_REPOSITORY", fmt.Sprintf("EvalSymlinks(%s): %v", clean, evalErr)
+	}
+	sep := string(filepath.Separator)
+	inside := func(base, joined string) bool {
+		rel, rerr := filepath.Rel(base, joined)
+		if rerr != nil || rel == ".." || strings.HasPrefix(rel, ".."+sep) || filepath.IsAbs(rel) {
+			return false
+		}
+		return true
+	}
+	if filepath.IsAbs(target) {
+		joined := filepath.Clean(target)
+		if inside(rootResolved, joined) || inside(filepath.Clean(root), joined) {
+			return "FILE_MISSING", fmt.Sprintf("%q -> %q", clean, target)
+		}
+		return "SYMLINK_TARGET_OUTSIDE_REPOSITORY", fmt.Sprintf("%q -> %q", clean, target)
+	}
+	rel := filepath.Clean(filepath.Join(filepath.Dir(clean), target))
+	if rel == ".." || strings.HasPrefix(rel, ".."+sep) || filepath.IsAbs(rel) {
+		return "SYMLINK_TARGET_OUTSIDE_REPOSITORY", fmt.Sprintf("%q -> %q", clean, target)
+	}
+	return "FILE_MISSING", fmt.Sprintf("%q -> %q", clean, target)
+}
+
 func gitTrackedPath(root, relPath string) bool {
 	_, typ, _, ok := gitHeadTreeEntry(root, relPath)
 	return ok && typ == "blob"
@@ -269,7 +302,7 @@ func gitTrackedPath(root, relPath string) bool {
 func gitHeadTreeEntry(root, relPath string) (mode, typ, sha string, ok bool) {
 	gitPath := filepath.ToSlash(relPath)
 	cmd := exec.Command("git", "-C", root, "ls-tree", "--full-tree", "HEAD", "--", gitPath)
-	cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null")
+	cmd.Env = gitIsolatedEnv()
 	raw, err := cmd.Output()
 	if err != nil {
 		return "", "", "", false
@@ -290,6 +323,17 @@ func gitHeadTreeEntry(root, relPath string) (mode, typ, sha string, ok bool) {
 		return "", "", "", false
 	}
 	return meta[0], meta[1], meta[2], true
+}
+
+func gitIsolatedEnv() []string {
+	out := make([]string, 0, len(os.Environ())+2)
+	for _, e := range os.Environ() {
+		if strings.HasPrefix(e, "GIT_CONFIG_GLOBAL=") || strings.HasPrefix(e, "GIT_CONFIG_SYSTEM=") || strings.HasPrefix(e, "GIT_CONFIG_NOSYSTEM=") {
+			continue
+		}
+		out = append(out, e)
+	}
+	return append(out, "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null")
 }
 
 // gitHeadBlobSHA returns the SHA of a regular-file blob (mode 100644 or
