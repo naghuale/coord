@@ -129,7 +129,11 @@ func TestLossConfirmBarsStillRegisteredAndRequiresOpenWork(t *testing.T) {
 
 	// Seed an open assignment under the primary.
 	seedDelegatedAssignment(t, f, "asg-1", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now)
-
+	lossPayload, _ = json.Marshal(ownercredential.LossConfirmPayload{
+		DelegationID:  "del-loss-1",
+		Coordinator:   ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1},
+		AssignmentIDs: []string{"asg-1"}, Reason: "hung", ObservedAt: now,
+	})
 	loss2 := f.command(ownercredential.CommandLossConfirm, "msg-loss-ok", "owner-primary", 1, lossPayload)
 	if _, _, err := f.s.ApplyOwnerCredentialCommand(loss2.ChallengeID, loss2, assertionFor(loss2, f.private["owner-primary"], 2)); err != nil {
 		t.Fatal(err)
@@ -191,42 +195,48 @@ func TestVisibilityConfirmRejectsOffListAndDoesNotChangeScope(t *testing.T) {
 }
 
 func TestSnapshotReloadRejectsOwnerCredentialLossWithoutReceipt(t *testing.T) {
-	state := EmptyCanonicalState()
-	state.SchemaVersion = 6
-	state.AssignmentLedger = assignment.Empty()
-	state.CoordinatorDelegations = map[string]DelegationRecord{
-		"del-x": {
-			DelegationID:       "del-x",
-			Scope:              DelegationScope{Repository: "r", Project: "p", AllowedWorkItems: []string{"w"}, AllowedActions: []string{"OFFER"}},
-			PrimaryCoordinator: DelegationPrincipal{StableAgentID: "a", SessionID: "s", Generation: 1},
-			Validity:           DelegationValidity{NotBefore: time.Now().UTC().Add(-time.Hour), ExpiresAt: time.Now().UTC().Add(time.Hour)},
-			Successors:         []DelegationPrincipal{{StableAgentID: "b", SessionID: "t", Generation: 1}},
-			Evidence:           DelegationEvidence{OwnerDecisionRef: "d", VisibilityEvidence: "v"},
-			History:            []DelegationHistoryEntry{{Kind: DelegationHistoryGrant, At: time.Now().UTC()}},
-		},
-	}
-	rec := assignment.Record{
-		AssignmentID: "asg", State: assignment.Active, Issuer: "s", IssuerAgentID: "a", IssuerGeneration: 1,
-		CurrentCoordinator: "s", CoordinatorAgentID: "a", CoordinatorGeneration: 1,
-		HandoffEvidence: []assignment.Handoff{}, CoordinatorLost: true,
-		Assignee: "u", StableAgentID: "target", SessionID: "u", AssigneeGeneration: 1,
-		Role: "IMPLEMENTER", SubjectSHA: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-		IssuedAt: time.Now().UTC().Add(-time.Minute), ValidUntil: time.Now().UTC().Add(time.Hour),
-		AdmissionBasis:     assignment.AdmissionBasis{Kind: "POOL", Reference: "w", TargetSessionID: "u", TargetAgentID: "target", Role: "IMPLEMENTER", SubjectSHA: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
-		VisibilityEvidence: assignment.VisibilityEvidence{Reference: "v", SessionID: "u", ObservedAt: time.Now().UTC().Add(-time.Minute)},
-		Revision:           2, UpdatedAt: time.Now().UTC(), AcknowledgedAt: time.Now().UTC().Add(-time.Minute), WorkStartedAt: time.Now().UTC().Add(-time.Minute),
-	}
-	state.AssignmentLedger.Records["asg"] = rec
-	state.AssignmentLedger.Events = []assignment.Event{{
-		AssignmentID: "asg", Revision: 2, Kind: "COORDINATOR_LOST",
-		Actor:       assignment.Principal{SessionID: "ownercredential:owner", AgentID: "owner", Generation: 1},
-		EvidenceRef: "missing", At: rec.UpdatedAt, Record: rec,
-		ActorSource:      assignment.ActorSourceOwnerCredential,
-		OwnerPrincipalID: "owner", OwnerCredentialID: "key",
-		OwnerReceiptMessageID: "no-such-receipt", OwnerReceiptDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-	}}
-	if err := ValidateCanonicalState(state); err == nil {
-		t.Fatal("forged OWNER_CREDENTIAL loss without receipt must be rejected")
+	for _, tc := range []struct {
+		name   string
+		mutate func(*CanonicalState)
+	}{
+		{"receipt_missing", func(s *CanonicalState) { delete(s.OwnerCredentials["owner-1"].Receipts, "loss-no-receipt") }},
+		{"receipt_digest_mismatch", func(s *CanonicalState) {
+			a := s.OwnerCredentials["owner-1"]
+			r := a.Receipts["loss-no-receipt"]
+			r.CommandDigest = strings.Repeat("f", 64)
+			a.Receipts["loss-no-receipt"] = r
+			s.OwnerCredentials["owner-1"] = a
+		}},
+		{"receipt_kind_mismatch", func(s *CanonicalState) {
+			a := s.OwnerCredentials["owner-1"]
+			r := a.Receipts["loss-no-receipt"]
+			r.CommandKind = ownercredential.CommandDelegationGrant
+			a.Receipts["loss-no-receipt"] = r
+			s.OwnerCredentials["owner-1"] = a
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			enableDelegationHarness(t)
+			f := newOwnerCommandFixture(t)
+			now := f.s.now().UTC()
+			grantDelegation(t, f, "del-no-receipt", now)
+			seedDelegatedAssignment(t, f, "asg-no-receipt", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now)
+			lossConfirm(t, f, "del-no-receipt", "loss-no-receipt", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1}, now)
+			snapshot, err := copyCanonicalState(f.s.state)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := ValidateCanonicalState(snapshot); err != nil {
+				t.Fatalf("positive receipt control rejected: %v", err)
+			}
+			tc.mutate(&snapshot)
+			if err := ValidateCanonicalState(snapshot); !errors.Is(err, ErrCoordinatorDelegationInvalid) {
+				t.Fatalf("loss with missing or mismatched OwnerCredential receipt err=%v, want delegation invalid", err)
+			}
+			if _, err := NewCanonical(&canonicalMemory{state: snapshot}); !errors.Is(err, ErrCoordinatorDelegationInvalid) {
+				t.Fatalf("NewCanonical loss without valid OwnerCredential receipt err=%v, want delegation invalid", err)
+			}
+		})
 	}
 }
 
@@ -311,6 +321,24 @@ func seedDelegatedAssignment(t *testing.T, f *ownerCommandFixture, id string, co
 		return state.AssignmentLedger.Append(assignment.Event{AssignmentID: id, Revision: 3, Kind: "ACTIVATE", Actor: coordinator, EvidenceRef: "seed-act", At: active.UpdatedAt, Record: active})
 	}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func offerDelegatedCopy(t *testing.T, f *ownerCommandFixture, newID, sourceID string, now time.Time) {
+	t.Helper()
+	actor := assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}
+	r := f.s.state.AssignmentLedger.Records[sourceID]
+	r.AssignmentID = newID
+	r.State = assignment.Offered
+	r.Revision = 1
+	r.AcknowledgedAt = time.Time{}
+	r.WorkStartedAt = time.Time{}
+	r.AcceptedResult = nil
+	r.CoordinatorLost = false
+	r.UpdatedAt = now.Add(-time.Minute)
+	r.IssuedAt = now.Add(-time.Minute)
+	if err := f.s.OfferAssignment(actor, r, "offer-control"); err != nil {
+		t.Fatalf("valid OFFER control: %v", err)
 	}
 }
 

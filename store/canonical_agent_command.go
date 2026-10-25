@@ -419,6 +419,9 @@ func (s *CanonicalStore) recordAgentNoAcceptanceLocked(actorID string, e envelop
 		EventIDs: []string{}, ExpectedRevision: expectedRevision, CommittedRevision: expectedRevision, RecordedAt: now,
 	}
 	next.Inbox[key] = receipt
+	if err := rejectGenericOwnerLossEvents(s.state.AssignmentLedger, next.AssignmentLedger); err != nil {
+		return InboxReceipt{}, false, err
+	}
 	if err := rejectUnauthorizedGrantMutation(s.state, next); err != nil {
 		return InboxReceipt{}, false, err
 	}

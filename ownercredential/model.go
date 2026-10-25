@@ -174,6 +174,22 @@ type Receipt struct {
 	EventSequence              uint64    `json:"event_sequence"`
 	SignCount                  uint32    `json:"sign_count,omitempty"`
 	RecordedAt                 time.Time `json:"recorded_at"`
+	// CanonicalRevision binds a delegation receipt to the exact durable commit.
+	CanonicalRevision    uint64            `json:"canonical_revision,omitempty"`
+	DelegationID         string            `json:"delegation_id,omitempty"`
+	DelegationGeneration uint64            `json:"delegation_generation,omitempty"`
+	OwnerLossBinding     *OwnerLossBinding `json:"owner_loss_binding,omitempty"`
+}
+
+// OwnerLossBinding is the validated context extracted from the signed
+// coordinator.loss.confirm payload and committed alongside its receipt.
+type OwnerLossBinding struct {
+	DelegationID    string   `json:"delegation_id"`
+	GrantGeneration uint64   `json:"grant_generation"`
+	StableAgentID   string   `json:"stable_agent_id"`
+	SessionID       string   `json:"session_id"`
+	Generation      uint64   `json:"generation"`
+	AssignmentIDs   []string `json:"assignment_ids"`
 }
 
 type Aggregate struct {
@@ -311,6 +327,24 @@ func (a Aggregate) Validate() error {
 			return errors.New("signed OwnerCredential receipt requires a nonce")
 		}
 		receiptOnly := receipt.CommandKind == "task.create" || IsDelegationCommand(receipt.CommandKind)
+		if receipt.OwnerLossBinding != nil {
+			b := receipt.OwnerLossBinding
+			if receipt.CommandKind != CommandLossConfirm || receipt.CanonicalRevision == 0 || b.DelegationID == "" || b.GrantGeneration == 0 || b.StableAgentID == "" || b.SessionID == "" || b.Generation == 0 || len(b.AssignmentIDs) == 0 {
+				return errors.New("invalid OwnerCredential loss receipt binding")
+			}
+			seenAssignments := map[string]bool{}
+			for _, assignmentID := range b.AssignmentIDs {
+				if assignmentID == "" || strings.TrimSpace(assignmentID) != assignmentID || seenAssignments[assignmentID] {
+					return errors.New("invalid OwnerCredential loss receipt assignment set")
+				}
+				seenAssignments[assignmentID] = true
+			}
+		} else if receipt.CommandKind == CommandLossConfirm && receipt.CanonicalRevision != 0 {
+			return errors.New("OwnerCredential loss receipt requires exact binding")
+		}
+		if IsDelegationCommand(receipt.CommandKind) && (receipt.DelegationID == "" || receipt.DelegationGeneration == 0 || receipt.CanonicalRevision == 0) {
+			return errors.New("delegation receipt requires commit and grant binding")
+		}
 		if receiptOnly && receipt.CredentialRevision != receipt.ExpectedCredentialRevision || (receipt.CommandKind == "owner.credential.register" || receipt.CommandKind == "owner.credential.revoke") && (receipt.ExpectedCredentialRevision == ^uint64(0) || receipt.CredentialRevision != receipt.ExpectedCredentialRevision+1) {
 			return errors.New("OwnerCredential receipt revision does not match command kind")
 		}
@@ -384,7 +418,7 @@ func ValidateTransition(previous, next map[string]Aggregate) error {
 			}
 		}
 		for id, receipt := range old.Receipts {
-			if currentReceipt, exists := current.Receipts[id]; !exists || currentReceipt != receipt {
+			if currentReceipt, exists := current.Receipts[id]; !exists || !reflect.DeepEqual(currentReceipt, receipt) {
 				return fmt.Errorf("OwnerCredential receipt %q is immutable", id)
 			}
 		}

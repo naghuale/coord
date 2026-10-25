@@ -157,6 +157,9 @@ type Event struct {
 	OwnerCredentialID     string          `json:"ownerCredentialId,omitempty"`
 	OwnerReceiptMessageID string          `json:"ownerReceiptMessageId,omitempty"`
 	OwnerReceiptDigest    string          `json:"ownerReceiptDigest,omitempty"`
+	OwnerCommitRevision   uint64          `json:"ownerCommitRevision,omitempty"`
+	OwnerDelegationID     string          `json:"ownerDelegationId,omitempty"`
+	OwnerGrantGeneration  uint64          `json:"ownerGrantGeneration,omitempty"`
 }
 
 // EffectiveActorSource returns AGENT_SESSION when the field is absent (legacy).

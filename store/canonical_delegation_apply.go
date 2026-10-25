@@ -4,6 +4,7 @@ import (
 	"coord/assignment"
 	ownercredential "coord/ownercredential"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -19,6 +20,10 @@ func (s *CanonicalStore) applyOwnerDelegationCommandLocked(challenge ownercreden
 	if next.CoordinatorDelegations == nil {
 		next.CoordinatorDelegations = map[string]DelegationRecord{}
 	}
+	if s.state.Revision == ^uint64(0) {
+		return ownercredential.Receipt{}, false, fmt.Errorf("canonical revision exhausted")
+	}
+	next.Revision = s.state.Revision + 1
 	aggregate := next.OwnerCredentials[challenge.PrincipalID]
 	cred := aggregate.Credentials[challenge.CredentialID]
 	cred.SignCount = signCount
@@ -44,6 +49,16 @@ func (s *CanonicalStore) applyOwnerDelegationCommandLocked(challenge ownercreden
 	default:
 		return ownercredential.Receipt{}, false, ErrOwnerCommandInvalid
 	}
+	for grantID, grant := range next.CoordinatorDelegations {
+		oldCount := 0
+		if old, ok := s.state.CoordinatorDelegations[grantID]; ok {
+			oldCount = len(old.History)
+		}
+		for i := oldCount; i < len(grant.History); i++ {
+			grant.History[i].CanonicalRevision = next.Revision
+		}
+		next.CoordinatorDelegations[grantID] = grant
+	}
 
 	if aggregate.CommandSequence == ^uint64(0) {
 		return ownercredential.Receipt{}, false, ErrOwnerCredentialRevision
@@ -56,6 +71,36 @@ func (s *CanonicalStore) applyOwnerDelegationCommandLocked(challenge ownercreden
 		CredentialRevision:         aggregate.CredentialRevision,
 		CommandSequence:            commandSequence, EventSequence: 0, SignCount: signCount, RecordedAt: now,
 	}
+	if ownercredential.IsDelegationCommand(challenge.Kind) {
+		receipt.CanonicalRevision = next.Revision
+		for grantID, grant := range next.CoordinatorDelegations {
+			for i := len(grant.History) - 1; i >= 0; i-- {
+				if grant.History[i].ReceiptID == challenge.MessageID {
+					receipt.DelegationID = grantID
+					receipt.DelegationGeneration = grant.Generation
+					break
+				}
+			}
+			if receipt.DelegationID != "" {
+				break
+			}
+		}
+	}
+	if challenge.Kind == ownercredential.CommandLossConfirm {
+		var payload ownercredential.LossConfirmPayload
+		if err := decodeOwnerPayload(challenge.Payload, &payload); err != nil {
+			return ownercredential.Receipt{}, false, err
+		}
+		grant := next.CoordinatorDelegations[payload.DelegationID]
+		receipt.OwnerLossBinding = &ownercredential.OwnerLossBinding{
+			DelegationID: payload.DelegationID, GrantGeneration: grant.Generation,
+			StableAgentID: payload.Coordinator.StableAgentID, SessionID: payload.Coordinator.SessionID,
+			Generation: payload.Coordinator.Generation, AssignmentIDs: append([]string(nil), payload.AssignmentIDs...),
+		}
+	}
+	if ownercredential.IsDelegationCommand(challenge.Kind) {
+		receipt.CanonicalRevision = next.Revision
+	}
 	aggregate.CommandSequence = commandSequence
 	aggregate.Receipts[receipt.MessageID] = receipt
 	if err := aggregate.Validate(); err != nil {
@@ -63,10 +108,6 @@ func (s *CanonicalStore) applyOwnerDelegationCommandLocked(challenge ownercreden
 	}
 	next.OwnerCredentials[challenge.PrincipalID] = aggregate
 	next.SchemaVersion = CanonicalSchemaVersion
-	if s.state.Revision == ^uint64(0) {
-		return ownercredential.Receipt{}, false, fmt.Errorf("canonical revision exhausted")
-	}
-	next.Revision = s.state.Revision + 1
 	if err := ValidateCanonicalState(next); err != nil {
 		return ownercredential.Receipt{}, false, err
 	}
@@ -263,6 +304,14 @@ func applyLossConfirm(state *CanonicalState, challenge ownercredential.Command, 
 		}
 		return fmt.Errorf("%w: no open delegated work", ErrCoordinatorDelegationInvalid)
 	}
+	selectedAssignmentIDs := make([]string, 0, len(hits))
+	for _, hit := range hits {
+		selectedAssignmentIDs = append(selectedAssignmentIDs, hit.id)
+	}
+	sort.Strings(selectedAssignmentIDs)
+	if len(payload.AssignmentIDs) == 0 || !sort.StringsAreSorted(payload.AssignmentIDs) || !sameStringSetInOrder(payload.AssignmentIDs, selectedAssignmentIDs) {
+		return fmt.Errorf("%w: signed assignmentIds do not match the affected assignment set", ErrCoordinatorDelegationInvalid)
+	}
 
 	// Record COORDINATOR_LOST with OWNER_CREDENTIAL actor source on each matching
 	// in-scope assignment. Out-of-scope or unrelated coordinator assignments are not touched.
@@ -285,6 +334,9 @@ func applyLossConfirm(state *CanonicalState, challenge ownercredential.Command, 
 			OwnerCredentialID:     challenge.CredentialID,
 			OwnerReceiptMessageID: challenge.MessageID,
 			OwnerReceiptDigest:    challenge.Digest,
+			OwnerCommitRevision:   state.Revision,
+			OwnerDelegationID:     payload.DelegationID,
+			OwnerGrantGeneration:  rec.Generation,
 		}
 		if err := state.AssignmentLedger.Append(ev); err != nil {
 			return fmt.Errorf("%w: %v", ErrCoordinatorDelegationInvalid, err)
@@ -297,20 +349,16 @@ func applyLossConfirm(state *CanonicalState, challenge ownercredential.Command, 
 	}
 	// lossRecordID = challenge.MessageID; AssignmentID records one matched
 	// in-scope assignment for the F5 primaryRestart loss-identity bind.
-	lossAssignmentID := ""
-	for id, r := range state.AssignmentLedger.Records {
-		if !r.CoordinatorLost {
-			continue
-		}
-		coord := r.Coordinator()
-		if coord.AgentID == named.StableAgentID && coord.SessionID == named.SessionID && coord.Generation == named.Generation && r.DelegationBinding != nil && r.DelegationBinding.GrantID == rec.DelegationID {
-			lossAssignmentID = id
-			break
-		}
+	lossAssignmentIDs := make([]string, 0, len(hits))
+	for _, hit := range hits {
+		lossAssignmentIDs = append(lossAssignmentIDs, hit.id)
 	}
+	sort.Strings(lossAssignmentIDs)
+	lossAssignmentID := lossAssignmentIDs[0]
 	rec.History = append(rec.History, DelegationHistoryEntry{
 		Kind: DelegationHistoryLossRecorded, At: now, Actor: challenge.PrincipalID, Reason: payload.Reason,
 		AssignmentID: lossAssignmentID, From: &named, ReceiptID: challenge.MessageID, ReceiptDig: challenge.Digest,
+		AssignmentIDs: lossAssignmentIDs, CanonicalRevision: state.Revision,
 	})
 	if acting := rec.CurrentActing(); acting.Equal(named) {
 		rec.ActingCoordinator = nil
@@ -327,6 +375,18 @@ func applyLossConfirm(state *CanonicalState, challenge ownercredential.Command, 
 	}
 	state.CoordinatorDelegations[payload.DelegationID] = rec
 	return nil
+}
+
+func sameStringSetInOrder(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func bytesEqualScope(a, b DelegationScope) bool {

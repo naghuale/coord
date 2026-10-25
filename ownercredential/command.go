@@ -98,8 +98,11 @@ type DelegationRevokePayload struct {
 type LossConfirmPayload struct {
 	DelegationID string                     `json:"delegationId"`
 	Coordinator  DelegationPrincipalPayload `json:"coordinator"`
-	Reason       string                     `json:"reason"`
-	ObservedAt   time.Time                  `json:"observedAt"`
+	// AssignmentIDs is the exact sorted set of open assignments the OWNER is
+	// authorizing this loss.confirm to affect. It is part of the signed payload.
+	AssignmentIDs []string  `json:"assignmentIds"`
+	Reason        string    `json:"reason"`
+	ObservedAt    time.Time `json:"observedAt"`
 	// Optional command claim. Compared to the named grant. Never copied onto
 	// an assignment. Empty means "no claim".
 	GrantID         string `json:"grantId,omitempty"`

@@ -797,6 +797,9 @@ func (s *CanonicalStore) commitCanonical(kind delegationCommitKind, fn func(*Can
 	if err := fn(&next); err != nil {
 		return err
 	}
+	if err := rejectGenericOwnerLossEvents(s.state.AssignmentLedger, next.AssignmentLedger); err != nil {
+		return err
+	}
 	if !reflect.DeepEqual(s.state.OwnerCredentials, next.OwnerCredentials) {
 		return ErrOwnerCommandRequired
 	}
@@ -816,6 +819,7 @@ func (s *CanonicalStore) commitCanonical(kind delegationCommitKind, fn func(*Can
 		return fmt.Errorf("canonical revision exhausted")
 	}
 	next.Revision = s.state.Revision + 1
+	stampNewDelegationHistory(s.state.CoordinatorDelegations, next.CoordinatorDelegations, next.Revision)
 	if err := ValidateCanonicalState(next); err != nil {
 		return err
 	}
@@ -940,6 +944,9 @@ func (s *CanonicalStore) applyInboxCommandLocked(actorID, messageID string, task
 	next.SchemaVersion = CanonicalSchemaVersion
 	receipt, err := apply(&next)
 	if err != nil {
+		return InboxReceipt{}, false, err
+	}
+	if err := rejectGenericOwnerLossEvents(s.state.AssignmentLedger, next.AssignmentLedger); err != nil {
 		return InboxReceipt{}, false, err
 	}
 	if !reflect.DeepEqual(s.state.OwnerCredentials, next.OwnerCredentials) {

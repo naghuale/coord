@@ -159,6 +159,9 @@ func (s *CanonicalStore) OfferAssignment(actor assignment.Principal, r assignmen
 		if state.AssignmentLedger == nil {
 			state.AssignmentLedger = assignment.Empty()
 		}
+		if !coordinatorDelegationActive() && r.DelegationBinding != nil {
+			return ErrCoordinatorDelegationDisabled
+		}
 		if _, exists := state.AssignmentLedger.Records[r.AssignmentID]; exists {
 			return fmt.Errorf("%w: assignmentId reuse", assignment.ErrInvalid)
 		}

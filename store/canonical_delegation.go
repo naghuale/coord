@@ -5,6 +5,7 @@ import (
 	ownercredential "coord/ownercredential"
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 	"time"
 )
@@ -160,6 +161,9 @@ func bindAssignmentScopeFromGrant(state CanonicalState, actor assignment.Princip
 	} else {
 		matches := actingGrantsFor(state, actor, now)
 		if len(matches) == 0 {
+			if grantMentionsStableCoordinator(state, actor.AgentID, now) {
+				return fmt.Errorf("%w: coordinator generation/session is not authorized by grant", ErrCoordinatorDelegationInvalid)
+			}
 			return nil
 		}
 		if len(matches) > 1 {
@@ -195,6 +199,26 @@ func bindAssignmentScopeFromGrant(state CanonicalState, actor assignment.Princip
 	}
 	record.DelegationBinding = want
 	return nil
+}
+
+func grantMentionsStableCoordinator(state CanonicalState, stableAgentID string, now time.Time) bool {
+	if stableAgentID == "" || state.CoordinatorDelegations == nil {
+		return false
+	}
+	for _, grant := range state.CoordinatorDelegations {
+		if !grant.Active(now) {
+			continue
+		}
+		if grant.PrimaryCoordinator.StableAgentID == stableAgentID || grant.CurrentActing().StableAgentID == stableAgentID {
+			return true
+		}
+		for _, successor := range grant.Successors {
+			if successor.StableAgentID == stableAgentID {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // validateAssignmentDelegationScope checks each persisted binding against the
@@ -280,15 +304,17 @@ func (v VisibilityConfirmation) Available(now time.Time) bool {
 
 // DelegationHistoryEntry is one same-commit lifecycle event on the grant.
 type DelegationHistoryEntry struct {
-	Kind         DelegationHistoryKind `json:"kind"`
-	At           time.Time             `json:"at"`
-	Actor        string                `json:"actor,omitempty"`
-	Reason       string                `json:"reason,omitempty"`
-	AssignmentID string                `json:"assignmentId,omitempty"`
-	From         *DelegationPrincipal  `json:"from,omitempty"`
-	To           *DelegationPrincipal  `json:"to,omitempty"`
-	ReceiptID    string                `json:"receiptId,omitempty"`
-	ReceiptDig   string                `json:"receiptDigest,omitempty"`
+	Kind              DelegationHistoryKind `json:"kind"`
+	At                time.Time             `json:"at"`
+	Actor             string                `json:"actor,omitempty"`
+	Reason            string                `json:"reason,omitempty"`
+	AssignmentID      string                `json:"assignmentId,omitempty"`
+	From              *DelegationPrincipal  `json:"from,omitempty"`
+	To                *DelegationPrincipal  `json:"to,omitempty"`
+	ReceiptID         string                `json:"receiptId,omitempty"`
+	ReceiptDig        string                `json:"receiptDigest,omitempty"`
+	CanonicalRevision uint64                `json:"canonicalRevision,omitempty"`
+	AssignmentIDs     []string              `json:"assignmentIds,omitempty"`
 }
 
 // DelegationRecord is the canonical grant aggregate (ADR §3). Not a Task or
@@ -416,12 +442,18 @@ func validateDelegations(state CanonicalState) error {
 	if state.SchemaVersion < 6 && len(state.CoordinatorDelegations) != 0 {
 		return fmt.Errorf("schema %d cannot contain CoordinatorDelegations", state.SchemaVersion)
 	}
+	if err := validateOwnerCredentialLossReceipts(state); err != nil {
+		return err
+	}
 	activeKeys := map[string]string{}
 	for id, d := range state.CoordinatorDelegations {
 		if id != d.DelegationID {
 			return fmt.Errorf("delegation map key %q does not match id %q", id, d.DelegationID)
 		}
 		if err := d.Validate(); err != nil {
+			return err
+		}
+		if err := validateDelegationDerivedState(state, d); err != nil {
 			return err
 		}
 		if d.RevokedAt.IsZero() {
@@ -431,14 +463,11 @@ func validateDelegations(state CanonicalState) error {
 			}
 			activeKeys[key] = id
 		}
-		if err := validateOwnerCredentialLossReceipts(state, d); err != nil {
-			return err
-		}
 	}
 	return nil
 }
 
-func validateOwnerCredentialLossReceipts(state CanonicalState, d DelegationRecord) error {
+func validateOwnerCredentialLossReceipts(state CanonicalState) error {
 	if state.AssignmentLedger == nil {
 		return nil
 	}
@@ -446,8 +475,10 @@ func validateOwnerCredentialLossReceipts(state CanonicalState, d DelegationRecor
 		if e.Kind != "COORDINATOR_LOST" || e.ActorSource != assignment.ActorSourceOwnerCredential {
 			continue
 		}
-		// OWNER_CREDENTIAL loss must reference a same-commit receipt.
-		if e.OwnerReceiptMessageID == "" || e.OwnerReceiptDigest == "" || e.OwnerPrincipalID == "" || e.OwnerCredentialID == "" {
+		d, grantExists := state.CoordinatorDelegations[e.OwnerDelegationID]
+		// OWNER_CREDENTIAL loss must reference the receipt and exact loss context
+		// from this canonical commit, not merely any matching durable receipt.
+		if !grantExists || e.OwnerReceiptMessageID == "" || e.OwnerReceiptDigest == "" || e.OwnerPrincipalID == "" || e.OwnerCredentialID == "" || e.OwnerCommitRevision == 0 || e.OwnerDelegationID != d.DelegationID || e.OwnerGrantGeneration != d.Generation {
 			return fmt.Errorf("%w: OWNER_CREDENTIAL loss missing receipt binding", ErrCoordinatorDelegationInvalid)
 		}
 		agg, ok := state.OwnerCredentials[e.OwnerPrincipalID]
@@ -455,8 +486,269 @@ func validateOwnerCredentialLossReceipts(state CanonicalState, d DelegationRecor
 			return fmt.Errorf("%w: OWNER_CREDENTIAL loss principal missing", ErrCoordinatorDelegationInvalid)
 		}
 		receipt, ok := agg.Receipts[e.OwnerReceiptMessageID]
-		if !ok || receipt.CommandDigest != e.OwnerReceiptDigest || receipt.CommandKind != ownercredential.CommandLossConfirm {
+		if !ok || receipt.CommandDigest != e.OwnerReceiptDigest || receipt.CommandKind != ownercredential.CommandLossConfirm || receipt.CredentialID != e.OwnerCredentialID || receipt.CanonicalRevision != e.OwnerCommitRevision || receipt.CanonicalRevision > state.Revision || receipt.OwnerLossBinding == nil {
 			return fmt.Errorf("%w: OWNER_CREDENTIAL loss receipt missing or mismatched", ErrCoordinatorDelegationInvalid)
+		}
+		binding := receipt.OwnerLossBinding
+		coord := e.Record.Coordinator()
+		if binding.DelegationID != d.DelegationID || binding.GrantGeneration != d.Generation || binding.StableAgentID != coord.AgentID || binding.SessionID != coord.SessionID || binding.Generation != coord.Generation || !e.Record.CoordinatorLost || e.Record.AssignmentID != e.AssignmentID || e.Record.DelegationBinding == nil || e.Record.DelegationBinding.GrantID != d.DelegationID || e.Record.DelegationBinding.GrantGeneration != d.Generation {
+			return fmt.Errorf("%w: OWNER_CREDENTIAL loss context differs from signed receipt", ErrCoordinatorDelegationInvalid)
+		}
+		if e.Actor.SessionID != "ownercredential:"+e.OwnerPrincipalID || e.Actor.AgentID != e.OwnerPrincipalID || e.Actor.Generation != 1 {
+			return fmt.Errorf("%w: OWNER_CREDENTIAL loss actor mismatch", ErrCoordinatorDelegationInvalid)
+		}
+		if !containsString(binding.AssignmentIDs, e.AssignmentID) {
+			return fmt.Errorf("%w: OWNER_CREDENTIAL receipt does not bind assignment", ErrCoordinatorDelegationInvalid)
+		}
+		var referenced []string
+		for _, candidate := range state.AssignmentLedger.Events {
+			if candidate.Kind == "COORDINATOR_LOST" && candidate.EffectiveActorSource() == assignment.ActorSourceOwnerCredential && candidate.OwnerReceiptMessageID == e.OwnerReceiptMessageID {
+				if candidate.OwnerCommitRevision != e.OwnerCommitRevision || candidate.OwnerPrincipalID != e.OwnerPrincipalID || candidate.OwnerCredentialID != e.OwnerCredentialID || candidate.OwnerReceiptDigest != e.OwnerReceiptDigest || candidate.OwnerDelegationID != d.DelegationID || candidate.OwnerGrantGeneration != d.Generation {
+					return fmt.Errorf("%w: OWNER_CREDENTIAL receipt reused across loss contexts", ErrCoordinatorDelegationInvalid)
+				}
+				referenced = append(referenced, candidate.AssignmentID)
+			}
+		}
+		sort.Strings(referenced)
+		if !reflect.DeepEqual(referenced, binding.AssignmentIDs) {
+			return fmt.Errorf("%w: OWNER_CREDENTIAL receipt assignment set mismatch", ErrCoordinatorDelegationInvalid)
+		}
+		matches := 0
+		for _, h := range d.History {
+			if h.Kind == DelegationHistoryLossRecorded && h.ReceiptID == e.OwnerReceiptMessageID {
+				matches++
+				if h.ReceiptDig != e.OwnerReceiptDigest || h.CanonicalRevision != e.OwnerCommitRevision || h.From == nil || h.From.StableAgentID != binding.StableAgentID || h.From.SessionID != binding.SessionID || h.From.Generation != binding.Generation || !reflect.DeepEqual(h.AssignmentIDs, binding.AssignmentIDs) {
+					return fmt.Errorf("%w: OWNER_CREDENTIAL loss history differs from receipt", ErrCoordinatorDelegationInvalid)
+				}
+			}
+		}
+		if matches != 1 {
+			return fmt.Errorf("%w: OWNER_CREDENTIAL loss must have one grant history entry", ErrCoordinatorDelegationInvalid)
+		}
+	}
+	return nil
+}
+
+func delegationOwnerReceipt(state CanonicalState, principalID, messageID, kind, digest, delegationID string, generation, revision uint64) (ownercredential.Receipt, error) {
+	agg, ok := state.OwnerCredentials[principalID]
+	if !ok {
+		return ownercredential.Receipt{}, fmt.Errorf("%w: delegation Owner principal missing", ErrCoordinatorDelegationInvalid)
+	}
+	receipt, ok := agg.Receipts[messageID]
+	if !ok || receipt.CommandKind != kind || receipt.CommandDigest != digest || receipt.DelegationID != delegationID || receipt.DelegationGeneration != generation || receipt.CanonicalRevision != revision {
+		return ownercredential.Receipt{}, fmt.Errorf("%w: delegation history receipt mismatch", ErrCoordinatorDelegationInvalid)
+	}
+	return receipt, nil
+}
+
+// validateDelegationDerivedState reconstructs grant control fields from its
+// append-only history and authenticated OwnerCredential receipts. Snapshot
+// fields are accepted only when they are the result of those recorded events.
+func validateDelegationDerivedState(state CanonicalState, d DelegationRecord) error {
+	if len(d.History) == 0 || d.History[0].Kind != DelegationHistoryGrant {
+		return fmt.Errorf("%w: delegation history must begin with GRANT", ErrCoordinatorDelegationInvalid)
+	}
+	grant := d.History[0]
+	if _, err := delegationOwnerReceipt(state, grant.Actor, grant.ReceiptID, ownercredential.CommandDelegationGrant, grant.ReceiptDig, d.DelegationID, d.Generation, grant.CanonicalRevision); err != nil {
+		return err
+	}
+	acting := d.PrimaryCoordinator
+	revokedAt := time.Time{}
+	revokedBy := ""
+	barred := make([]DelegationPrincipal, 0)
+	barredSet := map[DelegationPrincipal]bool{}
+	visibleHistory := map[string]DelegationHistoryEntry{}
+	consumedVisibility := map[string]string{}
+	var lastLoss *DelegationHistoryEntry
+	for i, h := range d.History {
+		if h.CanonicalRevision == 0 || h.CanonicalRevision > state.Revision {
+			return fmt.Errorf("%w: delegation history lacks canonical commit binding", ErrCoordinatorDelegationInvalid)
+		}
+		switch h.Kind {
+		case DelegationHistoryGrant:
+			if i != 0 {
+				return fmt.Errorf("%w: duplicate GRANT history", ErrCoordinatorDelegationInvalid)
+			}
+		case DelegationHistoryRevoke:
+			if i == 0 || !revokedAt.IsZero() {
+				return fmt.Errorf("%w: invalid REVOKE history", ErrCoordinatorDelegationInvalid)
+			}
+			if _, err := delegationOwnerReceipt(state, h.Actor, h.ReceiptID, ownercredential.CommandDelegationRevoke, h.ReceiptDig, d.DelegationID, d.Generation, h.CanonicalRevision); err != nil {
+				return err
+			}
+			revokedAt, revokedBy = h.At, h.Actor
+			acting = DelegationPrincipal{}
+		case DelegationHistoryVisibility:
+			if _, err := delegationOwnerReceipt(state, h.Actor, h.ReceiptID, ownercredential.CommandVisibilityConfirm, h.ReceiptDig, d.DelegationID, d.Generation, h.CanonicalRevision); err != nil {
+				return err
+			}
+			if _, exists := visibleHistory[h.ReceiptID]; exists {
+				return fmt.Errorf("%w: duplicate visibility history", ErrCoordinatorDelegationInvalid)
+			}
+			visibleHistory[h.ReceiptID] = h
+		case DelegationHistoryLossRecorded:
+			receipt, err := delegationOwnerReceipt(state, h.Actor, h.ReceiptID, ownercredential.CommandLossConfirm, h.ReceiptDig, d.DelegationID, d.Generation, h.CanonicalRevision)
+			if err != nil {
+				return err
+			}
+			if receipt.OwnerLossBinding == nil || h.From == nil || !sameLossPrincipal(*h.From, receipt.OwnerLossBinding) || !reflect.DeepEqual(h.AssignmentIDs, receipt.OwnerLossBinding.AssignmentIDs) || len(h.AssignmentIDs) == 0 || h.AssignmentID != h.AssignmentIDs[0] {
+				return fmt.Errorf("%w: LOSS_RECORDED does not derive from OwnerCredential receipt", ErrCoordinatorDelegationInvalid)
+			}
+			for _, id := range h.AssignmentIDs {
+				eventFound := false
+				for _, event := range state.AssignmentLedger.Events {
+					if event.AssignmentID == id && event.Kind == "COORDINATOR_LOST" && event.OwnerReceiptMessageID == h.ReceiptID && event.OwnerCommitRevision == h.CanonicalRevision {
+						eventFound = true
+						break
+					}
+				}
+				if !eventFound {
+					return fmt.Errorf("%w: loss history assignment event missing", ErrCoordinatorDelegationInvalid)
+				}
+			}
+			if !barredSet[*h.From] {
+				barredSet[*h.From] = true
+				barred = append(barred, *h.From)
+			}
+			if acting.Equal(*h.From) {
+				acting = DelegationPrincipal{}
+			}
+			copy := h
+			lastLoss = &copy
+		case DelegationHistoryHandoff:
+			if h.From == nil || h.To == nil || !d.hasSuccessor(*h.To) || h.AssignmentID == "" || h.ReceiptDig == "" {
+				return fmt.Errorf("%w: incomplete HANDOFF history", ErrCoordinatorDelegationInvalid)
+			}
+			if !acting.Valid() {
+				if lastLoss == nil || lastLoss.From == nil || !lastLoss.From.Equal(*h.From) {
+					return fmt.Errorf("%w: HANDOFF lacks a corresponding loss", ErrCoordinatorDelegationInvalid)
+				}
+			} else if !acting.Equal(*h.From) {
+				return fmt.Errorf("%w: HANDOFF source differs from derived coordinator", ErrCoordinatorDelegationInvalid)
+			}
+			if err := validateVisibilityConsumption(d, h.ReceiptDig, h.AssignmentID, *h.To, h.At, consumedVisibility); err != nil {
+				return err
+			}
+			acting = *h.To
+			lastLoss = nil
+		case DelegationHistoryPrimaryRestart:
+			if h.From == nil || h.To == nil || lastLoss == nil || h.ReceiptID == "" || h.ReceiptDig == "" || h.ReceiptID != lastLoss.ReceiptID || !h.From.Equal(*lastLoss.From) || h.To.StableAgentID != d.PrimaryCoordinator.StableAgentID || h.To.Generation <= h.From.Generation {
+				return fmt.Errorf("%w: invalid PRIMARY_RESTART history", ErrCoordinatorDelegationInvalid)
+			}
+			if err := validateVisibilityConsumption(d, h.ReceiptDig, h.Reason, *h.To, h.At, consumedVisibility); err != nil {
+				return err
+			}
+			acting = *h.To
+			lastLoss = nil
+		case DelegationHistorySuccessorSkipped:
+			if h.Reason == "" || h.To == nil || !d.hasSuccessor(*h.To) {
+				return fmt.Errorf("%w: invalid SUCCESSOR_SKIPPED history", ErrCoordinatorDelegationInvalid)
+			}
+		default:
+			return fmt.Errorf("%w: unknown delegation history event", ErrCoordinatorDelegationInvalid)
+		}
+	}
+	if !revokedAt.Equal(d.RevokedAt) || revokedBy != d.RevokedBy {
+		return fmt.Errorf("%w: revocation snapshot differs from history", ErrCoordinatorDelegationInvalid)
+	}
+	if (d.ActingCoordinator == nil) != !acting.Valid() || d.ActingCoordinator != nil && !d.ActingCoordinator.Equal(acting) {
+		return fmt.Errorf("%w: acting coordinator differs from history", ErrCoordinatorDelegationInvalid)
+	}
+	if len(d.BarredCoordinators) != len(barred) {
+		return fmt.Errorf("%w: barred coordinators differ from loss history", ErrCoordinatorDelegationInvalid)
+	}
+	for i := range barred {
+		if !d.BarredCoordinators[i].Equal(barred[i]) {
+			return fmt.Errorf("%w: barred coordinators differ from loss history", ErrCoordinatorDelegationInvalid)
+		}
+	}
+	if len(visibleHistory) != len(d.VisibilityReceipts) {
+		return fmt.Errorf("%w: visibility receipts differ from Owner history", ErrCoordinatorDelegationInvalid)
+	}
+	for _, visibility := range d.VisibilityReceipts {
+		h, ok := visibleHistory[visibility.MessageID]
+		if !ok || h.ReceiptDig != visibility.Digest || visibility.DelegationID != d.DelegationID {
+			return fmt.Errorf("%w: visibility receipt missing matching history", ErrCoordinatorDelegationInvalid)
+		}
+		wantConsumedBy, consumed := consumedVisibility[visibility.MessageID]
+		if visibility.ConsumedAt.IsZero() != !consumed || consumed && (visibility.ConsumedBy != wantConsumedBy || visibility.ConsumedAt.IsZero()) {
+			return fmt.Errorf("%w: visibility consumption differs from history", ErrCoordinatorDelegationInvalid)
+		}
+	}
+	return nil
+}
+
+func sameLossPrincipal(p DelegationPrincipal, b *ownercredential.OwnerLossBinding) bool {
+	return b != nil && p.StableAgentID == b.StableAgentID && p.SessionID == b.SessionID && p.Generation == b.Generation
+}
+
+func validateVisibilityConsumption(d DelegationRecord, messageID, consumedBy string, successor DelegationPrincipal, at time.Time, consumed map[string]string) error {
+	if _, duplicate := consumed[messageID]; duplicate {
+		return fmt.Errorf("%w: visibility receipt consumed more than once", ErrCoordinatorDelegationInvalid)
+	}
+	for _, v := range d.VisibilityReceipts {
+		if v.MessageID != messageID {
+			continue
+		}
+		if v.ConsumedAt.IsZero() || v.ConsumedBy != consumedBy || !v.ConsumedAt.Equal(at) {
+			return fmt.Errorf("%w: visibility receipt consumption mismatch", ErrCoordinatorDelegationInvalid)
+		}
+		if v.Successor.Valid() && !v.Successor.Equal(successor) {
+			return fmt.Errorf("%w: visibility successor differs from history", ErrCoordinatorDelegationInvalid)
+		}
+		if v.StableAgentID != "" && v.StableAgentID != successor.StableAgentID {
+			return fmt.Errorf("%w: visibility primary differs from history", ErrCoordinatorDelegationInvalid)
+		}
+		consumed[messageID] = consumedBy
+		return nil
+	}
+	return fmt.Errorf("%w: transition references unknown visibility receipt", ErrCoordinatorDelegationInvalid)
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
+func stampNewDelegationHistory(previous, next map[string]DelegationRecord, revision uint64) {
+	for id, after := range next {
+		start := 0
+		if before, ok := previous[id]; ok {
+			start = len(before.History)
+		}
+		for i := start; i < len(after.History); i++ {
+			after.History[i].CanonicalRevision = revision
+		}
+		next[id] = after
+	}
+}
+
+// rejectGenericOwnerLossEvents reserves OWNER_CREDENTIAL loss creation for the
+// authenticated owner-delegation commit. A prior receipt is never authority to
+// append another loss through a generic callback.
+func rejectGenericOwnerLossEvents(previous, next *assignment.Ledger) error {
+	if next == nil {
+		return nil
+	}
+	start := 0
+	if previous != nil {
+		if len(next.Events) < len(previous.Events) {
+			return fmt.Errorf("%w: assignment history cannot shrink", ErrCoordinatorDelegationInvalid)
+		}
+		for i := range previous.Events {
+			if !reflect.DeepEqual(previous.Events[i], next.Events[i]) {
+				return fmt.Errorf("%w: assignment history is append-only", ErrCoordinatorDelegationInvalid)
+			}
+		}
+		start = len(previous.Events)
+	}
+	for _, event := range next.Events[start:] {
+		if event.Kind == "COORDINATOR_LOST" && event.EffectiveActorSource() == assignment.ActorSourceOwnerCredential {
+			return fmt.Errorf("%w: OWNER_CREDENTIAL loss requires authenticated owner command", ErrOwnerCommandRequired)
 		}
 	}
 	return nil
@@ -497,7 +789,12 @@ func ownerCredentialLossAllowsHandoffWithoutObserver(state CanonicalState, assig
 		return false
 	}
 	receipt, ok := agg.Receipts[lost.OwnerReceiptMessageID]
-	if !ok || receipt.CommandDigest != lost.OwnerReceiptDigest || receipt.CommandKind != ownercredential.CommandLossConfirm {
+	if !ok || receipt.CommandDigest != lost.OwnerReceiptDigest || receipt.CommandKind != ownercredential.CommandLossConfirm || receipt.CanonicalRevision != lost.OwnerCommitRevision || receipt.OwnerLossBinding == nil || lost.OwnerDelegationID == "" || lost.Record.DelegationBinding == nil || lost.Record.DelegationBinding.GrantID != lost.OwnerDelegationID {
+		return false
+	}
+	b := receipt.OwnerLossBinding
+	grant, exists := state.CoordinatorDelegations[lost.OwnerDelegationID]
+	if !exists || b.DelegationID != grant.DelegationID || b.GrantGeneration != grant.Generation || b.StableAgentID != lost.Record.CoordinatorAgentID || b.SessionID != lost.Record.CurrentCoordinator || b.Generation != lost.Record.CoordinatorGeneration || !containsString(b.AssignmentIDs, assignmentID) {
 		return false
 	}
 	return true
@@ -956,7 +1253,7 @@ func enforceDelegatedMutation(state CanonicalState, actor assignment.Principal, 
 		}
 	}
 	if record.DelegationBinding == nil {
-		if _, covered := findAnyGrantCoveringCoordinator(state, record.Coordinator()); covered {
+		if _, covered := findAnyGrantCoveringCoordinator(state, record.Coordinator()); covered || grantMentionsStableCoordinator(state, record.CoordinatorAgentID, now) {
 			return fmt.Errorf("%w: persisted assignment grant binding required", ErrCoordinatorDelegationInvalid)
 		}
 		return nil
@@ -1107,7 +1404,7 @@ func enforceDelegatedHandoff(state *CanonicalState, previous, next assignment.Pr
 	from := principalFromAssignment(previous)
 	grant.History = append(grant.History, DelegationHistoryEntry{
 		Kind: DelegationHistoryHandoff, At: now, AssignmentID: id,
-		From: &from, To: &acting,
+		From: &from, To: &acting, ReceiptDig: vis.MessageID,
 	})
 	state.CoordinatorDelegations[grant.DelegationID] = grant
 	return nil

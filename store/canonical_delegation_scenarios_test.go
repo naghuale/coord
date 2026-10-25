@@ -5,8 +5,12 @@ import (
 	"coord/assignment"
 	"coord/ownercredential"
 	"crypto/ed25519"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -106,18 +110,59 @@ func TestDelegationRejectsMismatchedGenerationNoInheritance(t *testing.T) {
 	now := f.s.now().UTC()
 	grantDelegation(t, f, "del-gen", now)
 	seedDelegatedAssignment(t, f, "asg-gen", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now)
+	offerDelegatedCopy(t, f, "asg-gen-valid-control", "asg-gen", now)
 	// Rotate session to generation 2 — new gen does not inherit.
 	if err := f.s.RotateAgentSessionKey("claude:a", ed25519.PublicKey(strings.Repeat("z", 32))); err != nil {
 		t.Fatal(err)
 	}
 	newActor := assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 2}
+	newOffer := f.s.state.AssignmentLedger.Records["asg-gen"]
+	newOffer.AssignmentID = "asg-gen-stale-generation"
+	newOffer.State = assignment.Offered
+	newOffer.Revision = 1
+	newOffer.AcknowledgedAt = time.Time{}
+	newOffer.WorkStartedAt = time.Time{}
+	newOffer.AcceptedResult = nil
+	newOffer.CoordinatorLost = false
+	newOffer.Issuer, newOffer.IssuerAgentID, newOffer.IssuerGeneration = newActor.SessionID, newActor.AgentID, newActor.Generation
+	newOffer.CurrentCoordinator, newOffer.CoordinatorAgentID, newOffer.CoordinatorGeneration = newActor.SessionID, newActor.AgentID, newActor.Generation
+	newOffer.DelegationBinding = nil
+	newOffer.AdmissionBasis.Reference = "issue-93b"
+	newOffer.UpdatedAt = now.Add(-time.Minute)
 	before := ownerStateBytes(t, f.s)
-	r := f.s.state.AssignmentLedger.Records["asg-gen"]
-	if err := f.s.ChangeAssignment(newActor, "asg-gen", r.Revision, "VOID", "gen-inherit"); err == nil {
-		t.Fatal("mismatched generation acted")
+	if err := f.s.OfferAssignment(newActor, newOffer, "gen-inherit"); !errors.Is(err, ErrCoordinatorDelegationInvalid) {
+		t.Fatalf("stale generation offer err=%v", err)
 	}
 	if !bytes.Equal(before, ownerStateBytes(t, f.s)) {
 		t.Fatal("state changed")
+	}
+}
+
+func TestRecoveryA93B3_DelegatedMutationRequiresExactActingPrincipal(t *testing.T) {
+	enableDelegationHarness(t)
+	f := newOwnerCommandFixture(t)
+	now := f.s.now().UTC()
+	grantDelegation(t, f, "del-exact-acting", now)
+	seedDelegatedAssignment(t, f, "asg-exact-acting", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now)
+	offerDelegatedCopy(t, f, "asg-exact-acting-offered", "asg-exact-acting", now)
+	record := f.s.state.AssignmentLedger.Records["asg-exact-acting-offered"]
+	valid := assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}
+	if err := enforceDelegatedMutation(f.s.state, valid, DelegatedActionVoid, record, now); err != nil {
+		t.Fatalf("exact acting principal positive control: %v", err)
+	}
+	for _, tc := range []struct {
+		name  string
+		actor assignment.Principal
+	}{
+		{"session_mismatch", assignment.Principal{SessionID: "other:session", AgentID: "agent-a", Generation: 1}},
+		{"stable_agent_mismatch", assignment.Principal{SessionID: "claude:a", AgentID: "other-agent", Generation: 1}},
+		{"generation_mismatch", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 2}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := enforceDelegatedMutation(f.s.state, tc.actor, DelegatedActionVoid, record, now); !errors.Is(err, ErrCoordinatorDelegationInvalid) {
+				t.Fatalf("non-acting principal err=%v, want exact-acting rejection", err)
+			}
+		})
 	}
 }
 
@@ -176,6 +221,17 @@ func TestDelegationRevokeBlocksPrimaryAndSuccessorsNextCommand(t *testing.T) {
 	now := f.s.now().UTC()
 	grantDelegation(t, f, "del-rev", now)
 	seedDelegatedAssignment(t, f, "asg-rev", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now)
+	offerDelegatedCopy(t, f, "asg-rev-positive", "asg-rev", now)
+	offerDelegatedCopy(t, f, "asg-rev-offered", "asg-rev", now)
+	actor := assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}
+	positive := f.s.state.AssignmentLedger.Records["asg-rev-positive"]
+	if err := f.s.ChangeAssignment(actor, positive.AssignmentID, positive.Revision, "VOID", "allowed-before-revoke"); err != nil {
+		t.Fatalf("unrevoked legal VOID: %v", err)
+	}
+	offered := f.s.state.AssignmentLedger.Records["asg-rev-offered"]
+	if err := enforceDelegatedMutation(f.s.state, actor, "VOID", offered, now); err != nil {
+		t.Fatalf("unrevoked VOID positive control: %v", err)
+	}
 	revokePayload, _ := json.Marshal(ownercredential.DelegationRevokePayload{DelegationID: "del-rev", Reason: "done"})
 	rev := f.s.state.OwnerCredentials["owner-1"].CredentialRevision
 	cmd := f.command(ownercredential.CommandDelegationRevoke, "revoke-rev", "owner-primary", rev, revokePayload)
@@ -183,10 +239,18 @@ func TestDelegationRevokeBlocksPrimaryAndSuccessorsNextCommand(t *testing.T) {
 	if _, _, err := f.s.ApplyOwnerCredentialCommand(cmd.ChallengeID, cmd, assertionFor(cmd, f.private["owner-primary"], sign)); err != nil {
 		t.Fatal(err)
 	}
-	actor := assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}
-	r := f.s.state.AssignmentLedger.Records["asg-rev"]
-	if err := f.s.ChangeAssignment(actor, "asg-rev", r.Revision, "VOID", "post-revoke"); err == nil {
-		t.Fatal("primary acted after revoke")
+	r := f.s.state.AssignmentLedger.Records["asg-rev-offered"]
+	before := ownerStateBytes(t, f.s)
+	if err := f.s.ChangeAssignment(actor, "asg-rev-offered", r.Revision, "VOID", "post-revoke"); !errors.Is(err, ErrCoordinatorDelegationExhausted) {
+		t.Fatalf("revoked primary action err=%v", err)
+	}
+	if !bytes.Equal(before, ownerStateBytes(t, f.s)) {
+		t.Fatal("revoked action changed state")
+	}
+	for _, candidate := range f.s.state.CoordinatorDelegations["del-rev"].Successors {
+		if err := enforceDelegatedMutation(f.s.state, assignment.Principal{SessionID: candidate.SessionID, AgentID: candidate.StableAgentID, Generation: candidate.Generation}, "VOID", r, now); !errors.Is(err, ErrCoordinatorDelegationExhausted) {
+			t.Fatalf("revoked successor action err=%v", err)
+		}
 	}
 }
 
@@ -344,6 +408,96 @@ func TestDelegationSkipsSuccessorWithoutVisibilityThenExhausts(t *testing.T) {
 	}
 }
 
+func TestRecoveryA93B3_HandoffSkipsBarredSuccessorInListOrder(t *testing.T) {
+	enableDelegationHarness(t)
+	f := newOwnerCommandFixture(t)
+	now := f.s.now().UTC()
+	grantDelegationWith(t, f, "del-skip-barred", now, delegationOpts{successors: []ownercredential.DelegationPrincipalPayload{
+		{StableAgentID: "agent-b", SessionID: "codex:b", Generation: 1},
+		{StableAgentID: "agent-c", SessionID: "gemini:c", Generation: 1},
+	}})
+	seedDelegatedAssignment(t, f, "asg-skip-barred", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now)
+	registerSession(t, f, "codex:b", "agent-b")
+	registerSession(t, f, "gemini:c", "agent-c")
+	confirmVisibility(t, f, "del-skip-barred", "vis-skip-barred-b", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-b", SessionID: "codex:b", Generation: 1}, now)
+	confirmVisibility(t, f, "del-skip-barred", "vis-skip-barred-c", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-c", SessionID: "gemini:c", Generation: 1}, now)
+	coordA := ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1}
+	lossConfirm(t, f, "del-skip-barred", "loss-skip-barred-a", coordA, now)
+	prevA := assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}
+	coordB := assignment.Principal{SessionID: "codex:b", AgentID: "agent-b", Generation: 1}
+	if err := f.s.HandoffAssignment(prevA, coordB, "asg-skip-barred", f.s.state.AssignmentLedger.Records["asg-skip-barred"].Revision, "handoff-a-b"); err != nil {
+		t.Fatalf("first successor handoff: %v", err)
+	}
+	lossConfirm(t, f, "del-skip-barred", "loss-skip-barred-b", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-b", SessionID: "codex:b", Generation: 1}, now)
+	confirmVisibility(t, f, "del-skip-barred", "vis-skip-barred-b-again", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-b", SessionID: "codex:b", Generation: 1}, now)
+	coordC := assignment.Principal{SessionID: "gemini:c", AgentID: "agent-c", Generation: 1}
+	if err := f.s.HandoffAssignment(coordB, coordC, "asg-skip-barred", f.s.state.AssignmentLedger.Records["asg-skip-barred"].Revision, "handoff-b-c"); err != nil {
+		t.Fatalf("barred first successor was not skipped: %v", err)
+	}
+	if got := f.s.state.AssignmentLedger.Records["asg-skip-barred"].Coordinator(); got != coordC {
+		t.Fatalf("handoff selected %v, want %v", got, coordC)
+	}
+}
+
+func TestRecoveryA93B3_HandoffSkipsInactiveSuccessor(t *testing.T) {
+	enableDelegationHarness(t)
+	f := newOwnerCommandFixture(t)
+	now := f.s.now().UTC()
+	grantDelegationWith(t, f, "del-skip-inactive", now, delegationOpts{successors: []ownercredential.DelegationPrincipalPayload{
+		{StableAgentID: "agent-b", SessionID: "codex:b", Generation: 1},
+		{StableAgentID: "agent-c", SessionID: "gemini:c", Generation: 1},
+	}})
+	seedDelegatedAssignment(t, f, "asg-skip-inactive", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now)
+	registerSession(t, f, "codex:b", "agent-b")
+	registerSession(t, f, "gemini:c", "agent-c")
+	if err := f.s.ReplaceAgentSessionAddress("codex:b", "codex:b2", ed25519.PublicKey(strings.Repeat("k", 32)), "successor session retired"); err != nil {
+		t.Fatal(err)
+	}
+	confirmVisibility(t, f, "del-skip-inactive", "vis-skip-inactive-b", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-b", SessionID: "codex:b", Generation: 1}, now)
+	confirmVisibility(t, f, "del-skip-inactive", "vis-skip-inactive-c", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-c", SessionID: "gemini:c", Generation: 1}, now)
+	lossConfirm(t, f, "del-skip-inactive", "loss-skip-inactive", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1}, now)
+	prev := assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}
+	want := assignment.Principal{SessionID: "gemini:c", AgentID: "agent-c", Generation: 1}
+	if err := f.s.HandoffAssignment(prev, want, "asg-skip-inactive", f.s.state.AssignmentLedger.Records["asg-skip-inactive"].Revision, "skip-retired-successor"); err != nil {
+		t.Fatalf("inactive first successor was not skipped: %v", err)
+	}
+	if got := f.s.state.AssignmentLedger.Records["asg-skip-inactive"].Coordinator(); got != want {
+		t.Fatalf("handoff selected %v, want %v", got, want)
+	}
+}
+
+func TestRecoveryA93B3_HandoffRejectsExpiredVisibilityAfterExhaustion(t *testing.T) {
+	enableDelegationHarness(t)
+	f := newOwnerCommandFixture(t)
+	now := f.s.now().UTC()
+	grantDelegation(t, f, "del-expired-vis", now)
+	seedDelegatedAssignment(t, f, "asg-expired-vis", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now)
+	registerSession(t, f, "codex:b", "agent-b")
+	payload, err := json.Marshal(ownercredential.VisibilityConfirmPayload{
+		DelegationID: "del-expired-vis", Successor: &ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-b", SessionID: "codex:b", Generation: 1},
+		IssuedAt: now, ExpiresAt: now.Add(time.Minute), SingleUse: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := f.command(ownercredential.CommandVisibilityConfirm, "vis-expired", "owner-primary", f.s.state.OwnerCredentials["owner-1"].CredentialRevision, payload)
+	sign := f.s.state.OwnerCredentials["owner-1"].Credentials["owner-primary"].SignCount + 1
+	if _, _, err := f.s.ApplyOwnerCredentialCommand(cmd.ChallengeID, cmd, assertionFor(cmd, f.private["owner-primary"], sign)); err != nil {
+		t.Fatal(err)
+	}
+	lossConfirm(t, f, "del-expired-vis", "loss-expired-vis", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1}, now)
+	f.s.now = func() time.Time { return now.Add(2 * time.Minute) }
+	prev := assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}
+	want := assignment.Principal{SessionID: "codex:b", AgentID: "agent-b", Generation: 1}
+	before := ownerStateBytes(t, f.s)
+	if err := f.s.HandoffAssignment(prev, want, "asg-expired-vis", f.s.state.AssignmentLedger.Records["asg-expired-vis"].Revision, "expired-visibility"); !errors.Is(err, ErrCoordinatorDelegationExhausted) && !errors.Is(err, ErrCoordinatorDelegationInvalid) {
+		t.Fatalf("expired visibility handoff err=%v", err)
+	}
+	if !bytes.Equal(before, ownerStateBytes(t, f.s)) {
+		t.Fatal("expired visibility was consumed or state changed")
+	}
+}
+
 func TestDelegationCoordinatorCannotPassOverFailOrUnknownOrSelfAccept(t *testing.T) {
 	enableDelegationHarness(t)
 	f := newOwnerCommandFixture(t)
@@ -398,11 +552,22 @@ func TestDelegationRejectsActionOutsideAllowedActions(t *testing.T) {
 	f := newOwnerCommandFixture(t)
 	now := f.s.now().UTC()
 	grantDelegationWith(t, f, "del-al", now, delegationOpts{actions: []string{"OFFER"}})
-	seedDelegatedAssignment(t, f, "asg-al", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now)
 	actor := assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}
+	seedDelegatedAssignment(t, f, "asg-al-seed", actor, now)
+	offerDelegatedCopy(t, f, "asg-al", "asg-al-seed", now)
 	r := f.s.state.AssignmentLedger.Records["asg-al"]
+	if r.State != assignment.Offered {
+		t.Fatalf("control state=%s", r.State)
+	}
+	before := ownerStateBytes(t, f.s)
 	if err := f.s.ChangeAssignment(actor, "asg-al", r.Revision, "VOID", "not-allowed"); !errors.Is(err, ErrCoordinatorDelegationInvalid) {
-		t.Fatalf("err=%v", err)
+		t.Fatalf("illegal action err=%v", err)
+	}
+	if !bytes.Equal(before, ownerStateBytes(t, f.s)) {
+		t.Fatal("disallowed action changed state")
+	}
+	if err := enforceDelegatedMutation(f.s.state, actor, "OFFER", r, now); err != nil {
+		t.Fatalf("positive allowed-action control: %v", err)
 	}
 }
 
@@ -451,10 +616,216 @@ func TestPrimaryRestartRejectsWhilePredecessorStillActing(t *testing.T) {
 	f := newOwnerCommandFixture(t)
 	now := f.s.now().UTC()
 	grantDelegation(t, f, "del-pr3", now)
+	seedDelegatedAssignment(t, f, "asg-pr3", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now)
+	registerSession(t, f, "codex:b", "agent-b")
+	confirmVisibility(t, f, "del-pr3", "vis-pr3-b", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-b", SessionID: "codex:b", Generation: 1}, now)
+	lossConfirm(t, f, "del-pr3", "loss-pr3-a", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1}, now)
+	prev := assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}
+	if err := f.s.HandoffAssignment(prev, assignment.Principal{SessionID: "codex:b", AgentID: "agent-b", Generation: 1}, "asg-pr3", f.s.state.AssignmentLedger.Records["asg-pr3"].Revision, "handoff-pr3"); err != nil {
+		t.Fatalf("valid successor handoff setup: %v", err)
+	}
 	registerSession(t, f, "claude:a2", "agent-a")
-	confirmPrimaryRestartVisibility(t, f, "del-pr3", "vis-pr3", "agent-a", now)
-	if err := f.s.ApplyPrimaryRestart("del-pr3", assignment.Principal{SessionID: "claude:a2", AgentID: "agent-a", Generation: 1}, "dual"); !errors.Is(err, ErrCoordinatorDelegationInvalid) {
-		t.Fatalf("err=%v", err)
+	bumpSessionGeneration(t, f, "claude:a2", 2)
+	confirmPrimaryRestartVisibility(t, f, "del-pr3", "vis-pr3-restart", "agent-a", now)
+	before := ownerStateBytes(t, f.s)
+	if err := f.s.ApplyPrimaryRestart("del-pr3", assignment.Principal{SessionID: "claude:a2", AgentID: "agent-a", Generation: 2}, "dual"); !errors.Is(err, ErrCoordinatorDelegationInvalid) {
+		t.Fatalf("restart while successor acts err=%v", err)
+	}
+	if !bytes.Equal(before, ownerStateBytes(t, f.s)) {
+		t.Fatal("blocked primary restart changed state")
+	}
+	// After the acting successor is separately lost, the same fresh primary
+	// session and still-unconsumed visibility confirmation are a positive control.
+	lossConfirm(t, f, "del-pr3", "loss-pr3-b", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-b", SessionID: "codex:b", Generation: 1}, now)
+	if err := f.s.ApplyPrimaryRestart("del-pr3", assignment.Principal{SessionID: "claude:a2", AgentID: "agent-a", Generation: 2}, "after-successor-loss"); err != nil {
+		t.Fatalf("primary restart after successor loss positive control: %v", err)
+	}
+}
+
+func TestRecoveryA93B3_PrimaryRestartRejectsWhileSuccessorStillActing(t *testing.T) {
+	enableDelegationHarness(t)
+	f := newOwnerCommandFixture(t)
+	now := f.s.now().UTC()
+	grantDelegation(t, f, "del-restart-successor-active", now)
+	seedDelegatedAssignment(t, f, "asg-restart-successor-active", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now)
+	lossConfirm(t, f, "del-restart-successor-active", "loss-restart-successor-active", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1}, now)
+	registerSession(t, f, "claude:a2", "agent-a")
+	bumpSessionGeneration(t, f, "claude:a2", 2)
+	confirmPrimaryRestartVisibility(t, f, "del-restart-successor-active", "vis-restart-successor-active", "agent-a", now)
+
+	// Model a corrupted in-memory state where a listed successor is still
+	// acting despite a pending loss. A primary restart must reject before it can
+	// replace that coordinator; the normal successful path is the positive
+	// control after restoring the loss-derived state.
+	rec := f.s.state.CoordinatorDelegations["del-restart-successor-active"]
+	actingSuccessor := DelegationPrincipal{StableAgentID: "agent-b", SessionID: "codex:b", Generation: 1}
+	rec.ActingCoordinator = &actingSuccessor
+	f.s.state.CoordinatorDelegations["del-restart-successor-active"] = rec
+	before := ownerStateBytes(t, f.s)
+	saves := f.p.saveCalls
+	err := f.s.ApplyPrimaryRestart("del-restart-successor-active", assignment.Principal{SessionID: "claude:a2", AgentID: "agent-a", Generation: 2}, "restart-while-successor-acts")
+	if !errors.Is(err, ErrCoordinatorDelegationInvalid) {
+		t.Fatalf("restart while a successor remains acting err=%v", err)
+	}
+	if f.p.saveCalls != saves || !bytes.Equal(before, ownerStateBytes(t, f.s)) {
+		t.Fatal("blocked restart while successor acting changed canonical state")
+	}
+
+	rec = f.s.state.CoordinatorDelegations["del-restart-successor-active"]
+	rec.ActingCoordinator = nil
+	f.s.state.CoordinatorDelegations["del-restart-successor-active"] = rec
+	if err := f.s.ApplyPrimaryRestart("del-restart-successor-active", assignment.Principal{SessionID: "claude:a2", AgentID: "agent-a", Generation: 2}, "restart-after-successor-stopped"); err != nil {
+		t.Fatalf("primary restart after restoring loss-derived state: %v", err)
+	}
+}
+
+func TestRecoveryA93B3_PrimaryRestartRequiresRegisteredFreshSession(t *testing.T) {
+	enableDelegationHarness(t)
+	f := newOwnerCommandFixture(t)
+	now := f.s.now().UTC()
+	grantDelegation(t, f, "del-unregistered-restart", now)
+	seedDelegatedAssignment(t, f, "asg-unregistered-restart", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now)
+	lossConfirm(t, f, "del-unregistered-restart", "loss-unregistered-restart", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1}, now)
+	confirmPrimaryRestartVisibility(t, f, "del-unregistered-restart", "vis-unregistered-restart", "agent-a", now)
+	newSession := assignment.Principal{SessionID: "claude:never-registered", AgentID: "agent-a", Generation: 2}
+	before := ownerStateBytes(t, f.s)
+	if err := f.s.ApplyPrimaryRestart("del-unregistered-restart", newSession, "unregistered"); !errors.Is(err, ErrCoordinatorDelegationInvalid) {
+		t.Fatalf("unregistered restart err=%v", err)
+	}
+	if !bytes.Equal(before, ownerStateBytes(t, f.s)) {
+		t.Fatal("unregistered restart changed state")
+	}
+	registerSession(t, f, newSession.SessionID, newSession.AgentID)
+	bumpSessionGeneration(t, f, newSession.SessionID, newSession.Generation)
+	if err := f.s.ApplyPrimaryRestart("del-unregistered-restart", newSession, "registered-positive-control"); err != nil {
+		t.Fatalf("registered fresh session positive control: %v", err)
+	}
+}
+
+func TestRecoveryA93B3_PrimaryRestartGenerationMustAdvanceAcrossLosses(t *testing.T) {
+	enableDelegationHarness(t)
+	f := newOwnerCommandFixture(t)
+	now := f.s.now().UTC()
+	grantDelegation(t, f, "del-generation-history", now)
+	seedDelegatedAssignment(t, f, "asg-generation-first", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now)
+	lossConfirm(t, f, "del-generation-history", "loss-generation-first", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1}, now)
+	registerSession(t, f, "claude:a2", "agent-a")
+	bumpSessionGeneration(t, f, "claude:a2", 2)
+	confirmPrimaryRestartVisibility(t, f, "del-generation-history", "vis-generation-first", "agent-a", now)
+	if err := f.s.ApplyPrimaryRestart("del-generation-history", assignment.Principal{SessionID: "claude:a2", AgentID: "agent-a", Generation: 2}, "restart-generation-2"); err != nil {
+		t.Fatalf("first restart positive control: %v", err)
+	}
+	seedDelegatedAssignment(t, f, "asg-generation-second", assignment.Principal{SessionID: "claude:a2", AgentID: "agent-a", Generation: 2}, now)
+	lossConfirm(t, f, "del-generation-history", "loss-generation-second", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a2", Generation: 2}, now)
+	registerSession(t, f, "claude:a3", "agent-a")
+	bumpSessionGeneration(t, f, "claude:a3", 2)
+	confirmPrimaryRestartVisibility(t, f, "del-generation-history", "vis-generation-stale", "agent-a", now)
+	stale := assignment.Principal{SessionID: "claude:a3", AgentID: "agent-a", Generation: 2}
+	before := ownerStateBytes(t, f.s)
+	if err := f.s.ApplyPrimaryRestart("del-generation-history", stale, "restart-stale-generation"); !errors.Is(err, ErrCoordinatorDelegationInvalid) {
+		t.Fatalf("generation 2 reused after prior generation 2 err=%v", err)
+	}
+	if !bytes.Equal(before, ownerStateBytes(t, f.s)) {
+		t.Fatal("stale generation restart changed state")
+	}
+	if err := f.s.RotateAgentSessionKey("claude:a3", ed25519.PublicKey(strings.Repeat("r", 32))); err != nil {
+		t.Fatal(err)
+	}
+	fresh := assignment.Principal{SessionID: "claude:a3", AgentID: "agent-a", Generation: 3}
+	if err := f.s.ApplyPrimaryRestart("del-generation-history", fresh, "restart-generation-3"); err != nil {
+		t.Fatalf("generation 3 positive control: %v", err)
+	}
+}
+
+func TestRecoveryA93B3_PrimaryRestartGenerationMustExceedPriorPrimaryAfterSuccessorLoss(t *testing.T) {
+	enableDelegationHarness(t)
+	f := newOwnerCommandFixture(t)
+	now := f.s.now().UTC()
+	grantDelegation(t, f, "del-primary-generation-high-water", now)
+	seedDelegatedAssignment(t, f, "asg-primary-first-loss", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now)
+	lossConfirm(t, f, "del-primary-generation-high-water", "loss-primary-first", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1}, now)
+	registerSession(t, f, "claude:a2", "agent-a")
+	bumpSessionGeneration(t, f, "claude:a2", 2)
+	confirmPrimaryRestartVisibility(t, f, "del-primary-generation-high-water", "vis-primary-first", "agent-a", now)
+	if err := f.s.ApplyPrimaryRestart("del-primary-generation-high-water", assignment.Principal{SessionID: "claude:a2", AgentID: "agent-a", Generation: 2}, "primary-generation-2"); err != nil {
+		t.Fatalf("initial generation-2 restart positive control: %v", err)
+	}
+
+	seedDelegatedAssignment(t, f, "asg-primary-successor-loss", assignment.Principal{SessionID: "claude:a2", AgentID: "agent-a", Generation: 2}, now)
+	registerSession(t, f, "codex:b", "agent-b")
+	confirmVisibility(t, f, "del-primary-generation-high-water", "vis-successor", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-b", SessionID: "codex:b", Generation: 1}, now)
+	lossConfirm(t, f, "del-primary-generation-high-water", "loss-primary-second", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a2", Generation: 2}, now)
+	prev := assignment.Principal{SessionID: "claude:a2", AgentID: "agent-a", Generation: 2}
+	next := assignment.Principal{SessionID: "codex:b", AgentID: "agent-b", Generation: 1}
+	if err := f.s.HandoffAssignment(prev, next, "asg-primary-successor-loss", f.s.state.AssignmentLedger.Records["asg-primary-successor-loss"].Revision, "handoff-to-successor"); err != nil {
+		t.Fatalf("successor handoff setup: %v", err)
+	}
+	lossConfirm(t, f, "del-primary-generation-high-water", "loss-successor", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-b", SessionID: "codex:b", Generation: 1}, now)
+	confirmPrimaryRestartVisibility(t, f, "del-primary-generation-high-water", "vis-primary-stale", "agent-a", now)
+	registerSession(t, f, "claude:a3", "agent-a")
+	bumpSessionGeneration(t, f, "claude:a3", 2)
+	stale := assignment.Principal{SessionID: "claude:a3", AgentID: "agent-a", Generation: 2}
+	before := ownerStateBytes(t, f.s)
+	if err := f.s.ApplyPrimaryRestart("del-primary-generation-high-water", stale, "stale-primary-generation-2"); !errors.Is(err, ErrCoordinatorDelegationInvalid) {
+		t.Fatalf("primary generation 2 reused after a lower-generation successor loss err=%v", err)
+	}
+	if !bytes.Equal(before, ownerStateBytes(t, f.s)) {
+		t.Fatal("stale high-water generation restart changed state")
+	}
+	if err := f.s.RotateAgentSessionKey("claude:a3", ed25519.PublicKey(strings.Repeat("s", 32))); err != nil {
+		t.Fatal(err)
+	}
+	fresh := assignment.Principal{SessionID: "claude:a3", AgentID: "agent-a", Generation: 3}
+	if err := f.s.ApplyPrimaryRestart("del-primary-generation-high-water", fresh, "fresh-primary-generation-3"); err != nil {
+		t.Fatalf("generation-3 positive control after successor loss: %v", err)
+	}
+}
+
+func TestRecoveryA93B3_ExpiredGrantRejectsOtherwiseLegalVoid(t *testing.T) {
+	enableDelegationHarness(t)
+	f := newOwnerCommandFixture(t)
+	issuedAt := f.s.now().UTC()
+	grantDelegation(t, f, "del-expired-void", issuedAt)
+	seedDelegatedAssignment(t, f, "asg-expired-void", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, issuedAt)
+	offerDelegatedCopy(t, f, "asg-expired-void-open", "asg-expired-void", issuedAt)
+	actor := assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}
+	offered := f.s.state.AssignmentLedger.Records["asg-expired-void-open"]
+	if err := enforceDelegatedMutation(f.s.state, actor, "VOID", offered, issuedAt); err != nil {
+		t.Fatalf("unexpired positive control: %v", err)
+	}
+	expiredAt := f.s.state.CoordinatorDelegations["del-expired-void"].Validity.ExpiresAt
+	f.s.now = func() time.Time { return expiredAt }
+	before := ownerStateBytes(t, f.s)
+	if err := f.s.ChangeAssignment(actor, offered.AssignmentID, offered.Revision, "VOID", "expired"); !errors.Is(err, ErrCoordinatorDelegationExhausted) {
+		t.Fatalf("expired grant VOID err=%v", err)
+	}
+	if !bytes.Equal(before, ownerStateBytes(t, f.s)) {
+		t.Fatal("expired grant permitted state change")
+	}
+}
+
+func TestRecoveryA93B3_HandoffUsesFirstEligibleSuccessor(t *testing.T) {
+	enableDelegationHarness(t)
+	f := newOwnerCommandFixture(t)
+	now := f.s.now().UTC()
+	grantDelegationWith(t, f, "del-ordered", now, delegationOpts{successors: []ownercredential.DelegationPrincipalPayload{{StableAgentID: "agent-b", SessionID: "codex:b", Generation: 1}, {StableAgentID: "agent-c", SessionID: "gemini:c", Generation: 1}}, actions: []string{"OFFER", "VOID", "HANDOFF"}})
+	seedDelegatedAssignment(t, f, "asg-ordered", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now)
+	for _, target := range []struct{ session, agent string }{{"codex:b", "agent-b"}, {"gemini:c", "agent-c"}} {
+		registerSession(t, f, target.session, target.agent)
+	}
+	confirmVisibility(t, f, "del-ordered", "vis-ordered-b", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-b", SessionID: "codex:b", Generation: 1}, now)
+	confirmVisibility(t, f, "del-ordered", "vis-ordered-c", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-c", SessionID: "gemini:c", Generation: 1}, now)
+	lossConfirm(t, f, "del-ordered", "loss-ordered", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1}, now)
+	prev := assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}
+	before := ownerStateBytes(t, f.s)
+	if err := f.s.HandoffAssignment(prev, assignment.Principal{SessionID: "gemini:c", AgentID: "agent-c", Generation: 1}, "asg-ordered", f.s.state.AssignmentLedger.Records["asg-ordered"].Revision, "skip-first"); !errors.Is(err, ErrCoordinatorDelegationInvalid) {
+		t.Fatalf("second successor handoff err=%v", err)
+	}
+	if !bytes.Equal(before, ownerStateBytes(t, f.s)) {
+		t.Fatal("out-of-order handoff changed state")
+	}
+	if err := f.s.HandoffAssignment(prev, assignment.Principal{SessionID: "codex:b", AgentID: "agent-b", Generation: 1}, "asg-ordered", f.s.state.AssignmentLedger.Records["asg-ordered"].Revision, "first-successor"); err != nil {
+		t.Fatalf("first eligible successor control: %v", err)
 	}
 }
 
@@ -569,10 +940,12 @@ func TestLossConfirmAlteredBytesRejected(t *testing.T) {
 	now := f.s.now().UTC()
 	grantDelegation(t, f, "del-alt", now)
 	seedDelegatedAssignment(t, f, "asg-alt", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now)
+	assignmentIDs := openDelegatedAssignmentIDs(f, "del-alt", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1})
 	lossPayload, _ := json.Marshal(ownercredential.LossConfirmPayload{
-		DelegationID: "del-alt",
-		Coordinator:  ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1},
-		Reason:       "hung", ObservedAt: now,
+		DelegationID:  "del-alt",
+		Coordinator:   ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1},
+		AssignmentIDs: assignmentIDs,
+		Reason:        "hung", ObservedAt: now,
 	})
 	rev := f.s.state.OwnerCredentials["owner-1"].CredentialRevision
 	cmd := f.command(ownercredential.CommandLossConfirm, "loss-alt", "owner-primary", rev, lossPayload)
@@ -582,9 +955,10 @@ func TestLossConfirmAlteredBytesRejected(t *testing.T) {
 	}
 	// Same messageID, altered reason bytes → replay reject.
 	altered, _ := json.Marshal(ownercredential.LossConfirmPayload{
-		DelegationID: "del-alt",
-		Coordinator:  ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1},
-		Reason:       "different", ObservedAt: now,
+		DelegationID:  "del-alt",
+		Coordinator:   ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1},
+		AssignmentIDs: assignmentIDs,
+		Reason:        "different", ObservedAt: now,
 	})
 	// Re-issue challenge with same message id is not possible through IssueOwnerCommandChallenge
 	// after receipt exists; apply with mutated command digest path via nonce reuse / altered command.
@@ -802,42 +1176,149 @@ func TestSnapshotReloadRejectsOwnerCredentialLossMissingOrMismatchReceipt(t *tes
 }
 
 func TestForgedOwnerCredentialActorWithoutReceiptRejected(t *testing.T) {
-	state := EmptyCanonicalState()
-	state.SchemaVersion = 6
-	state.AssignmentLedger = assignment.Empty()
-	now := time.Now().UTC()
-	state.CoordinatorDelegations = map[string]DelegationRecord{
-		"del-forge": {
-			DelegationID:       "del-forge",
-			Scope:              DelegationScope{Repository: "r", Project: "p", AllowedWorkItems: []string{"w"}, AllowedActions: []string{"OFFER"}},
-			PrimaryCoordinator: DelegationPrincipal{StableAgentID: "a", SessionID: "s", Generation: 1},
-			Validity:           DelegationValidity{NotBefore: now.Add(-time.Hour), ExpiresAt: now.Add(time.Hour)},
-			Successors:         []DelegationPrincipal{{StableAgentID: "b", SessionID: "t", Generation: 1}},
-			Evidence:           DelegationEvidence{OwnerDecisionRef: "d", VisibilityEvidence: "v"},
-			History:            []DelegationHistoryEntry{{Kind: DelegationHistoryGrant, At: now}},
-		},
+	enableDelegationHarness(t)
+	f := newOwnerCommandFixture(t)
+	now := f.s.now().UTC()
+	grantDelegation(t, f, "del-forged-owner", now)
+	seedDelegatedAssignment(t, f, "asg-forged-owner", assignment.Principal{SessionID: "claude:a", AgentID: "agent-a", Generation: 1}, now)
+	lossConfirm(t, f, "del-forged-owner", "loss-forged-owner", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1}, now)
+	snapshot, err := copyCanonicalState(f.s.state)
+	if err != nil {
+		t.Fatal(err)
 	}
-	rec := assignment.Record{
-		AssignmentID: "asg-f", State: assignment.Active, Issuer: "s", IssuerAgentID: "a", IssuerGeneration: 1,
-		CurrentCoordinator: "s", CoordinatorAgentID: "a", CoordinatorGeneration: 1,
-		HandoffEvidence: []assignment.Handoff{}, CoordinatorLost: true,
-		Assignee: "u", StableAgentID: "target", SessionID: "u", AssigneeGeneration: 1,
-		Role: "IMPLEMENTER", SubjectSHA: strings.Repeat("a", 40),
-		IssuedAt: now.Add(-time.Minute), ValidUntil: now.Add(time.Hour),
-		AdmissionBasis:     assignment.AdmissionBasis{Kind: "POOL", Reference: "w", TargetSessionID: "u", TargetAgentID: "target", Role: "IMPLEMENTER", SubjectSHA: strings.Repeat("a", 40)},
-		VisibilityEvidence: assignment.VisibilityEvidence{Reference: "v", SessionID: "u", ObservedAt: now.Add(-time.Minute)},
-		Revision:           2, UpdatedAt: now, AcknowledgedAt: now.Add(-time.Minute), WorkStartedAt: now.Add(-time.Minute),
+	if err := ValidateCanonicalState(snapshot); err != nil {
+		t.Fatalf("positive receipt control rejected: %v", err)
 	}
-	state.AssignmentLedger.Records["asg-f"] = rec
-	state.AssignmentLedger.Events = []assignment.Event{{
-		AssignmentID: "asg-f", Revision: 2, Kind: "COORDINATOR_LOST",
-		Actor:       assignment.Principal{SessionID: "ownercredential:forged", AgentID: "forged", Generation: 1},
-		EvidenceRef: "forge", At: now, Record: rec,
-		ActorSource: assignment.ActorSourceOwnerCredential,
-		// Missing receipt binding fields entirely.
-	}}
-	if err := ValidateCanonicalState(state); err == nil {
-		t.Fatal("forged OWNER_CREDENTIAL actor without receipt accepted")
+	for i := range snapshot.AssignmentLedger.Events {
+		e := &snapshot.AssignmentLedger.Events[i]
+		if e.Kind == "COORDINATOR_LOST" && e.EffectiveActorSource() == assignment.ActorSourceOwnerCredential {
+			e.OwnerReceiptMessageID = "missing-owner-receipt"
+			e.EvidenceRef = e.OwnerReceiptMessageID
+			break
+		}
+	}
+	if err := ValidateCanonicalState(snapshot); err == nil {
+		t.Fatal("forged OWNER_CREDENTIAL loss without a matching receipt accepted")
+	}
+}
+
+func TestRecoveryA93B5_DelegationCommandsAuthenticateBytesAndNonce(t *testing.T) {
+	enableDelegationHarness(t)
+	f := newOwnerCommandFixture(t)
+	now := f.s.now().UTC()
+	grantDelegation(t, f, "del-auth-negative", now)
+	payloadFor := func(expires time.Time) []byte {
+		body, err := json.Marshal(ownercredential.VisibilityConfirmPayload{DelegationID: "del-auth-negative", Successor: &ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-b", SessionID: "codex:b", Generation: 1}, IssuedAt: now, ExpiresAt: expires, SingleUse: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return body
+	}
+	request := func(message string, expires time.Time) ownercredential.Command {
+		return f.command(ownercredential.CommandVisibilityConfirm, message, "owner-primary", f.s.state.OwnerCredentials["owner-1"].CredentialRevision, payloadFor(expires))
+	}
+
+	t.Run("bad_signature", func(t *testing.T) {
+		cmd := request("visibility-bad-signature", now.Add(time.Minute))
+		before := ownerStateBytes(t, f.s)
+		saves := f.p.saveCalls
+		bad := assertionFor(cmd, f.private["owner-backup"], f.s.state.OwnerCredentials["owner-1"].Credentials["owner-primary"].SignCount+1)
+		if _, _, err := f.s.ApplyOwnerCredentialCommand(cmd.ChallengeID, cmd, bad); !errors.Is(err, ErrOwnerCommandInvalid) {
+			t.Fatalf("bad signature err=%v", err)
+		}
+		if f.p.saveCalls != saves || !bytes.Equal(before, ownerStateBytes(t, f.s)) {
+			t.Fatal("bad signature changed canonical state")
+		}
+	})
+
+	t.Run("altered_signed_payload", func(t *testing.T) {
+		cmd := request("visibility-altered-bytes", now.Add(2*time.Minute))
+		before := ownerStateBytes(t, f.s)
+		saves := f.p.saveCalls
+		cmd.Payload = payloadFor(now.Add(3 * time.Minute))
+		if _, _, err := f.s.ApplyOwnerCredentialCommand(cmd.ChallengeID, cmd, assertionFor(cmd, f.private["owner-primary"], f.s.state.OwnerCredentials["owner-1"].Credentials["owner-primary"].SignCount+1)); !errors.Is(err, ErrOwnerChallengeUnknown) {
+			t.Fatalf("altered payload err=%v", err)
+		}
+		if f.p.saveCalls != saves || !bytes.Equal(before, ownerStateBytes(t, f.s)) {
+			t.Fatal("altered bytes changed canonical state")
+		}
+	})
+
+	t.Run("reused_nonce_for_distinct_command", func(t *testing.T) {
+		first := request("visibility-nonce-first", now.Add(4*time.Minute))
+		firstSign := f.s.state.OwnerCredentials["owner-1"].Credentials["owner-primary"].SignCount + 1
+		firstReceipt, replayed, err := f.s.ApplyOwnerCredentialCommand(first.ChallengeID, first, assertionFor(first, f.private["owner-primary"], firstSign))
+		if err != nil || replayed {
+			t.Fatalf("positive first command receipt=%+v replay=%v err=%v", firstReceipt, replayed, err)
+		}
+		second := request("visibility-nonce-second", now.Add(5*time.Minute))
+		second.Nonce = firstReceipt.Nonce
+		data, err := second.DigestBytes()
+		if err != nil {
+			t.Fatal(err)
+		}
+		digest := sha256.Sum256(data)
+		second.Digest = hex.EncodeToString(digest[:])
+		second.WebAuthnChallenge = base64.RawURLEncoding.EncodeToString(digest[:])
+		f.s.mu.Lock()
+		f.s.ownerChallenges[second.ChallengeID] = second
+		f.s.mu.Unlock()
+		before := ownerStateBytes(t, f.s)
+		saves := f.p.saveCalls
+		sign := f.s.state.OwnerCredentials["owner-1"].Credentials["owner-primary"].SignCount + 1
+		if _, _, err := f.s.ApplyOwnerCredentialCommand(second.ChallengeID, second, assertionFor(second, f.private["owner-primary"], sign)); !errors.Is(err, ErrOwnerCommandReplay) {
+			t.Fatalf("reused nonce err=%v", err)
+		}
+		if f.p.saveCalls != saves || !bytes.Equal(before, ownerStateBytes(t, f.s)) {
+			t.Fatal("reused nonce changed canonical state")
+		}
+	})
+
+	t.Run("durable_exact_retry_still_verifies_signature", func(t *testing.T) {
+		cmd := request("visibility-retry-signature", now.Add(6*time.Minute))
+		sign := f.s.state.OwnerCredentials["owner-1"].Credentials["owner-primary"].SignCount + 1
+		first, replayed, err := f.s.ApplyOwnerCredentialCommand(cmd.ChallengeID, cmd, assertionFor(cmd, f.private["owner-primary"], sign))
+		if err != nil || replayed || first.MessageID != cmd.MessageID {
+			t.Fatalf("initial command receipt=%+v replayed=%v err=%v", first, replayed, err)
+		}
+		before := ownerStateBytes(t, f.s)
+		saves := f.p.saveCalls
+		bad := assertionFor(cmd, f.private["owner-backup"], sign)
+		if _, replayed, err := f.s.ApplyOwnerCredentialCommand(cmd.ChallengeID, cmd, bad); !errors.Is(err, ErrOwnerCommandInvalid) || replayed {
+			t.Fatalf("durable retry with invalid signature replayed=%v err=%v", replayed, err)
+		}
+		if f.p.saveCalls != saves || !bytes.Equal(before, ownerStateBytes(t, f.s)) {
+			t.Fatal("invalid durable retry changed canonical state")
+		}
+	})
+}
+
+func TestRecoveryA93B3_DelegationSaveFailurePublishesNothing(t *testing.T) {
+	enableDelegationHarness(t)
+	f := newOwnerCommandFixture(t)
+	now := f.s.now().UTC()
+	grantDelegation(t, f, "del-save-failure", now)
+	confirmVisibility(t, f, "del-save-failure", "visibility-save-positive", ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-b", SessionID: "codex:b", Generation: 1}, now)
+	payload, _ := json.Marshal(ownercredential.VisibilityConfirmPayload{DelegationID: "del-save-failure", Successor: &ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-b", SessionID: "codex:b", Generation: 1}, IssuedAt: now, ExpiresAt: now.Add(time.Minute), SingleUse: true})
+	revision := f.s.state.OwnerCredentials["owner-1"].CredentialRevision
+	cmd := f.command(ownercredential.CommandVisibilityConfirm, "visibility-save-failure", "owner-primary", revision, payload)
+	beforeStore := ownerStateBytes(t, f.s)
+	beforeDisk, err := json.Marshal(f.p.state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saves := f.p.saveCalls
+	f.p.fail = true
+	sign := f.s.state.OwnerCredentials["owner-1"].Credentials["owner-primary"].SignCount + 1
+	if _, _, err := f.s.ApplyOwnerCredentialCommand(cmd.ChallengeID, cmd, assertionFor(cmd, f.private["owner-primary"], sign)); !errors.Is(err, ErrPersistence) {
+		t.Fatalf("failed Save err=%v", err)
+	}
+	afterDisk, err := json.Marshal(f.p.state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.p.saveCalls != saves+1 || !bytes.Equal(beforeStore, ownerStateBytes(t, f.s)) || !bytes.Equal(beforeDisk, afterDisk) {
+		t.Fatal("failed delegation Save published in-memory or persisted state")
 	}
 }
 
@@ -846,6 +1327,8 @@ func TestForgedOwnerCredentialActorWithoutReceiptRejected(t *testing.T) {
 type delegationOpts struct {
 	successors []ownercredential.DelegationPrincipalPayload
 	actions    []string
+	repository string
+	project    string
 }
 
 func grantDelegationWith(t *testing.T, f *ownerCommandFixture, id string, now time.Time, opts delegationOpts) {
@@ -858,10 +1341,17 @@ func grantDelegationWith(t *testing.T, f *ownerCommandFixture, id string, now ti
 	if len(actions) == 0 {
 		actions = []string{"OFFER", "VOID", "EXPIRE", "HANDOFF", "ACTIVATE", "ACCEPT_RESULT"}
 	}
+	repository, project := opts.repository, opts.project
+	if repository == "" {
+		repository = "naghuale/coord"
+	}
+	if project == "" {
+		project = "coord"
+	}
 	payload, err := json.Marshal(ownercredential.DelegationGrantPayload{
 		DelegationID: id,
 		Scope: ownercredential.DelegationScopePayload{
-			Repository: "naghuale/coord", Project: "coord",
+			Repository: repository, Project: project,
 			AllowedWorkItems: []string{"issue-93b"}, AllowedActions: actions,
 		},
 		PrimaryCoordinator: ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1},
@@ -945,8 +1435,9 @@ func confirmPrimaryRestartVisibility(t *testing.T, f *ownerCommandFixture, delID
 
 func lossConfirm(t *testing.T, f *ownerCommandFixture, delID, msgID string, coord ownercredential.DelegationPrincipalPayload, now time.Time) {
 	t.Helper()
+	assignmentIDs := openDelegatedAssignmentIDs(f, delID, coord)
 	payload, _ := json.Marshal(ownercredential.LossConfirmPayload{
-		DelegationID: delID, Coordinator: coord, Reason: "lost", ObservedAt: now,
+		DelegationID: delID, Coordinator: coord, AssignmentIDs: assignmentIDs, Reason: "lost", ObservedAt: now,
 	})
 	rev := f.s.state.OwnerCredentials["owner-1"].CredentialRevision
 	cmd := f.command(ownercredential.CommandLossConfirm, msgID, "owner-primary", rev, payload)
@@ -954,4 +1445,19 @@ func lossConfirm(t *testing.T, f *ownerCommandFixture, delID, msgID string, coor
 	if _, _, err := f.s.ApplyOwnerCredentialCommand(cmd.ChallengeID, cmd, assertionFor(cmd, f.private["owner-primary"], sign)); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func openDelegatedAssignmentIDs(f *ownerCommandFixture, delID string, coord ownercredential.DelegationPrincipalPayload) []string {
+	ids := make([]string, 0)
+	if f.s.state.AssignmentLedger != nil {
+		for id, record := range f.s.state.AssignmentLedger.Records {
+			binding := record.DelegationBinding
+			principal := record.Coordinator()
+			if !record.State.Terminal() && !record.CoordinatorLost && binding != nil && binding.GrantID == delID && principal.AgentID == coord.StableAgentID && principal.SessionID == coord.SessionID && principal.Generation == coord.Generation {
+				ids = append(ids, id)
+			}
+		}
+	}
+	sort.Strings(ids)
+	return ids
 }
