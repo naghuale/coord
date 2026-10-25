@@ -567,6 +567,9 @@ func validateDelegationDerivedState(state CanonicalState, d DelegationRecord) er
 	// that exact signed loss set without consuming visibility twice.
 	actingLossID := ""
 	actingLossVisibility := ""
+	actingIsPrimaryRestart := false
+	actingPrimaryRestartVisibility := ""
+	highestPrimaryGeneration := d.PrimaryCoordinator.Generation
 	selectedSuccessorForLoss := map[string]DelegationPrincipal{}
 	for i, h := range d.History {
 		if h.CanonicalRevision == 0 || h.CanonicalRevision > state.Revision {
@@ -586,6 +589,8 @@ func validateDelegationDerivedState(state CanonicalState, d DelegationRecord) er
 			}
 			revokedAt, revokedBy = h.At, h.Actor
 			acting = DelegationPrincipal{}
+			actingIsPrimaryRestart = false
+			actingPrimaryRestartVisibility = ""
 		case DelegationHistoryVisibility:
 			if _, err := delegationOwnerReceipt(state, h.Actor, h.ReceiptID, ownercredential.CommandVisibilityConfirm, h.ReceiptDig, d.DelegationID, d.Generation, h.CanonicalRevision); err != nil {
 				return err
@@ -639,6 +644,8 @@ func validateDelegationDerivedState(state CanonicalState, d DelegationRecord) er
 			}
 			if acting.Equal(*h.From) {
 				acting = DelegationPrincipal{}
+				actingIsPrimaryRestart = false
+				actingPrimaryRestartVisibility = ""
 			}
 			// Every distinct loss ends the previous capture context. A later
 			// capture needs fresh visibility even when an older loss still covers
@@ -651,7 +658,7 @@ func validateDelegationDerivedState(state CanonicalState, d DelegationRecord) er
 				lossesByAssignment[id] = append(lossesByAssignment[id], copy)
 			}
 		case DelegationHistoryHandoff:
-			if h.From == nil || h.To == nil || !d.hasSuccessor(*h.To) || h.AssignmentID == "" || h.ReceiptDig == "" {
+			if h.From == nil || h.To == nil || h.AssignmentID == "" || h.ReceiptDig == "" {
 				return fmt.Errorf("%w: incomplete HANDOFF history", ErrCoordinatorDelegationInvalid)
 			}
 			var coveredLoss *DelegationHistoryEntry
@@ -671,8 +678,14 @@ func validateDelegationDerivedState(state CanonicalState, d DelegationRecord) er
 			} else if !acting.Equal(*h.From) {
 				return fmt.Errorf("%w: HANDOFF source differs from derived coordinator", ErrCoordinatorDelegationInvalid)
 			}
+			restartPrimaryHandoff := coveredLoss != nil && actingIsPrimaryRestart && acting.Valid() && !barredSet[acting] && acting.Equal(*h.To) && h.To.StableAgentID == d.PrimaryCoordinator.StableAgentID && h.ReceiptDig == actingPrimaryRestartVisibility
+			if !d.hasSuccessor(*h.To) && !restartPrimaryHandoff {
+				return fmt.Errorf("%w: handoff target outside successor list", ErrCoordinatorDelegationInvalid)
+			}
 			reuseSelectedSuccessor := false
-			if coveredLoss != nil && acting.Valid() && !barredSet[acting] {
+			if restartPrimaryHandoff {
+				reuseSelectedSuccessor = true
+			} else if coveredLoss != nil && acting.Valid() && !barredSet[acting] {
 				if actingLossID == coveredLoss.ReceiptID {
 					if !acting.Equal(*h.To) || actingLossVisibility == "" || h.ReceiptDig != actingLossVisibility {
 						return fmt.Errorf("%w: sibling handoff must retain selected successor and visibility", ErrCoordinatorDelegationInvalid)
@@ -680,7 +693,7 @@ func validateDelegationDerivedState(state CanonicalState, d DelegationRecord) er
 					reuseSelectedSuccessor = true
 				} else {
 					selected, selectedBefore := selectedSuccessorForLoss[coveredLoss.ReceiptID]
-					if acting.StableAgentID == d.PrimaryCoordinator.StableAgentID || selectedBefore && !barredSet[selected] {
+					if acting.StableAgentID == d.PrimaryCoordinator.StableAgentID || selectedBefore && !barredSet[selected] && !selected.Equal(acting) {
 						return fmt.Errorf("%w: another unbarred coordinator is acting", ErrCoordinatorDelegationInvalid)
 					}
 					if !acting.Equal(*h.To) {
@@ -702,16 +715,47 @@ func validateDelegationDerivedState(state CanonicalState, d DelegationRecord) er
 				if lastLoss != nil && lastLoss.ReceiptID == coveredLoss.ReceiptID {
 					lastLoss = nil
 				}
-				actingLossID = coveredLoss.ReceiptID
-				actingLossVisibility = h.ReceiptDig
-				selectedSuccessorForLoss[coveredLoss.ReceiptID] = *h.To
+				if restartPrimaryHandoff {
+					actingLossID = ""
+					actingLossVisibility = ""
+				} else {
+					actingLossID = coveredLoss.ReceiptID
+					actingLossVisibility = h.ReceiptDig
+					selectedSuccessorForLoss[coveredLoss.ReceiptID] = *h.To
+					actingIsPrimaryRestart = false
+					actingPrimaryRestartVisibility = ""
+				}
 			} else {
 				actingLossID = ""
 				actingLossVisibility = ""
+				actingIsPrimaryRestart = false
+				actingPrimaryRestartVisibility = ""
 			}
 		case DelegationHistoryPrimaryRestart:
-			if h.From == nil || h.To == nil || lastLoss == nil || h.ReceiptID == "" || h.ReceiptDig == "" || h.ReceiptID != lastLoss.ReceiptID || !h.From.Equal(*lastLoss.From) || h.To.StableAgentID != d.PrimaryCoordinator.StableAgentID || h.To.Generation <= h.From.Generation {
+			if h.From == nil || h.To == nil || lastLoss == nil || h.ReceiptID == "" || h.ReceiptDig == "" || h.ReceiptID != lastLoss.ReceiptID || lastLoss.From == nil || !h.From.Equal(*lastLoss.From) || h.To.StableAgentID != d.PrimaryCoordinator.StableAgentID || h.To.Generation <= h.From.Generation {
 				return fmt.Errorf("%w: invalid PRIMARY_RESTART history", ErrCoordinatorDelegationInvalid)
+			}
+			if d.PrimaryRestart == nil || d.PrimaryRestart.StableAgentID != h.To.StableAgentID {
+				return fmt.Errorf("%w: PRIMARY_RESTART has no matching configured record", ErrCoordinatorDelegationInvalid)
+			}
+			if h.To.SessionID == d.PrimaryCoordinator.SessionID {
+				return fmt.Errorf("%w: PRIMARY_RESTART reuses primary session", ErrCoordinatorDelegationInvalid)
+			}
+			if h.To.SessionID == h.From.SessionID {
+				return fmt.Errorf("%w: PRIMARY_RESTART reuses lost session", ErrCoordinatorDelegationInvalid)
+			}
+			if h.To.Generation <= highestPrimaryGeneration {
+				return fmt.Errorf("%w: PRIMARY_RESTART generation does not exceed highest primary generation", ErrCoordinatorDelegationInvalid)
+			}
+			for _, barredPrincipal := range barred {
+				if h.To.SessionID == barredPrincipal.SessionID {
+					return fmt.Errorf("%w: PRIMARY_RESTART reuses a barred session", ErrCoordinatorDelegationInvalid)
+				}
+			}
+			for _, previous := range d.History[:i] {
+				if previous.Kind == DelegationHistoryPrimaryRestart && previous.To != nil && previous.To.SessionID == h.To.SessionID {
+					return fmt.Errorf("%w: PRIMARY_RESTART reuses a prior restart session", ErrCoordinatorDelegationInvalid)
+				}
 			}
 			if acting.Valid() && !barredSet[acting] {
 				return fmt.Errorf("%w: PRIMARY_RESTART while another coordinator is acting", ErrCoordinatorDelegationInvalid)
@@ -720,15 +764,23 @@ func validateDelegationDerivedState(state CanonicalState, d DelegationRecord) er
 				return err
 			}
 			acting = *h.To
+			highestPrimaryGeneration = h.To.Generation
 			lastLoss = nil
 			actingLossID = ""
 			actingLossVisibility = ""
+			actingIsPrimaryRestart = true
+			actingPrimaryRestartVisibility = h.ReceiptDig
 		case DelegationHistorySuccessorSkipped:
 			if h.Reason == "" || h.To == nil || !d.hasSuccessor(*h.To) {
 				return fmt.Errorf("%w: invalid SUCCESSOR_SKIPPED history", ErrCoordinatorDelegationInvalid)
 			}
 		default:
 			return fmt.Errorf("%w: unknown delegation history event", ErrCoordinatorDelegationInvalid)
+		}
+		for _, principal := range []*DelegationPrincipal{h.From, h.To} {
+			if principal != nil && principal.StableAgentID == d.PrimaryCoordinator.StableAgentID && principal.Generation > highestPrimaryGeneration {
+				highestPrimaryGeneration = principal.Generation
+			}
 		}
 	}
 	if !revokedAt.Equal(d.RevokedAt) || revokedBy != d.RevokedBy {
@@ -846,6 +898,63 @@ func actingLossContext(d DelegationRecord) (string, string) {
 		return "", ""
 	}
 	return contextID, contextVisibility
+}
+
+// currentPrimaryRestart returns the restart event that established the
+// currently acting primary session. Covered assignments may be routed to that
+// primary without a second visibility receipt, while the session remains the
+// unbarred actor and the assignment remains covered by its recorded loss.
+func currentPrimaryRestart(d DelegationRecord) (DelegationHistoryEntry, bool) {
+	acting := d.PrimaryCoordinator
+	var restart *DelegationHistoryEntry
+	lossesByAssignment := map[string][]DelegationHistoryEntry{}
+	for _, h := range d.History {
+		switch h.Kind {
+		case DelegationHistoryLossRecorded:
+			if h.From != nil && acting.Equal(*h.From) {
+				acting = DelegationPrincipal{}
+				restart = nil
+			}
+			for _, id := range h.AssignmentIDs {
+				lossesByAssignment[id] = append(lossesByAssignment[id], h)
+			}
+		case DelegationHistoryHandoff:
+			if h.To == nil {
+				restart = nil
+				continue
+			}
+			keepRestart := false
+			if restart != nil && h.From != nil && h.To.Equal(acting) && h.ReceiptDig == restart.ReceiptDig {
+				for i := len(lossesByAssignment[h.AssignmentID]) - 1; i >= 0; i-- {
+					loss := lossesByAssignment[h.AssignmentID][i]
+					if loss.From != nil && loss.From.Equal(*h.From) {
+						keepRestart = true
+						break
+					}
+				}
+			}
+			acting = *h.To
+			if !keepRestart {
+				restart = nil
+			}
+		case DelegationHistoryPrimaryRestart:
+			if h.To == nil {
+				acting = DelegationPrincipal{}
+				restart = nil
+				continue
+			}
+			acting = *h.To
+			copy := h
+			restart = &copy
+		case DelegationHistoryRevoke:
+			acting = DelegationPrincipal{}
+			restart = nil
+		}
+	}
+	if restart == nil || !acting.Equal(d.CurrentActing()) || acting.StableAgentID != d.PrimaryCoordinator.StableAgentID || d.IsBarred(acting) {
+		return DelegationHistoryEntry{}, false
+	}
+	return *restart, true
 }
 
 func lossHistoryForAssignment(d DelegationRecord, assignmentID string, lost DelegationPrincipal) (DelegationHistoryEntry, bool) {
@@ -1155,7 +1264,7 @@ func validateDelegatedWriterDelta(kind delegationCommitKind, prev, next Canonica
 	}
 	switch kind {
 	case delegationCommitHandoff:
-		return validateHandoffGrantDelta(next, before, after)
+		return validateHandoffGrantDelta(prev, next, before, after)
 	case delegationCommitPrimaryRestart:
 		return validatePrimaryRestartGrantDelta(before, after)
 	default:
@@ -1163,14 +1272,11 @@ func validateDelegatedWriterDelta(kind delegationCommitKind, prev, next Canonica
 	}
 }
 
-func validateHandoffGrantDelta(next CanonicalState, before, after DelegationRecord) error {
+func validateHandoffGrantDelta(prev, next CanonicalState, before, after DelegationRecord) error {
 	if after.ActingCoordinator == nil {
 		return fmt.Errorf("%w: handoff history required", ErrCoordinatorDelegationInvalid)
 	}
 	to := *after.ActingCoordinator
-	if !after.hasSuccessor(to) {
-		return fmt.Errorf("%w: handoff target outside successor list", ErrCoordinatorDelegationInvalid)
-	}
 	added := after.History[len(before.History):]
 	if len(added) == 0 {
 		return fmt.Errorf("%w: handoff history required", ErrCoordinatorDelegationInvalid)
@@ -1198,8 +1304,22 @@ func validateHandoffGrantDelta(next CanonicalState, before, after DelegationReco
 	if rec.DelegationBinding == nil || rec.DelegationBinding.GrantID != after.DelegationID || rec.DelegationBinding.GrantGeneration != after.Generation {
 		return fmt.Errorf("%w: handoff assignment mismatch", ErrCoordinatorDelegationInvalid)
 	}
+	restart, isRestartedPrimary := currentPrimaryRestart(before)
+	_, lossCoversAssignment := lossHistoryForAssignment(before, h.AssignmentID, *h.From)
+	var prior assignment.Record
+	wasLost := false
+	if prev.AssignmentLedger != nil {
+		prior, wasLost = prev.AssignmentLedger.Records[h.AssignmentID]
+	}
+	restartPrimaryHandoff := isRestartedPrimary && lossCoversAssignment && wasLost && prior.CoordinatorLost && ownerCredentialLossAllowsHandoffWithoutObserver(prev, h.AssignmentID) && before.CurrentActing().Equal(to) && !before.IsBarred(to) && to.StableAgentID == before.PrimaryCoordinator.StableAgentID && restart.ReceiptDig != "" && h.ReceiptDig == restart.ReceiptDig
+	if !after.hasSuccessor(to) && !restartPrimaryHandoff {
+		return fmt.Errorf("%w: handoff target outside successor list", ErrCoordinatorDelegationInvalid)
+	}
 	consumed := newlyConsumedVisibility(before, after)
 	if len(consumed) == 0 {
+		if restartPrimaryHandoff {
+			return nil
+		}
 		lossID, visibilityID := actingLossContext(before)
 		loss, covered := lossHistoryForAssignment(before, h.AssignmentID, *h.From)
 		if !covered || lossID == "" || lossID != loss.ReceiptID || visibilityID == "" || h.ReceiptDig != visibilityID || !before.CurrentActing().Equal(to) || before.IsBarred(to) {
@@ -1568,6 +1688,7 @@ func enforceDelegatedHandoff(state *CanonicalState, previous, next assignment.Pr
 	}
 	nextP := principalFromAssignment(next)
 	siblingHandoff := false
+	restartPrimaryHandoff := false
 	if record, exists := state.AssignmentLedger.Records[id]; exists && record.CoordinatorLost && ownerCredentialLossAllowsHandoffWithoutObserver(*state, id) {
 		loss, covered := lossHistoryForAssignment(grant, id, previousP)
 		if !covered {
@@ -1575,15 +1696,16 @@ func enforceDelegatedHandoff(state *CanonicalState, previous, next assignment.Pr
 		}
 		acting := grant.CurrentActing()
 		if acting.Valid() && !grant.IsBarred(acting) {
-			contextID, _ := actingLossContext(grant)
-			if contextID == loss.ReceiptID {
+			if restart, isRestartedPrimary := currentPrimaryRestart(grant); isRestartedPrimary && acting.Equal(nextP) && restart.ReceiptDig != "" {
+				restartPrimaryHandoff = true
+			} else if contextID, _ := actingLossContext(grant); contextID == loss.ReceiptID {
 				if !acting.Equal(nextP) {
 					return fmt.Errorf("%w: sibling handoff must retain selected successor", ErrCoordinatorDelegationInvalid)
 				}
 				siblingHandoff = true
 			} else {
 				selected, selectedBefore := selectedSuccessorForLoss(grant, loss.ReceiptID)
-				if acting.StableAgentID == grant.PrimaryCoordinator.StableAgentID || selectedBefore && !grant.IsBarred(selected) {
+				if acting.StableAgentID == grant.PrimaryCoordinator.StableAgentID || selectedBefore && !grant.IsBarred(selected) && !selected.Equal(acting) {
 					return fmt.Errorf("%w: another unbarred coordinator is acting", ErrCoordinatorDelegationInvalid)
 				}
 				if !acting.Equal(nextP) {
@@ -1592,7 +1714,7 @@ func enforceDelegatedHandoff(state *CanonicalState, previous, next assignment.Pr
 			}
 		}
 	}
-	if !grant.hasSuccessor(nextP) {
+	if !grant.hasSuccessor(nextP) && !restartPrimaryHandoff {
 		return fmt.Errorf("%w: handoff target outside successor list", ErrCoordinatorDelegationInvalid)
 	}
 	// Loss observer / target exclusions (path a); path b has no AgentSession observer.
@@ -1612,6 +1734,12 @@ func enforceDelegatedHandoff(state *CanonicalState, previous, next assignment.Pr
 		if visibilityID == "" {
 			return fmt.Errorf("%w: selected successor visibility missing", ErrCoordinatorDelegationInvalid)
 		}
+	} else if restartPrimaryHandoff {
+		restart, ok := currentPrimaryRestart(grant)
+		if !ok || restart.ReceiptDig == "" {
+			return fmt.Errorf("%w: primaryRestart record required for lost assignment", ErrCoordinatorDelegationInvalid)
+		}
+		visibilityID = restart.ReceiptDig
 	} else {
 		eligible, skips, err := SelectDelegationSuccessor(*state, grant, id, now)
 		grant.History = append(grant.History, skips...)

@@ -1339,6 +1339,7 @@ type delegationOpts struct {
 	actions    []string
 	repository string
 	project    string
+	primary    ownercredential.DelegationPrincipalPayload
 }
 
 func grantDelegationWith(t *testing.T, f *ownerCommandFixture, id string, now time.Time, opts delegationOpts) {
@@ -1358,16 +1359,20 @@ func grantDelegationWith(t *testing.T, f *ownerCommandFixture, id string, now ti
 	if project == "" {
 		project = "coord"
 	}
+	primary := opts.primary
+	if primary.StableAgentID == "" {
+		primary = ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1}
+	}
 	payload, err := json.Marshal(ownercredential.DelegationGrantPayload{
 		DelegationID: id,
 		Scope: ownercredential.DelegationScopePayload{
 			Repository: repository, Project: project,
 			AllowedWorkItems: []string{"issue-93b"}, AllowedActions: actions,
 		},
-		PrimaryCoordinator: ownercredential.DelegationPrincipalPayload{StableAgentID: "agent-a", SessionID: "claude:a", Generation: 1},
+		PrimaryCoordinator: primary,
 		Validity:           ownercredential.DelegationValidityPayload{NotBefore: now.Add(-time.Minute), ExpiresAt: now.Add(2 * time.Hour)},
 		Successors:         successors,
-		PrimaryRestart:     &ownercredential.PrimaryRestartPayload{StableAgentID: "agent-a"},
+		PrimaryRestart:     &ownercredential.PrimaryRestartPayload{StableAgentID: primary.StableAgentID},
 		Evidence:           ownercredential.DelegationEvidencePayload{OwnerDecisionRef: "ADR-0010", VisibilityEvidence: "owner-seen"},
 	})
 	if err != nil {
