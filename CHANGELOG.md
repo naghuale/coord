@@ -1,5 +1,10 @@
 # История изменений
 
+## 2026-10-25 — Fresh visibility for post-restart coordinator loss (Refs #93b)
+
+- OWNER A-3: losses recorded after the active primary restart require a fresh visibility receipt for that exact primary. The capture consumes it once; siblings of the same loss retain it. Losses recorded before the restart retain the A-2 path without new visibility. Live, typed callback and snapshot replay require both the grant's history order and strictly earlier canonical revisions, and preserve the route to the acting primary. (`TestRecovery7_A3LiveAndReload`, `TestRecovery7_A3SeamAndReload`, `TestRecovery7_A3EqualRevisionDoesNotProveEarlierLoss`, `TestRecovery7_A3PromotedRestartRevisionCannotReorderLossHistory`)
+- Routing a pre-restart loss does not erase a fresh sibling context, while a new loss ends it and permits recapture only with another fresh receipt. (`TestRecovery7_A3ContextSurvivesOlderLossRoutingButNotNewLoss`, `TestRecovery7_A3AnyLaterLossEndsFreshSiblingContext`)
+
 ## 2026-10-25 — Delegation recovery boundary evidence (Refs #93b)
 
 - Reload rejects handoff and primary restart after OWNER revocation, and capture by a barred coordinator even when its exact triple is on the successor list. Valid revoked snapshots, exact receipt retry and a new grant to the same primary still work. (`TestRecovery6_RevokedGrantCannotRecoverThroughFreshVisibilityOnReload`, `TestRecovery6_RevokeRejectsAuthorityHistory`, `TestRecovery6_ReloadCannotReenterBarredListedPrimary`, `TestRecovery6_RevokePreservesExactRetryAndNewGrantAfterReload`)

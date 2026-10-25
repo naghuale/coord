@@ -657,7 +657,7 @@ func TestRecoveryG4_HandoffCommitSeamRequiresAlreadyActingSuccessorForSibling(t 
 
 	t.Run("rejects_sibling_delta_targeting_other_coordinator", func(t *testing.T) {
 		next, after := makeAfter(c)
-		if err := validateHandoffGrantDelta(f.s.state, next, before, after); err == nil || !strings.Contains(err.Error(), "visibility receipt required") {
+		if err := validateHandoffGrantDelta(f.s.state, next, before, after); err == nil || !strings.Contains(err.Error(), "another unbarred coordinator is acting") {
 			t.Fatalf("handoff seam accepted no-consumption delta to non-acting C: %v", err)
 		}
 	})
