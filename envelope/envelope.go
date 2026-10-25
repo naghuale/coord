@@ -9,10 +9,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 )
 
 type Kind string
+
+const (
+	SchemaVersionLegacyAgent = 1
+	SchemaVersionAgentResult = 2
+)
 
 const (
 	Task       Kind = "TASK"
@@ -29,28 +35,29 @@ const (
 
 // Envelope uses typed payloads so decoding never loses payload types.
 type Envelope struct {
-	SchemaVersion     int               `json:"schema_version"`
-	MessageID         string            `json:"message_id"`
-	InReplyTo         string            `json:"in_reply_to,omitempty"`
-	Timestamp         time.Time         `json:"timestamp"`
-	From              string            `json:"from_session"`
-	To                string            `json:"to_session"`
-	Kind              Kind              `json:"type"`
-	Task              string            `json:"task,omitempty"`
-	Run               string            `json:"run,omitempty"`
-	Attempt           uint64            `json:"attempt,omitempty"`
-	TargetSHA         string            `json:"target_sha,omitempty"`
-	Fence             uint64            `json:"fence,omitempty"`
-	TaskPayload       *TaskPayload      `json:"task_payload,omitempty"`
-	AckPayload        *AckPayload       `json:"ack_payload,omitempty"`
-	HeartbeatPayload  *HeartbeatPayload `json:"heartbeat_payload,omitempty"`
-	ResultAckPayload  *ResultAckPayload `json:"result_ack_payload,omitempty"`
-	ResultPayload     *ResultPayload    `json:"result_payload,omitempty"`
-	PingPayload       *PingPayload      `json:"ping_payload,omitempty"`
-	PongPayload       *PongPayload      `json:"pong_payload,omitempty"`
-	AbortPayload      *AbortPayload     `json:"abort_payload,omitempty"`
-	RoleUpdatePayload *roles.Update     `json:"role_update_payload,omitempty"`
-	RoleAckPayload    *RoleAckPayload   `json:"role_ack_payload,omitempty"`
+	SchemaVersion      int                 `json:"schema_version"`
+	MessageID          string              `json:"message_id"`
+	InReplyTo          string              `json:"in_reply_to,omitempty"`
+	Timestamp          time.Time           `json:"timestamp"`
+	From               string              `json:"from_session"`
+	To                 string              `json:"to_session"`
+	Kind               Kind                `json:"type"`
+	Task               string              `json:"task,omitempty"`
+	Run                string              `json:"run,omitempty"`
+	Attempt            uint64              `json:"attempt,omitempty"`
+	TargetSHA          string              `json:"target_sha,omitempty"`
+	Fence              uint64              `json:"fence,omitempty"`
+	TaskPayload        *TaskPayload        `json:"task_payload,omitempty"`
+	AckPayload         *AckPayload         `json:"ack_payload,omitempty"`
+	HeartbeatPayload   *HeartbeatPayload   `json:"heartbeat_payload,omitempty"`
+	ResultAckPayload   *ResultAckPayload   `json:"result_ack_payload,omitempty"`
+	ResultPayload      *ResultPayload      `json:"result_payload,omitempty"`
+	PingPayload        *PingPayload        `json:"ping_payload,omitempty"`
+	PongPayload        *PongPayload        `json:"pong_payload,omitempty"`
+	AbortPayload       *AbortPayload       `json:"abort_payload,omitempty"`
+	RoleUpdatePayload  *roles.Update       `json:"role_update_payload,omitempty"`
+	RoleAckPayload     *RoleAckPayload     `json:"role_ack_payload,omitempty"`
+	AgentResultPayload *AgentResultPayload `json:"agent_result_payload,omitempty"`
 }
 type RoleAckPayload struct {
 	State    string `json:"state"`
@@ -81,9 +88,46 @@ type ResultPayload struct {
 	Summary   string   `json:"summary"`
 }
 
+// AgentResultPayload is the version-2 authenticated agent result contract.
+// It carries the exact Assignment ID and the process verdict. The canonical
+// boundary maps these wire fields to the role-specific task result type.
+type AgentResultPayload struct {
+	AssignmentID          string                 `json:"assignment_id"`
+	Issuer                string                 `json:"issuer"`
+	CoordinatorGeneration uint64                 `json:"coordinator_generation"`
+	ExpectedRevision      uint64                 `json:"expected_revision"`
+	Outcome               string                 `json:"outcome,omitempty"`
+	Verdict               string                 `json:"verdict,omitempty"`
+	Summary               string                 `json:"summary"`
+	Findings              []AgentFinding         `json:"findings"`
+	InputArtifactRefs     []string               `json:"input_artifact_refs"`
+	OutputArtifactRefs    []string               `json:"output_artifact_refs"`
+	Properties            []AgentAuditedProperty `json:"properties,omitempty"`
+}
+
+type AgentFinding struct {
+	ID       string           `json:"id"`
+	Severity string           `json:"severity"`
+	Summary  string           `json:"summary"`
+	Evidence []AgentReference `json:"evidence"`
+}
+
+type AgentReference struct {
+	Kind string `json:"kind"`
+	ID   string `json:"id"`
+}
+
+type AgentAuditedProperty struct {
+	Name    string `json:"name"`
+	Verdict string `json:"verdict"`
+	Note    string `json:"note,omitempty"`
+}
+
 // ResultAckPayload acknowledges the outcome durably committed by the coordinator.
 type ResultAckPayload struct {
-	Outcome string `json:"outcome"`
+	Outcome      string `json:"outcome"`
+	AssignmentID string `json:"assignment_id,omitempty"`
+	Disposition  string `json:"disposition,omitempty"`
 }
 
 type PingPayload struct {
@@ -111,8 +155,14 @@ func NewID() string {
 
 func (e Envelope) Validate() error {
 	bad := func(s string) error { return fmt.Errorf("invalid envelope: %s", s) }
-	if e.SchemaVersion != 1 || e.MessageID == "" || e.Timestamp.IsZero() || e.From == "" || e.To == "" {
+	if (e.SchemaVersion != SchemaVersionLegacyAgent && e.SchemaVersion != SchemaVersionAgentResult) || e.MessageID == "" || e.Timestamp.IsZero() || e.From == "" || e.To == "" {
 		return bad("missing header or unsupported schema")
+	}
+	if e.SchemaVersion == SchemaVersionLegacyAgent && e.AgentResultPayload != nil {
+		return bad("version 1 cannot carry an authenticated agent result")
+	}
+	if e.SchemaVersion == SchemaVersionAgentResult && e.Kind != Result && e.Kind != ResultAck {
+		return bad("version 2 is reserved for authenticated agent results and receipts")
 	}
 	if e.Kind != Ping && e.Kind != Pong && e.Kind != RoleUpdate && e.Kind != RoleAck {
 		if e.Task == "" || e.Run == "" || e.Attempt == 0 || e.Fence == 0 {
@@ -126,7 +176,7 @@ func (e Envelope) Validate() error {
 		}
 	}
 	n := 0
-	for _, present := range []bool{e.TaskPayload != nil, e.AckPayload != nil, e.HeartbeatPayload != nil, e.ResultPayload != nil, e.ResultAckPayload != nil, e.PingPayload != nil, e.PongPayload != nil, e.AbortPayload != nil, e.RoleUpdatePayload != nil, e.RoleAckPayload != nil} {
+	for _, present := range []bool{e.TaskPayload != nil, e.AckPayload != nil, e.HeartbeatPayload != nil, e.ResultPayload != nil, e.ResultAckPayload != nil, e.PingPayload != nil, e.PongPayload != nil, e.AbortPayload != nil, e.RoleUpdatePayload != nil, e.RoleAckPayload != nil, e.AgentResultPayload != nil} {
 		if present {
 			n++
 		}
@@ -181,10 +231,34 @@ func (e Envelope) Validate() error {
 		if p == nil || (p.Outcome != "SUCCESS" && p.Outcome != "FAILURE" && p.Outcome != "PARTIAL") {
 			return bad("RESULT_ACK payload")
 		}
+		if e.SchemaVersion == SchemaVersionAgentResult {
+			if p.AssignmentID == "" || strings.TrimSpace(p.AssignmentID) != p.AssignmentID || (p.Disposition != "ACCEPTED" && p.Disposition != "NO_ACCEPTANCE") {
+				return bad("version-2 RESULT_ACK binding")
+			}
+			if (p.Disposition == "ACCEPTED" && p.Outcome != "SUCCESS") || (p.Disposition == "NO_ACCEPTANCE" && p.Outcome == "SUCCESS") {
+				return bad("version-2 RESULT_ACK disposition/outcome mismatch")
+			}
+		} else if p.AssignmentID != "" || p.Disposition != "" {
+			return bad("version 1 RESULT_ACK cannot carry version-2 fields")
+		}
 	case Result:
-		p := e.ResultPayload
-		if p == nil || (p.Outcome != "SUCCESS" && p.Outcome != "FAILURE" && p.Outcome != "PARTIAL") {
-			return bad("RESULT payload")
+		if e.SchemaVersion == SchemaVersionAgentResult {
+			p := e.AgentResultPayload
+			if p == nil || p.AssignmentID == "" || strings.TrimSpace(p.AssignmentID) != p.AssignmentID || p.Issuer == "" || strings.TrimSpace(p.Issuer) != p.Issuer || p.CoordinatorGeneration == 0 || p.ExpectedRevision == 0 || strings.TrimSpace(p.Summary) == "" {
+				return bad("version-2 RESULT identity or summary")
+			}
+			if p.Outcome != "" {
+				if p.Verdict != "" || (p.Outcome != "SUCCESS" && p.Outcome != "FAILURE" && p.Outcome != "PARTIAL") || p.Findings != nil || p.InputArtifactRefs != nil || p.OutputArtifactRefs == nil || len(p.Properties) != 0 {
+					return bad("version-2 executor RESULT payload")
+				}
+			} else if p.Verdict == "" || p.Findings == nil {
+				return bad("version-2 review/audit RESULT payload")
+			}
+		} else {
+			p := e.ResultPayload
+			if p == nil || (p.Outcome != "SUCCESS" && p.Outcome != "FAILURE" && p.Outcome != "PARTIAL") {
+				return bad("RESULT payload")
+			}
 		}
 	case Ping:
 		if e.PingPayload == nil || e.PingPayload.Nonce == "" {

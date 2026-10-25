@@ -312,4 +312,7 @@ No direct CLI write, legacy credential expansion, SQLite, provider mesh, R155/R1
 or automatic host/session/model verification is included. Old journals stay history;
 the first explicit offer after an authenticated write path exists starts cutover, never a journal import.
 [Coverage](R153-COVERAGE-MATRIX.md) and [runbook](operations/ASSIGNMENT-LEDGER-CUTOVER.md)
-distinguish core tests from runtime admission/receiver enforcement still to come.
+distinguish the authenticated agent-result handler from production enablement:
+the handler is tested, while coordd keeps its pre-#95 configured-peer receiver
+unless the compile-time gate is explicitly changed for a later cutover. The
+ledger is not active.

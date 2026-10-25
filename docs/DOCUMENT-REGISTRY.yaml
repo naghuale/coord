@@ -533,6 +533,37 @@ documents:
       reviewer: required
       auditor: required
       owner: required_to_accept
+  - id: adr-0010
+    path: docs/ADR-0010-COORDINATOR-DELEGATION.md
+    class: normative
+    status: accepted
+    purpose:
+      - proposed bounded coordinator delegation and ordered succession
+      - records OWNER model D plus S2 combined for drafting only
+      - grant-defined succession is not generation inheritance; two loss paths; exact OwnerCredential retry matches #93a
+      - OWNER loss confirm mustNot list and OWNER_CREDENTIAL actor source are specified for #93b, not implemented
+    usedBy:
+      - COORDINATOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - ISSUE_PLANNING
+      - REVIEW
+      - AUDIT
+    updateWhen:
+      - PRODUCT_NORM_CHANGED
+    currentNormativeAuthority: true
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: product
+    ownership:
+      creates: COORDINATOR
+      updates: EXECUTOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: required
+      owner: required_to_accept
   - id: component-status
     path: docs/architecture/COMPONENT-STATUS.yaml
     class: architecture_status

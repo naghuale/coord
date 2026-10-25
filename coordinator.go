@@ -10,6 +10,7 @@ import (
 	"coord/roles"
 	"coord/store"
 	"coord/task"
+	"coord/taskid"
 	"coord/transport"
 	"errors"
 	"fmt"
@@ -20,6 +21,8 @@ import (
 
 var ErrTransportClosed = errors.New("transport closed")
 var ErrStale = errors.New("noncanonical identity")
+var ErrUnsupportedLegacyEnvelopeSchema = errors.New("legacy coordinator path does not support envelope schema")
+var ErrLegacyEnvelopeOnAuthenticatedIngress = errors.New("legacy envelope is not accepted by authenticated ingress")
 
 // ErrDeadlineExceeded rejects application events after the absolute run deadline.
 var ErrDeadlineExceeded = errors.New("task deadline exceeded")
@@ -253,6 +256,9 @@ func contains(ids []string, id string) bool {
 func (c *Coordinator) Handle(ctx context.Context, e envelope.Envelope) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if e.SchemaVersion != envelope.SchemaVersionLegacyAgent {
+		return ErrUnsupportedLegacyEnvelopeSchema
+	}
 	if err := e.Validate(); err != nil {
 		c.Metrics.Inc("malformed_messages_total")
 		return err
@@ -414,6 +420,89 @@ func (c *Coordinator) Handle(ctx context.Context, e envelope.Envelope) error {
 		return c.flush(ctx, r.RunID)
 	}
 	return nil
+}
+
+// HandleAuthenticatedFrame routes verified agent frames through the
+// canonical command boundary. Telepathy transport identity alone is never
+// sufficient: ApplyAgentCommand rechecks the current AgentSession and the
+// exact Assignment while holding the canonical store lock.
+func (c *Coordinator) handleAuthenticatedFrame(ctx context.Context, frame transport.AuthenticatedFrame) error {
+	e := frame.Envelope()
+	if frame.ReceivedBy() != c.tp.WhoAmI() || e.To != c.tp.WhoAmI() {
+		return fmt.Errorf("authenticated frame recipient mismatch")
+	}
+	if e.SchemaVersion != envelope.SchemaVersionAgentResult {
+		return ErrLegacyEnvelopeOnAuthenticatedIngress
+	}
+	if e.Kind != envelope.Result {
+		return fmt.Errorf("version-2 agent ingress accepts RESULT only")
+	}
+	canonical, ok := c.store.(*store.CanonicalStore)
+	if !ok || e.AgentResultPayload == nil {
+		return fmt.Errorf("authenticated agent result requires CanonicalStore")
+	}
+	id := taskid.ID(e.Task)
+	if err := id.Validate(); err != nil {
+		return fmt.Errorf("invalid Task ID: %w", err)
+	}
+	receipt, replayed, err := canonical.ApplyAgentCommand(frame, id, e.AgentResultPayload.ExpectedRevision, nil)
+	if err != nil {
+		return err
+	}
+	disposition := "NO_ACCEPTANCE"
+	if len(receipt.EventIDs) != 0 {
+		disposition = "ACCEPTED"
+	}
+	if disposition == "ACCEPTED" {
+		queued := false
+		if run, exists := c.store.Get(e.Run); exists {
+			for _, message := range run.Outbox {
+				if message.MessageID == e.MessageID+".result-ack" {
+					queued = true
+					break
+				}
+			}
+		}
+		if queued || !replayed {
+			if queued && replayed {
+				if err := c.store.Update(func(runs map[string]fsm.Run) error {
+					run, ok := runs[e.Run]
+					if !ok {
+						return fmt.Errorf("result Run disappeared before receipt retry")
+					}
+					run.SendRetryAt = time.Time{}
+					runs[e.Run] = run
+					return nil
+				}); err != nil {
+					return err
+				}
+			}
+			return c.flush(ctx, e.Run)
+		}
+	}
+	ack, err := agentResultResponse(e, disposition, receipt.RecordedAt)
+	if err != nil {
+		return err
+	}
+	return c.send(ctx, ack)
+}
+
+func agentResultResponse(command envelope.Envelope, disposition string, at time.Time) (envelope.Envelope, error) {
+	if command.AgentResultPayload == nil || (disposition != "ACCEPTED" && disposition != "NO_ACCEPTANCE") || at.IsZero() {
+		return envelope.Envelope{}, fmt.Errorf("durable agent result receipt required")
+	}
+	outcome := "SUCCESS"
+	if disposition == "NO_ACCEPTANCE" {
+		outcome = "FAILURE"
+	}
+	ack := envelope.Envelope{
+		SchemaVersion: envelope.SchemaVersionAgentResult,
+		MessageID:     command.MessageID + ".result-ack", InReplyTo: command.MessageID,
+		Timestamp: at.UTC(), From: command.To, To: command.From, Kind: envelope.ResultAck,
+		Task: command.Task, Run: command.Run, Attempt: command.Attempt, TargetSHA: command.TargetSHA, Fence: command.Fence,
+		ResultAckPayload: &envelope.ResultAckPayload{Outcome: outcome, AssignmentID: command.AgentResultPayload.AssignmentID, Disposition: disposition},
+	}
+	return ack, ack.Validate()
 }
 
 func (c *Coordinator) resultReceipt(r fsm.Run, resultID string) envelope.Envelope {
@@ -629,9 +718,22 @@ func (c *Coordinator) RunWithReadiness(ctx context.Context, onReady func()) erro
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	inbox := c.tp.Receive(ctx)
-	if inbox == nil {
-		return fmt.Errorf("transport receive returned nil channel")
+	var inbox <-chan envelope.Envelope
+	var authenticatedInbox <-chan transport.AuthenticatedFrame
+	if AuthenticatedAgentIngressEnabled {
+		receiver, ok := c.tp.(transport.ConfiguredAuthenticatedReceiver)
+		if !ok || !receiver.AuthenticatedIngressConfigured() {
+			return fmt.Errorf("authenticated AgentSession ingress is enabled but not configured")
+		}
+		authenticatedInbox = receiver.ReceiveAuthenticated(ctx)
+		if authenticatedInbox == nil {
+			return fmt.Errorf("authenticated transport receive returned nil channel")
+		}
+	} else {
+		inbox = c.tp.Receive(ctx)
+		if inbox == nil {
+			return fmt.Errorf("transport receive returned nil channel")
+		}
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -652,7 +754,24 @@ func (c *Coordinator) RunWithReadiness(ctx context.Context, onReady func()) erro
 			if !ok {
 				return ErrTransportClosed
 			}
+			if !AuthenticatedAgentIngressEnabled && e.SchemaVersion != envelope.SchemaVersionLegacyAgent {
+				c.Metrics.Inc("rejected_messages_total")
+				continue
+			}
 			if err := c.Handle(ctx, e); err != nil {
+				if errors.Is(err, store.ErrPersistence) || errors.Is(err, roles.ErrPersistence) {
+					return err
+				}
+				c.Metrics.Inc("rejected_messages_total")
+			}
+			if err := c.processCoordinatorCandidate(ctx); err != nil {
+				return err
+			}
+		case frame, ok := <-authenticatedInbox:
+			if !ok {
+				return ErrTransportClosed
+			}
+			if err := c.handleAuthenticatedFrame(ctx, frame); err != nil {
 				if errors.Is(err, store.ErrPersistence) || errors.Is(err, roles.ErrPersistence) {
 					return err
 				}
@@ -671,3 +790,7 @@ func (c *Coordinator) RunWithReadiness(ctx context.Context, onReady func()) erro
 		}
 	}
 }
+
+// Agent results remain disabled in production until a separate OWNER-authorized
+// ledger cutover. Tests exercise handleAuthenticatedFrame directly.
+const AuthenticatedAgentIngressEnabled = false

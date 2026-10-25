@@ -1,6 +1,7 @@
 package store
 
 import (
+	"coord/assignment"
 	"coord/ownercredential"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -54,7 +55,7 @@ func TestBootstrapOwnerCredentialsIsOneTimeAndAtomic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.saveCalls != 1 || p.state.Revision != 1 || p.state.SchemaVersion != 4 || len(p.state.OwnerCredentials["owner-1"].Credentials) != 2 {
+	if p.saveCalls != 1 || p.state.Revision != 1 || p.state.SchemaVersion != 5 || len(p.state.OwnerCredentials["owner-1"].Credentials) != 2 {
 		t.Fatalf("bootstrap was not one canonical commit: saves=%d state=%+v", p.saveCalls, p.state)
 	}
 	retry, err := s.BootstrapOwnerCredentials("owner-1", "bootstrap-1", credentials)
@@ -111,7 +112,7 @@ func TestBootstrapOwnerCredentialsRequiresTwoKeysAndFailedSavePublishesNothing(t
 	}
 }
 
-func TestSchemaThreeLoadsWithoutEnrollmentAndSchemaFourKeepsLedgerStatusReadable(t *testing.T) {
+func TestSchemaThreeLoadsWithoutEnrollmentAndSchemaFiveKeepsLedgerStatusReadable(t *testing.T) {
 	p := &canonicalMemory{state: EmptyCanonicalState()}
 	p.state.SchemaVersion = 3
 	p.state.OwnerCredentials = nil
@@ -130,7 +131,7 @@ func TestSchemaThreeLoadsWithoutEnrollmentAndSchemaFourKeepsLedgerStatusReadable
 
 	f := newLedgerFixture(t)
 	if state, err := f.s.CanonicalSnapshot(); err != nil || state.SchemaVersion != CanonicalSchemaVersion {
-		t.Fatalf("schema 4 snapshot=%d err=%v", state.SchemaVersion, err)
+		t.Fatalf("schema 5 snapshot=%d err=%v", state.SchemaVersion, err)
 	}
 	f.s.FreezeAssignmentLedger()
 	state, err := f.s.CanonicalSnapshot()
@@ -139,19 +140,19 @@ func TestSchemaThreeLoadsWithoutEnrollmentAndSchemaFourKeepsLedgerStatusReadable
 	}
 	status, err := InspectAssignment(state, f.id, f.now)
 	if err != nil || status.State != "OFFERED" || status.WorkMayStart {
-		t.Fatalf("schema 4 frozen ledger status=%+v err=%v", status, err)
+		t.Fatalf("schema 5 frozen ledger status=%+v err=%v", status, err)
 	}
 }
 
-func TestSchemaFourFailsClosedForUnknownFutureSchema(t *testing.T) {
+func TestSchemaSixFailsClosed(t *testing.T) {
 	state := EmptyCanonicalState()
-	state.SchemaVersion = 5
+	state.SchemaVersion = 6
 	if err := ValidateCanonicalState(state); err == nil {
-		t.Fatal("accepted unsupported schema 5")
+		t.Fatal("accepted unsupported schema 6")
 	}
 }
 
-func TestSchemaThreeCommitPublishesSchemaFour(t *testing.T) {
+func TestSchemaThreeCommitPublishesSchemaFive(t *testing.T) {
 	p := &canonicalMemory{state: EmptyCanonicalState()}
 	p.state.SchemaVersion = 3
 	p.state.OwnerCredentials = nil
@@ -167,8 +168,55 @@ func TestSchemaThreeCommitPublishesSchemaFour(t *testing.T) {
 	if err := s.UpdateCanonical(func(*CanonicalState) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
-	if p.state.SchemaVersion != 4 || p.saveCalls != 1 {
-		t.Fatalf("first commit did not upgrade schema 3: version=%d saves=%d", p.state.SchemaVersion, p.saveCalls)
+	if p.state.SchemaVersion != 5 || p.saveCalls != 1 {
+		t.Fatalf("first commit did not upgrade schema 3 to schema 5: version=%d saves=%d", p.state.SchemaVersion, p.saveCalls)
+	}
+}
+
+func TestSchemaFourLoadsReadOnlyAndNextCommitPublishesFive(t *testing.T) {
+	p := &canonicalMemory{state: EmptyCanonicalState()}
+	p.state.SchemaVersion = 4
+	s, err := NewCanonical(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	loaded, err := s.CanonicalSnapshot()
+	if err != nil || loaded.SchemaVersion != 4 || p.saveCalls != 0 {
+		t.Fatalf("schema 4 load version=%d saves=%d err=%v", loaded.SchemaVersion, p.saveCalls, err)
+	}
+	if err := s.UpdateCanonical(func(*CanonicalState) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if p.state.SchemaVersion != 5 || p.saveCalls != 1 {
+		t.Fatalf("schema 4 first write version=%d saves=%d", p.state.SchemaVersion, p.saveCalls)
+	}
+}
+
+func TestSchemaFourAssignmentLedgerFreezeAndStatusRemainReadable(t *testing.T) {
+	f := newLedgerFixture(t)
+	state, err := f.s.CanonicalSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	state.SchemaVersion = 4
+	p := &canonicalMemory{state: state}
+	s, err := NewCanonical(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	s.FreezeAssignmentLedger()
+	loaded, err := s.CanonicalSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, err := InspectAssignment(loaded, f.id, f.now)
+	if err != nil || status.State != assignment.Offered || status.WorkMayStart || p.saveCalls != 0 {
+		t.Fatalf("schema 4 frozen assignment status=%+v saves=%d err=%v", status, p.saveCalls, err)
 	}
 }
 
