@@ -90,7 +90,7 @@ func TestProductionCompositionDoesNotConfigureAgentSessionIngress(t *testing.T) 
 			return nil, err
 		}
 		snapshot, err := canonical.CanonicalSnapshot()
-		activeV5 = err == nil && snapshot.SchemaVersion == 5 && snapshot.AgentSessions["codex:worker"].Active()
+		activeV5 = err == nil && snapshot.SchemaVersion == store.CanonicalSchemaVersion && snapshot.AgentSessions["codex:worker"].Active()
 		return canonical, err
 	}
 	err := runWithWriterFactories(ctx, cfg, func(context.Context, coorddconfig.Config) (transport.Transport, func() error, error) {

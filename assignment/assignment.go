@@ -40,6 +40,17 @@ type Principal struct {
 	Generation uint64 `json:"generation"`
 }
 
+// DelegationBinding names the exact grant that issued the assignment.
+// Authority checks resolve only this grant. They do not search for another
+// grant with the same repository and project.
+type DelegationBinding struct {
+	GrantID         string `json:"grantId"`
+	GrantGeneration uint64 `json:"grantGeneration"`
+	Repository      string `json:"repository"`
+	Project         string `json:"project"`
+	AllowedWorkItem string `json:"allowedWorkItem"`
+}
+
 type AdmissionBasis struct {
 	Kind            string `json:"kind"`
 	Reference       string `json:"reference"`
@@ -85,32 +96,35 @@ type Result struct {
 }
 
 type Record struct {
-	AssignmentID          string             `json:"assignmentId"`
-	State                 State              `json:"state"`
-	Issuer                string             `json:"issuer"`
-	IssuerAgentID         string             `json:"issuerAgentId"`
-	IssuerGeneration      uint64             `json:"issuerGeneration"`
-	CurrentCoordinator    string             `json:"currentCoordinator"`
-	CoordinatorAgentID    string             `json:"coordinatorAgentId"`
-	CoordinatorGeneration uint64             `json:"coordinatorGeneration"`
-	HandoffEvidence       []Handoff          `json:"handoffEvidence"`
-	CoordinatorLost       bool               `json:"coordinatorLost"`
-	Assignee              string             `json:"assignee"`
-	StableAgentID         string             `json:"stableAgentId"`
-	SessionID             string             `json:"sessionId"`
-	AssigneeGeneration    uint64             `json:"assigneeGeneration"`
-	Role                  string             `json:"role"`
-	SubjectSHA            string             `json:"subjectSha"`
-	IssuedAt              time.Time          `json:"issuedAt"`
-	ValidUntil            time.Time          `json:"validUntil"`
-	AdmissionBasis        AdmissionBasis     `json:"admissionBasis"`
-	VisibilityEvidence    VisibilityEvidence `json:"visibilityEvidence"`
-	RunBinding            *RunBinding        `json:"runBinding,omitempty"`
-	Revision              uint64             `json:"revision"`
-	UpdatedAt             time.Time          `json:"updatedAt"`
-	WorkStartedAt         time.Time          `json:"workStartedAt,omitempty"`
-	AcknowledgedAt        time.Time          `json:"acknowledgedAt,omitempty"`
-	AcceptedResult        *Result            `json:"acceptedResult,omitempty"`
+	AssignmentID          string    `json:"assignmentId"`
+	State                 State     `json:"state"`
+	Issuer                string    `json:"issuer"`
+	IssuerAgentID         string    `json:"issuerAgentId"`
+	IssuerGeneration      uint64    `json:"issuerGeneration"`
+	CurrentCoordinator    string    `json:"currentCoordinator"`
+	CoordinatorAgentID    string    `json:"coordinatorAgentId"`
+	CoordinatorGeneration uint64    `json:"coordinatorGeneration"`
+	HandoffEvidence       []Handoff `json:"handoffEvidence"`
+	CoordinatorLost       bool      `json:"coordinatorLost"`
+	Assignee              string    `json:"assignee"`
+	StableAgentID         string    `json:"stableAgentId"`
+	SessionID             string    `json:"sessionId"`
+	AssigneeGeneration    uint64    `json:"assigneeGeneration"`
+	Role                  string    `json:"role"`
+	SubjectSHA            string    `json:"subjectSha"`
+	// DelegationBinding is the immutable issuing-grant identity (schema v6).
+	// Nil when the assignment is not under a grant. Later events cannot change it.
+	DelegationBinding  *DelegationBinding `json:"delegationBinding,omitempty"`
+	IssuedAt           time.Time          `json:"issuedAt"`
+	ValidUntil         time.Time          `json:"validUntil"`
+	AdmissionBasis     AdmissionBasis     `json:"admissionBasis"`
+	VisibilityEvidence VisibilityEvidence `json:"visibilityEvidence"`
+	RunBinding         *RunBinding        `json:"runBinding,omitempty"`
+	Revision           uint64             `json:"revision"`
+	UpdatedAt          time.Time          `json:"updatedAt"`
+	WorkStartedAt      time.Time          `json:"workStartedAt,omitempty"`
+	AcknowledgedAt     time.Time          `json:"acknowledgedAt,omitempty"`
+	AcceptedResult     *Result            `json:"acceptedResult,omitempty"`
 }
 
 func (r Record) Coordinator() Principal {
@@ -120,6 +134,15 @@ func (r Record) Target() Principal {
 	return Principal{r.SessionID, r.StableAgentID, r.AssigneeGeneration}
 }
 
+// ActorSourceKind distinguishes AgentSession observers from OWNER_CREDENTIAL
+// loss confirmations on COORDINATOR_LOST (#93b / ADR-0010 §9).
+type ActorSourceKind string
+
+const (
+	ActorSourceAgentSession    ActorSourceKind = "AGENT_SESSION"
+	ActorSourceOwnerCredential ActorSourceKind = "OWNER_CREDENTIAL"
+)
+
 type Event struct {
 	AssignmentID string    `json:"assignmentId"`
 	Revision     uint64    `json:"revision"`
@@ -128,6 +151,23 @@ type Event struct {
 	EvidenceRef  string    `json:"evidenceRef"`
 	At           time.Time `json:"at"`
 	Record       Record    `json:"record"`
+	// ActorSource is omitempty. Missing on v4/v5 events loads as AGENT_SESSION.
+	ActorSource           ActorSourceKind `json:"actorSource,omitempty"`
+	OwnerPrincipalID      string          `json:"ownerPrincipalId,omitempty"`
+	OwnerCredentialID     string          `json:"ownerCredentialId,omitempty"`
+	OwnerReceiptMessageID string          `json:"ownerReceiptMessageId,omitempty"`
+	OwnerReceiptDigest    string          `json:"ownerReceiptDigest,omitempty"`
+	OwnerCommitRevision   uint64          `json:"ownerCommitRevision,omitempty"`
+	OwnerDelegationID     string          `json:"ownerDelegationId,omitempty"`
+	OwnerGrantGeneration  uint64          `json:"ownerGrantGeneration,omitempty"`
+}
+
+// EffectiveActorSource returns AGENT_SESSION when the field is absent (legacy).
+func (e Event) EffectiveActorSource() ActorSourceKind {
+	if e.ActorSource == "" {
+		return ActorSourceAgentSession
+	}
+	return e.ActorSource
 }
 
 // Ledger is persisted only inside the existing CanonicalState JSON commit.
@@ -242,6 +282,7 @@ func (l *Ledger) Append(e Event) error {
 
 // OpenCoordinatorLossObserver derives the current loss observer from history;
 // it adds no persisted field or new authority. A handoff closes that interval.
+// OWNER_CREDENTIAL losses have no AgentSession observer (ADR-0010 §9).
 func (l *Ledger) OpenCoordinatorLossObserver(id string) (Principal, bool) {
 	if l == nil || !l.Records[id].CoordinatorLost || l.Records[id].State.Terminal() {
 		return Principal{}, false
@@ -253,12 +294,37 @@ func (l *Ledger) OpenCoordinatorLossObserver(id string) (Principal, bool) {
 		}
 		switch e.Kind {
 		case "COORDINATOR_LOST":
+			if e.EffectiveActorSource() == ActorSourceOwnerCredential {
+				return Principal{}, false
+			}
 			return e.Actor, true
 		case "HANDOFF", "OFFER":
 			return Principal{}, false
 		}
 	}
 	return Principal{}, false
+}
+
+// latestCoordinatorLossIsOwnerCredential reports whether the latest
+// COORDINATOR_LOST event for id (before any later HANDOFF/OFFER) is
+// OWNER_CREDENTIAL. Used by HANDOFF checkEvent for G93b-1 parity.
+func latestCoordinatorLossIsOwnerCredential(l *Ledger, id string) bool {
+	if l == nil {
+		return false
+	}
+	for i := len(l.Events) - 1; i >= 0; i-- {
+		e := l.Events[i]
+		if e.AssignmentID != id {
+			continue
+		}
+		switch e.Kind {
+		case "COORDINATOR_LOST":
+			return e.EffectiveActorSource() == ActorSourceOwnerCredential
+		case "HANDOFF", "OFFER":
+			return false
+		}
+	}
+	return false
 }
 
 func (l *Ledger) checkEvent(prior Record, exists bool, e Event) error {
@@ -329,20 +395,52 @@ func (l *Ledger) checkEvent(prior Record, exists bool, e Event) error {
 		}
 		want.WorkStartedAt = e.At
 	case "COORDINATOR_LOST":
-		if prior.CoordinatorLost || e.Actor == prior.Coordinator() || e.Actor == prior.Target() {
-			return fmt.Errorf("%w: repeated or self-interested loss observation", ErrInvalid)
-		}
-		for _, candidate := range l.Records {
-			if candidate.Coordinator() == prior.Coordinator() && !candidate.State.Terminal() && !candidate.CoordinatorLost && candidate.Target() == e.Actor {
-				return fmt.Errorf("%w: observer targets another affected assignment", ErrInvalid)
+		source := e.EffectiveActorSource()
+		switch source {
+		case ActorSourceAgentSession:
+			if e.ActorSource != "" && e.ActorSource != ActorSourceAgentSession {
+				return fmt.Errorf("%w: invalid actor source", ErrInvalid)
 			}
+			if prior.CoordinatorLost || e.Actor == prior.Coordinator() || e.Actor == prior.Target() {
+				return fmt.Errorf("%w: repeated or self-interested loss observation", ErrInvalid)
+			}
+			for _, candidate := range l.Records {
+				if candidate.Coordinator() == prior.Coordinator() && !candidate.State.Terminal() && !candidate.CoordinatorLost && candidate.Target() == e.Actor {
+					return fmt.Errorf("%w: observer targets another affected assignment", ErrInvalid)
+				}
+			}
+		case ActorSourceOwnerCredential:
+			if prior.CoordinatorLost {
+				return fmt.Errorf("%w: repeated or closed loss", ErrInvalid)
+			}
+			if e.Actor == prior.Target() {
+				return fmt.Errorf("%w: affected target cannot record loss", ErrInvalid)
+			}
+			if e.OwnerPrincipalID == "" || e.OwnerCredentialID == "" || e.OwnerReceiptMessageID == "" || e.OwnerReceiptDigest == "" {
+				return fmt.Errorf("%w: OWNER_CREDENTIAL loss requires receipt binding", ErrInvalid)
+			}
+			// OWNER principal is never a successor; Target exclusion retained.
+		default:
+			return fmt.Errorf("%w: unknown actor source", ErrInvalid)
 		}
 		want.CoordinatorLost = true
 	case "HANDOFF":
 		actor := prior.Coordinator()
 		if prior.CoordinatorLost {
 			observer, lossOpen := l.OpenCoordinatorLossObserver(e.AssignmentID)
-			if !lossOpen || r.Coordinator() == observer || r.Coordinator() == prior.Target() {
+			if lossOpen {
+				if r.Coordinator() == observer || r.Coordinator() == prior.Target() {
+					return fmt.Errorf("%w: loss observer or target cannot recover to itself", ErrInvalid)
+				}
+			} else if latestCoordinatorLossIsOwnerCredential(l, e.AssignmentID) {
+				// OWNER_CREDENTIAL losses report !open by design; Target remains excluded.
+				// Receipt binding is enforced at canonical validate (G93b-1).
+				if r.Coordinator() == prior.Target() {
+					return fmt.Errorf("%w: target cannot recover to itself", ErrInvalid)
+				}
+			} else {
+				// Main/#90 parity: CoordinatorLost without an open AGENT_SESSION
+				// observer rejects handoff (G93b-1).
 				return fmt.Errorf("%w: loss observer or target cannot recover to itself", ErrInvalid)
 			}
 			actor = r.Coordinator()

@@ -21,7 +21,7 @@ import (
 	"time"
 )
 
-const CanonicalSchemaVersion uint32 = 5
+const CanonicalSchemaVersion uint32 = 6
 
 // ErrFenceExhausted prevents Task.Fence from wrapping to an earlier writer epoch.
 var ErrFenceExhausted = errors.New("task fence exhausted")
@@ -79,25 +79,28 @@ func InboxKey(actorID, messageID string) string {
 
 // CanonicalState is the versioned durable boundary for Coord-owned state.
 type CanonicalState struct {
-	AssignmentLedger   *assignment.Ledger                   `json:"assignment_ledger,omitempty"`
-	OwnerCredentials   map[string]ownercredential.Aggregate `json:"owner_credentials"`
-	SchemaMigrations   []SchemaMigration                    `json:"schema_migrations,omitempty"`
-	Revision           uint64                               `json:"revision"`
-	Orchestration      externalaction.State                 `json:"orchestration"`
-	SchemaVersion      uint32                               `json:"schema_version"`
-	Tasks              map[taskid.ID]task.Task              `json:"tasks"`
-	Runs               map[string]fsm.Run                   `json:"runs"`
-	Events             []task.DomainEvent                   `json:"events"`
-	Inbox              map[string]InboxReceipt              `json:"inbox"`
-	Outbox             map[string]OutboxQueue               `json:"outbox"`
-	AgentSessions      map[string]agentsession.Session      `json:"agent_sessions"`
-	AgentSessionEvents []agentsession.Event                 `json:"agent_session_events"`
+	AssignmentLedger       *assignment.Ledger                   `json:"assignment_ledger,omitempty"`
+	OwnerCredentials       map[string]ownercredential.Aggregate `json:"owner_credentials"`
+	CoordinatorDelegations map[string]DelegationRecord          `json:"coordinator_delegations,omitempty"`
+	SchemaMigrations       []SchemaMigration                    `json:"schema_migrations,omitempty"`
+	Revision               uint64                               `json:"revision"`
+	Orchestration          externalaction.State                 `json:"orchestration"`
+	SchemaVersion          uint32                               `json:"schema_version"`
+	Tasks                  map[taskid.ID]task.Task              `json:"tasks"`
+	Runs                   map[string]fsm.Run                   `json:"runs"`
+	Events                 []task.DomainEvent                   `json:"events"`
+	Inbox                  map[string]InboxReceipt              `json:"inbox"`
+	Outbox                 map[string]OutboxQueue               `json:"outbox"`
+	AgentSessions          map[string]agentsession.Session      `json:"agent_sessions"`
+	AgentSessionEvents     []agentsession.Event                 `json:"agent_session_events"`
 }
 
 func EmptyCanonicalState() CanonicalState {
 	return CanonicalState{
-		SchemaVersion:      CanonicalSchemaVersion,
-		OwnerCredentials:   map[string]ownercredential.Aggregate{},
+		SchemaVersion:    CanonicalSchemaVersion,
+		OwnerCredentials: map[string]ownercredential.Aggregate{},
+		// CoordinatorDelegations stays nil until schema 6 materializes a grant;
+		// omitempty + nil preserves DeepEqual parity with pre-#93b snapshots.
 		Orchestration:      externalaction.Empty(),
 		Tasks:              map[taskid.ID]task.Task{},
 		Runs:               map[string]fsm.Run{},
@@ -127,6 +130,11 @@ func NormalizeCanonicalState(state CanonicalState) CanonicalState {
 	}
 	if state.OwnerCredentials == nil {
 		state.OwnerCredentials = map[string]ownercredential.Aggregate{}
+	}
+	// Leave CoordinatorDelegations nil when empty so omitempty JSON round-trips
+	// match pre-#93b snapshots (nil vs empty-map DeepEqual traps).
+	if state.CoordinatorDelegations != nil && len(state.CoordinatorDelegations) == 0 {
+		state.CoordinatorDelegations = nil
 	}
 	return state
 }
@@ -210,13 +218,28 @@ func NewCanonicalWithClock(p CanonicalPersistence, now func() time.Time) (*Canon
 
 func ValidateCanonicalState(state CanonicalState) error {
 	state = NormalizeCanonicalState(state)
-	if state.SchemaVersion != CanonicalSchemaVersion && state.SchemaVersion != 4 && state.SchemaVersion != 3 {
+	if state.SchemaVersion != CanonicalSchemaVersion && state.SchemaVersion != 5 && state.SchemaVersion != 4 && state.SchemaVersion != 3 {
 		return fmt.Errorf("unsupported canonical schema version %d", state.SchemaVersion)
 	}
 	if state.SchemaVersion == 3 && len(state.OwnerCredentials) != 0 {
 		return fmt.Errorf("schema 3 cannot contain OwnerCredential aggregates")
 	}
+	if state.SchemaVersion < 6 && len(state.CoordinatorDelegations) != 0 {
+		return fmt.Errorf("schema %d cannot contain CoordinatorDelegations", state.SchemaVersion)
+	}
+	// F3: fail-closed before assignment replay so disabled snapshots carrying
+	// delegation records or OWNER_CREDENTIAL loss are rejected even when the
+	// assignment history itself is incomplete/forged.
+	if err := validateDelegationDisabledInvariants(state); err != nil {
+		return err
+	}
 	if err := validateAssignments(state); err != nil {
+		return err
+	}
+	if err := validateDelegations(state); err != nil {
+		return err
+	}
+	if err := validateAssignmentDelegationScope(state); err != nil {
 		return err
 	}
 	if err := validateSchemaMigrations(state); err != nil {
@@ -751,7 +774,14 @@ func dehydrateRuns(state *CanonicalState, runs map[string]fsm.Run) error {
 
 // UpdateCanonical serializes a complete state transition and publishes it in
 // memory only after the single durable snapshot commit succeeds.
+// Callers cannot authorize a CoordinatorDelegations mutation through this
+// entry: grant acting/history/visibility changes require the unexported
+// handoff or primaryRestart commit seam.
 func (s *CanonicalStore) UpdateCanonical(fn func(*CanonicalState) error) error {
+	return s.commitCanonical(delegationCommitGeneric, fn)
+}
+
+func (s *CanonicalStore) commitCanonical(kind delegationCommitKind, fn func(*CanonicalState) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
@@ -767,8 +797,19 @@ func (s *CanonicalStore) UpdateCanonical(fn func(*CanonicalState) error) error {
 	if err := fn(&next); err != nil {
 		return err
 	}
+	if err := rejectGenericOwnerLossEvents(s.state.AssignmentLedger, next.AssignmentLedger); err != nil {
+		return err
+	}
 	if !reflect.DeepEqual(s.state.OwnerCredentials, next.OwnerCredentials) {
 		return ErrOwnerCommandRequired
+	}
+	if !reflect.DeepEqual(s.state.CoordinatorDelegations, next.CoordinatorDelegations) {
+		if !coordinatorDelegationActive() {
+			return ErrCoordinatorDelegationDisabled
+		}
+		if err := validateDelegatedWriterDelta(kind, s.state, next); err != nil {
+			return err
+		}
 	}
 	next.SchemaVersion = CanonicalSchemaVersion
 	if reflect.DeepEqual(s.state, next) {
@@ -778,6 +819,7 @@ func (s *CanonicalStore) UpdateCanonical(fn func(*CanonicalState) error) error {
 		return fmt.Errorf("canonical revision exhausted")
 	}
 	next.Revision = s.state.Revision + 1
+	stampNewDelegationHistory(s.state.CoordinatorDelegations, next.CoordinatorDelegations, next.Revision)
 	if err := ValidateCanonicalState(next); err != nil {
 		return err
 	}
@@ -832,6 +874,9 @@ func (s *CanonicalStore) BootstrapOwnerCredentials(principalID, messageID string
 		return ownercredential.Receipt{}, fmt.Errorf("copy canonical state: %w", err)
 	}
 	next.OwnerCredentials[principalID] = aggregate
+	if err := rejectUnauthorizedGrantMutation(s.state, next); err != nil {
+		return ownercredential.Receipt{}, err
+	}
 	if s.state.Revision == ^uint64(0) {
 		return ownercredential.Receipt{}, fmt.Errorf("canonical revision exhausted")
 	}
@@ -858,10 +903,10 @@ func (s *CanonicalStore) BootstrapOwnerCredentials(principalID, messageID string
 	return aggregate.Receipts[messageID], nil
 }
 
-// ApplyInboxCommand is a legacy generic Task command seam. It is disabled once
-// Owner credentials are enrolled; authenticated agent writes use ApplyAgentCommand,
-// while Owner writes use ApplyOwnerCredentialCommand so verification and effect
-// share one store lock and commit.
+// ApplyInboxCommand is a legacy generic Task command seam. It is not a grant
+// writer: CoordinatorDelegations mutations fail closed. Authenticated agent
+// writes use ApplyAgentCommand; Owner grant/revoke/loss/visibility use
+// ApplyOwnerCredentialCommand so verification and effect share one lock.
 func (s *CanonicalStore) ApplyInboxCommand(actorID, messageID string, taskID taskid.ID, expectedRevision uint64, apply func(*CanonicalState) (InboxReceipt, error)) (InboxReceipt, bool, error) {
 	if actorID == "" || strings.TrimSpace(actorID) != actorID || messageID == "" || strings.TrimSpace(messageID) != messageID || taskID.Validate() != nil || apply == nil {
 		return InboxReceipt{}, false, fmt.Errorf("valid command identity and handler are required")
@@ -901,8 +946,14 @@ func (s *CanonicalStore) applyInboxCommandLocked(actorID, messageID string, task
 	if err != nil {
 		return InboxReceipt{}, false, err
 	}
+	if err := rejectGenericOwnerLossEvents(s.state.AssignmentLedger, next.AssignmentLedger); err != nil {
+		return InboxReceipt{}, false, err
+	}
 	if !reflect.DeepEqual(s.state.OwnerCredentials, next.OwnerCredentials) {
 		return InboxReceipt{}, false, ErrOwnerCommandRequired
+	}
+	if err := rejectUnauthorizedGrantMutation(s.state, next); err != nil {
+		return InboxReceipt{}, false, err
 	}
 	if !reflect.DeepEqual(next.Inbox, s.state.Inbox) {
 		return InboxReceipt{}, false, fmt.Errorf("command handler cannot mutate Inbox directly")
@@ -946,8 +997,11 @@ func (s *CanonicalStore) applyInboxCommandLocked(actorID, messageID string, task
 // ValidateCanonicalTransition enforces append-only history and monotonic Task
 // versions across commits. Snapshot validation alone cannot prove these rules.
 func ValidateCanonicalTransition(previous, next CanonicalState) error {
-	if previous.SchemaVersion != next.SchemaVersion && ((previous.SchemaVersion != 3 && previous.SchemaVersion != 4) || next.SchemaVersion != CanonicalSchemaVersion) {
-		return fmt.Errorf("canonical schema may only advance from 3 or 4 to %d", CanonicalSchemaVersion)
+	if previous.SchemaVersion != next.SchemaVersion {
+		okPrior := previous.SchemaVersion == 3 || previous.SchemaVersion == 4 || previous.SchemaVersion == 5
+		if !okPrior || next.SchemaVersion != CanonicalSchemaVersion {
+			return fmt.Errorf("canonical schema may only advance from 3, 4 or 5 to %d", CanonicalSchemaVersion)
+		}
 	}
 	if err := assignment.ValidateTransition(previous.AssignmentLedger, next.AssignmentLedger); err != nil {
 		return err
@@ -959,6 +1013,11 @@ func ValidateCanonicalTransition(previous, next CanonicalState) error {
 	next = NormalizeCanonicalState(next)
 	if err := ownercredential.ValidateTransition(previous.OwnerCredentials, next.OwnerCredentials); err != nil {
 		return err
+	}
+	// F2: while delegation is disabled, CoordinatorDelegations must be byte-stable
+	// across transitions (no generic insert/edit/delete of the grant slice).
+	if !coordinatorDelegationActive() && !reflect.DeepEqual(previous.CoordinatorDelegations, next.CoordinatorDelegations) {
+		return fmt.Errorf("%w: CoordinatorDelegations immutable while delegation disabled", ErrCoordinatorDelegationDisabled)
 	}
 	if err := externalaction.ValidateTransition(previous.Orchestration, next.Orchestration, next.Revision); err != nil {
 		return err

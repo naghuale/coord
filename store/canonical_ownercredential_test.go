@@ -55,7 +55,7 @@ func TestBootstrapOwnerCredentialsIsOneTimeAndAtomic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.saveCalls != 1 || p.state.Revision != 1 || p.state.SchemaVersion != 5 || len(p.state.OwnerCredentials["owner-1"].Credentials) != 2 {
+	if p.saveCalls != 1 || p.state.Revision != 1 || p.state.SchemaVersion != CanonicalSchemaVersion || len(p.state.OwnerCredentials["owner-1"].Credentials) != 2 {
 		t.Fatalf("bootstrap was not one canonical commit: saves=%d state=%+v", p.saveCalls, p.state)
 	}
 	retry, err := s.BootstrapOwnerCredentials("owner-1", "bootstrap-1", credentials)
@@ -112,7 +112,7 @@ func TestBootstrapOwnerCredentialsRequiresTwoKeysAndFailedSavePublishesNothing(t
 	}
 }
 
-func TestSchemaThreeLoadsWithoutEnrollmentAndSchemaFiveKeepsLedgerStatusReadable(t *testing.T) {
+func TestSchemaThreeLoadsWithoutEnrollmentAndSchemaSixKeepsLedgerStatusReadable(t *testing.T) {
 	p := &canonicalMemory{state: EmptyCanonicalState()}
 	p.state.SchemaVersion = 3
 	p.state.OwnerCredentials = nil
@@ -131,7 +131,7 @@ func TestSchemaThreeLoadsWithoutEnrollmentAndSchemaFiveKeepsLedgerStatusReadable
 
 	f := newLedgerFixture(t)
 	if state, err := f.s.CanonicalSnapshot(); err != nil || state.SchemaVersion != CanonicalSchemaVersion {
-		t.Fatalf("schema 5 snapshot=%d err=%v", state.SchemaVersion, err)
+		t.Fatalf("schema 6 snapshot=%d err=%v", state.SchemaVersion, err)
 	}
 	f.s.FreezeAssignmentLedger()
 	state, err := f.s.CanonicalSnapshot()
@@ -140,19 +140,19 @@ func TestSchemaThreeLoadsWithoutEnrollmentAndSchemaFiveKeepsLedgerStatusReadable
 	}
 	status, err := InspectAssignment(state, f.id, f.now)
 	if err != nil || status.State != "OFFERED" || status.WorkMayStart {
-		t.Fatalf("schema 5 frozen ledger status=%+v err=%v", status, err)
+		t.Fatalf("schema 6 frozen ledger status=%+v err=%v", status, err)
 	}
 }
 
-func TestSchemaSixFailsClosed(t *testing.T) {
+func TestSchemaSevenFailsClosed(t *testing.T) {
 	state := EmptyCanonicalState()
-	state.SchemaVersion = 6
+	state.SchemaVersion = 7
 	if err := ValidateCanonicalState(state); err == nil {
-		t.Fatal("accepted unsupported schema 6")
+		t.Fatal("accepted unsupported schema 7")
 	}
 }
 
-func TestSchemaThreeCommitPublishesSchemaFive(t *testing.T) {
+func TestSchemaThreeCommitPublishesSchemaSix(t *testing.T) {
 	p := &canonicalMemory{state: EmptyCanonicalState()}
 	p.state.SchemaVersion = 3
 	p.state.OwnerCredentials = nil
@@ -168,12 +168,12 @@ func TestSchemaThreeCommitPublishesSchemaFive(t *testing.T) {
 	if err := s.UpdateCanonical(func(*CanonicalState) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
-	if p.state.SchemaVersion != 5 || p.saveCalls != 1 {
-		t.Fatalf("first commit did not upgrade schema 3 to schema 5: version=%d saves=%d", p.state.SchemaVersion, p.saveCalls)
+	if p.state.SchemaVersion != 6 || p.saveCalls != 1 {
+		t.Fatalf("first commit did not upgrade schema 3 to schema 6: version=%d saves=%d", p.state.SchemaVersion, p.saveCalls)
 	}
 }
 
-func TestSchemaFourLoadsReadOnlyAndNextCommitPublishesFive(t *testing.T) {
+func TestSchemaFourLoadsReadOnlyAndNextCommitPublishesSix(t *testing.T) {
 	p := &canonicalMemory{state: EmptyCanonicalState()}
 	p.state.SchemaVersion = 4
 	s, err := NewCanonical(p)
@@ -188,8 +188,28 @@ func TestSchemaFourLoadsReadOnlyAndNextCommitPublishesFive(t *testing.T) {
 	if err := s.UpdateCanonical(func(*CanonicalState) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
-	if p.state.SchemaVersion != 5 || p.saveCalls != 1 {
+	if p.state.SchemaVersion != 6 || p.saveCalls != 1 {
 		t.Fatalf("schema 4 first write version=%d saves=%d", p.state.SchemaVersion, p.saveCalls)
+	}
+}
+
+func TestSchemaFiveLoadsReadOnlyAndNextCommitPublishesSix(t *testing.T) {
+	p := &canonicalMemory{state: EmptyCanonicalState()}
+	p.state.SchemaVersion = 5
+	s, err := NewCanonical(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	loaded, err := s.CanonicalSnapshot()
+	if err != nil || loaded.SchemaVersion != 5 || p.saveCalls != 0 {
+		t.Fatalf("schema 5 load version=%d saves=%d err=%v", loaded.SchemaVersion, p.saveCalls, err)
+	}
+	if err := s.UpdateCanonical(func(*CanonicalState) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if p.state.SchemaVersion != 6 || p.saveCalls != 1 {
+		t.Fatalf("schema 5 first write version=%d saves=%d", p.state.SchemaVersion, p.saveCalls)
 	}
 }
 
