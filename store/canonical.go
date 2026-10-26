@@ -903,10 +903,13 @@ func (s *CanonicalStore) BootstrapOwnerCredentials(principalID, messageID string
 	return aggregate.Receipts[messageID], nil
 }
 
-// ApplyInboxCommand is a legacy generic Task command seam. It is not a grant
-// writer: CoordinatorDelegations mutations fail closed. Authenticated agent
-// writes use ApplyAgentCommand; Owner grant/revoke/loss/visibility use
-// ApplyOwnerCredentialCommand so verification and effect share one lock.
+// ApplyInboxCommand is a legacy generic Task command seam. Owner credential
+// enrollment does not disable it: the method stays callable for Task commands
+// after enroll. It is not a grant writer. OwnerCredentials mutation fails
+// closed with ErrOwnerCommandRequired; CoordinatorDelegations mutation fails
+// closed. Authenticated agent writes use ApplyAgentCommand; Owner
+// grant/revoke/loss/visibility use ApplyOwnerCredentialCommand so verification
+// and effect share one lock.
 func (s *CanonicalStore) ApplyInboxCommand(actorID, messageID string, taskID taskid.ID, expectedRevision uint64, apply func(*CanonicalState) (InboxReceipt, error)) (InboxReceipt, bool, error) {
 	if actorID == "" || strings.TrimSpace(actorID) != actorID || messageID == "" || strings.TrimSpace(messageID) != messageID || taskID.Validate() != nil || apply == nil {
 		return InboxReceipt{}, false, fmt.Errorf("valid command identity and handler are required")

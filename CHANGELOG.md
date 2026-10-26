@@ -1,5 +1,12 @@
 # История изменений
 
+## 2026-10-26 — AND-15 technical follow-ups (Refs AND-15 / #93b)
+
+- ADR-0010 header records implementation IMPLEMENTED, production DISABLED (`CoordinatorDelegationEnabled=false`), cutover NOT_PERFORMED. Accepted ADR body and norms are unchanged. (документация)
+- ApplyInboxCommand comment and command-boundary docs state that Owner enrollment does not disable the Task seam; OwnerCredentials and CoordinatorDelegations still fail closed. Code behaviour is unchanged. (документация)
+- COMPONENT-STATUS `updatedFromCommit` is `757d6a1822dfff62546ea504ceb638fde88df8e6`; `coordinator.loss.confirm` is implemented behind the disable const. (документация)
+- OWNER cutover NQ-2/3/4/6 recorded append-only; v5→v6 runbook and two-act cutover checklist added. Schema advance is not cutover. Const gates and S0Exit are not declared. (документация)
+
 ## 2026-10-26 — Pre-restart loss must reuse restart visibility on seam and reload (Refs #93b)
 
 - A pre-restart loss routed to the acting restarted primary is accepted on the typed seam and on snapshot reload only when the handoff visibility is the restart receipt. A fresh unrelated visibility for the same primary is rejected. Live A-2 (restart digest) and A-3 (fresh post-restart capture) stay accepted. (`TestRecovery8_P1PreRestartLossMustReuseRestartVisibility`)
