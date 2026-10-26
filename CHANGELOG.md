@@ -1,5 +1,9 @@
 # История изменений
 
+## 2026-10-26 — Pre-restart loss must reuse restart visibility on seam and reload (Refs #93b)
+
+- A pre-restart loss routed to the acting restarted primary is accepted on the typed seam and on snapshot reload only when the handoff visibility is the restart receipt. A fresh unrelated visibility for the same primary is rejected. Live A-2 (restart digest) and A-3 (fresh post-restart capture) stay accepted. (`TestRecovery8_P1PreRestartLossMustReuseRestartVisibility`)
+
 ## 2026-10-25 — Fresh visibility for post-restart coordinator loss (Refs #93b)
 
 - OWNER A-3: losses recorded after the active primary restart require a fresh visibility receipt for that exact primary. The capture consumes it once; siblings of the same loss retain it. Losses recorded before the restart retain the A-2 path without new visibility. Live, typed callback and snapshot replay require both the grant's history order and strictly earlier canonical revisions, and preserve the route to the acting primary. (`TestRecovery7_A3LiveAndReload`, `TestRecovery7_A3SeamAndReload`, `TestRecovery7_A3EqualRevisionDoesNotProveEarlierLoss`, `TestRecovery7_A3PromotedRestartRevisionCannotReorderLossHistory`)

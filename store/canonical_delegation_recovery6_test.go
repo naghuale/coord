@@ -72,7 +72,7 @@ func TestRecovery6_A2ReceiptMustBeRestartVisibilityOnReload(t *testing.T) {
 	d := bad.CoordinatorDelegations["del-r6-receipt"]
 	d.History[len(d.History)-1].ReceiptDig = "vis-r4-b"
 	bad.CoordinatorDelegations[d.DelegationID] = d
-	recovery6Reload(t, bad, "visibility receipt consumption mismatch")
+	recovery6Reload(t, bad, "pre-restart loss must reuse restart visibility")
 	// The consumed restart visibility, its owner receipt, and the original loss
 	// are otherwise unchanged. The digest alone distinguishes the two deltas.
 	if !bytes.Equal(mustMarshalRecovery6(t, before.OwnerCredentials), mustMarshalRecovery6(t, bad.OwnerCredentials)) {
@@ -168,7 +168,7 @@ func TestRecovery6_A2CommitSeamChecksEachBoundary(t *testing.T) {
 			err := validateHandoffGrantDelta(before, next, before.CoordinatorDelegations[id], next.CoordinatorDelegations[id])
 			want := "handoff target outside successor list"
 			if tt.name == "wrong_restart_visibility" {
-				want = "visibility receipt required"
+				want = "pre-restart loss must reuse restart visibility"
 			}
 			if !errors.Is(err, ErrCoordinatorDelegationInvalid) || !strings.Contains(err.Error(), want) {
 				t.Fatalf("seam accepted a delta outside the A-2 exception: %v", err)
@@ -205,7 +205,7 @@ func TestRecovery6_A2CallbackCannotBypassSeam(t *testing.T) {
 			} else {
 				err = f.s.commitCanonical(kind, callback)
 			}
-			want := "visibility receipt required"
+			want := "pre-restart loss must reuse restart visibility"
 			if kind == delegationCommitGeneric {
 				want = "grant authority is immutable via generic writer"
 			}

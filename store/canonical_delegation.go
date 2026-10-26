@@ -690,6 +690,9 @@ func validateDelegationDerivedState(state CanonicalState, d DelegationRecord) er
 			}
 			restartPrimaryTarget := coveredLoss != nil && actingIsPrimaryRestart && acting.Valid() && !barredSet[acting] && acting.Equal(*h.To) && h.To.StableAgentID == d.PrimaryCoordinator.StableAgentID
 			restartPrimaryHandoff := restartPrimaryTarget && preRestartLosses[coveredLoss.ReceiptID] && h.ReceiptDig == actingPrimaryRestartVisibility
+			if restartPrimaryTarget && preRestartLosses[coveredLoss.ReceiptID] && !restartPrimaryHandoff {
+				return fmt.Errorf("%w: pre-restart loss must reuse restart visibility", ErrCoordinatorDelegationInvalid)
+			}
 			if !d.hasSuccessor(*h.To) && !restartPrimaryTarget {
 				return fmt.Errorf("%w: handoff target outside successor list", ErrCoordinatorDelegationInvalid)
 			}
@@ -1352,6 +1355,9 @@ func validateHandoffGrantDelta(prev, next CanonicalState, before, after Delegati
 	}
 	restartPrimaryTarget := isRestartedPrimary && lossCoversAssignment && wasLost && prior.CoordinatorLost && ownerCredentialLossAllowsHandoffWithoutObserver(prev, h.AssignmentID) && before.CurrentActing().Equal(to) && !before.IsBarred(to) && to.StableAgentID == before.PrimaryCoordinator.StableAgentID && restart.ReceiptDig != ""
 	restartPrimaryHandoff := restartPrimaryTarget && preRestartLosses[loss.ReceiptID] && h.ReceiptDig == restart.ReceiptDig
+	if restartPrimaryTarget && preRestartLosses[loss.ReceiptID] && !restartPrimaryHandoff {
+		return fmt.Errorf("%w: pre-restart loss must reuse restart visibility", ErrCoordinatorDelegationInvalid)
+	}
 	if !after.hasSuccessor(to) && !restartPrimaryTarget {
 		return fmt.Errorf("%w: handoff target outside successor list", ErrCoordinatorDelegationInvalid)
 	}
