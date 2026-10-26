@@ -1,0 +1,26 @@
+apiVersion: coord.dev/v1alpha1
+kind: ArchitectureComponentRegistry
+metadata:
+  projectId: coord
+  registryVersion: 1
+  updatedFromCommit: fixture
+  statusVocabulary: [implemented, partial, missing, proposed, legacy]
+documents:
+  currentArchitecture: docs/ARCHITECTURE.md
+  targetArchitecture: docs/TARGET-ARCHITECTURE.md
+architectureSignificantPaths: []
+components:
+  - id: fixture-component
+    title: Fixture
+    status: partial
+    normativeForCurrentProduct: false
+    normativeSources: [docs/ADR-FIXTURE.md]
+    implemented: [something]
+    missing: [else]
+    evidence:
+      symbols: [FixtureSymbol]
+      tests: [TestFixtureOK]
+      issues: []
+    documents:
+      currentAnchor: fixture-component
+      targetAnchor: fixture-component
