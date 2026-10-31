@@ -10,8 +10,16 @@
 
 ## 1. Canonical Write Gate (sole production writer)
 
-`store.CanonicalStore.ApplyInboxCommand` is the only function that commits
-canonical state. No other code path may mutate `CanonicalState` durably.
+`store.CanonicalStore.ApplyInboxCommand` is the legacy generic Task command
+seam. Owner credential enrollment does not disable it: after enroll the method
+stays callable for Task commands. It is not a grant writer. OwnerCredentials
+mutation fails closed; CoordinatorDelegations mutation fails closed.
+Authenticated agent writes use `ApplyAgentCommand`; Owner
+grant/revoke/loss/visibility use `ApplyOwnerCredentialCommand`.
+
+AND-15 / NQ-1 documents this enroll-callable fact against the code on
+`757d6a1822dfff62546ea504ceb638fde88df8e6`. This map is not a claim that
+`ApplyInboxCommand` is the only durable canonical writer.
 
 ```
 actorID + messageID  →  Inbox dedup key

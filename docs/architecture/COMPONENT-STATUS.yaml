@@ -3,7 +3,7 @@ kind: ArchitectureComponentRegistry
 metadata:
   projectId: coord
   registryVersion: 1
-  updatedFromCommit: cb381a0e35b6ea9809ee258585a11699d45ffefa
+  updatedFromCommit: 757d6a1822dfff62546ea504ceb638fde88df8e6
   statusVocabulary:
   - implemented
   - partial
@@ -98,17 +98,18 @@ components:
   - atomic transition, DomainEvent, Inbox receipt and Outbox commit
   - rejection paths avoid durable side effects
   - 'OwnerCredential bootstrap, lifecycle and task.create on a separate store boundary (#93a / PR #103)'
+  - 'coordinator.loss.confirm OWNER path (#93b; ADR-0010 Accepted, IMPLEMENTED, production DISABLED by const CoordinatorDelegationEnabled=false, cutover NOT_PERFORMED)'
   missing:
   - production CLI caller
   - production Telepathy caller
   - command-boundary AgentSession management operations
   - Executor RESULT production path
   - authenticated production agent RESULT ingress (#95; productionReachable=false)
-  - coordinator.loss.confirm OWNER path (#93b; ADR-0010 Accepted, NOT_IMPLEMENTED)
   evidence:
     symbols:
     - AuthenticatedFrame
     - ApplyAgentCommand
+    - ApplyOwnerCredentialCommand
     tests:
     - TestAgentCommandCommitsEventReceiptOutboxAtomically
     - TestAgentCommandIgnoresActorIDFromBody
@@ -509,13 +510,14 @@ requirements:
     implementationSymbols:
     - ApplyAgentCommand
     - AuthenticatedFrame
+    - ApplyOwnerCredentialCommand
     productionEntrypoints: []
     tests:
     - TestAgentCommandCommitsEventReceiptOutboxAtomically
     - TestAgentCommandIgnoresActorIDFromBody
     gaps:
     - production Telepathy/CLI agent RESULT ingress (#95)
-    - coordinator.loss.confirm OWNER path (#93b)
+    - coordinator.loss.confirm production enablement and cutover (#93b; code present, CoordinatorDelegationEnabled=false)
     issues:
     - 93
     - 95

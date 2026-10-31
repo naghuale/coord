@@ -1,6 +1,6 @@
 # ADR-0010: Ограниченное делегирование координатора и преемственность
 
-- **Статус:** Accepted. Решение OWNER ADR-0010-ACCEPTANCE, дата принятия 2026-10-24, принятая ревизия e3b59088d9ad885fccd20a71c39480420f60e08e. Реализация NOT_IMPLEMENTED, production DISABLED, делегация не действует, cutover не разрешён: нужны #93b, разбор, аудит и отдельный cutover.
+- **Статус:** Accepted. Решение OWNER ADR-0010-ACCEPTANCE, дата принятия 2026-10-24, принятая ревизия e3b59088d9ad885fccd20a71c39480420f60e08e. Реализация IMPLEMENTED, production DISABLED (const CoordinatorDelegationEnabled=false), cutover NOT_PERFORMED.
 - **Дата:** 2026-10-24.
 - **Issue:** #102 (#93b). Предпосылка реализации: принятый ADR и завершённый #93a (GitHub #101).
 - **Основание черновика:** решение OWNER 2026-10-24, модель D_PLUS_S2_COMBINED, статус ACCEPTED_FOR_ADR_DRAFTING. Решение разрешает этот черновик. Оно не переводит документ в Accepted.

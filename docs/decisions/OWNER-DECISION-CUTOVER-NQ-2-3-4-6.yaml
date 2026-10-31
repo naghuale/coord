@@ -1,0 +1,28 @@
+# Repo copy of OWNER cutover answers 2026-10-26.
+# Source (workspace, not git): workspace-01/.scratch/tmp/stabilization/OWNER-DECISION-CUTOVER-NQ-2-3-4-6.yaml
+# sha256 of source: ad85424b5154c008ee19ac6f59e96fa3c7b4e6c286555d03bf995428e2e65663
+# This file records OWNER choices. It does not flip const gates, perform cutover, or declare S0Exit.
+id: OWNER-DECISION-CUTOVER-NQ-2-3-4-6
+date: "2026-10-26"
+source: "OWNER answers to coordinator package (AskUserQuestion), based on cutover-inventory-v6-grok-a88 (raw r2 8858d69c, analysis 53958410, draft 5b8cd99a) @ main 757d6a1"
+decisions:
+  NQ-2:
+    choice: FREEZE_RUN_OUTBOX_ADAPTER_BY_ADR
+    ownerWords: "Заморозить адаптер через ADR"
+    meaning: "CanonicalStore.Update stays only for Runs/Outbox (Handle/Tick/supervisor); no new fields via this seam; assignment/agent/owner only via typed commands; the two seams are a documented duality, not mixed write"
+    requires: ["new ADR (Proposed -> OWNER Accepted)", "tests that Update cannot touch OwnerCredentials/AssignmentLedger/CoordinatorDelegations or new fields"]
+  NQ-3:
+    choice: FAIL_CLOSED_LEGACY_STORE_IN_PRODUCTION_BUILDS
+    ownerWords: "Закрыть в production-сборках"
+    meaning: "store.New(runs.json) returns an error in production builds (telepathyhost, localchat); tests/demo/integration keep a harness; machine check (AST/test) proves no production store.New"
+    requires: ["implementation + gate + review (+ audit proportional to risk)", "AST/test guard against build-tag regression"]
+  NQ-4:
+    choice: SCHEMA_ADVANCE_IS_NOT_CUTOVER_O1_SEPARATE
+    ownerWords: "Повышение схемы — не cutover; O-1 отдельно"
+    meaning: "v5 canonical opened by v6 binary advances to 6 under the existing decoder rule, after backup; O-1 accepted trust boundary: reload trusts persisted canonical integrity and single writer coordd; cryptographic re-verification on load is a separate post-S0 item (Operations Ledger ADR, AND-10)"
+  NQ-6:
+    choice: TWO_ACTS
+    ownerWords: "Два действия"
+    meaning: "Act 1: assignment ledger + first OfferAssignment on the Owner/coordinator command boundary; Act 2: authenticated ingress/v2 RESULT together with bounded delegation (both const flips behind existing typed writers); v1 RESULT remains until act 2"
+technicalFollowUps: ["NQ-1 R101 ApplyInboxCommand comment/code reconcile + enroll-boundary test", "NQ-7 COMPONENT-STATUS updatedFromCommit sync", "ADR-0010 header: implementation present, production DISABLED, cutover NOT_PERFORMED", "checks.go:87 integration-only (covered by NQ-3 harness)"]
+notAuthorized: ["flipping any const gate", "performing cutover acts", "declaring S0Exit"]

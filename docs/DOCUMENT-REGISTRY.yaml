@@ -541,7 +541,7 @@ documents:
       - proposed bounded coordinator delegation and ordered succession
       - records OWNER model D plus S2 combined for drafting only
       - grant-defined succession is not generation inheritance; two loss paths; exact OwnerCredential retry matches #93a
-      - OWNER loss confirm mustNot list and OWNER_CREDENTIAL actor source are specified for #93b, not implemented
+      - OWNER loss confirm mustNot list and OWNER_CREDENTIAL actor source are implemented for #93b; production DISABLED (const CoordinatorDelegationEnabled=false); cutover NOT_PERFORMED
     usedBy:
       - COORDINATOR
       - REVIEWER
@@ -913,6 +913,66 @@ documents:
     normativeAuthority: operational_projection
     ownership: {creates: EXECUTOR, updates: EXECUTOR, accountable: COORDINATOR}
     acceptance: {reviewer: required, auditor: required, owner: false}
+  - id: s0exit-and-cutover-decision-record
+    path: docs/operations/S0EXIT-AND-CUTOVER-DECISION-RECORD.md
+    class: operations
+    status: active
+    purpose:
+      - append-only record of OWNER cutover NQ-2/3/4/6 decisions
+      - does not declare S0Exit or authorize const-gate flips
+    usedBy: [COORDINATOR, EXECUTOR, REVIEWER, AUDITOR, OPERATOR]
+    readWhen: [IMPLEMENTATION, REVIEW, AUDIT, RUNTIME_START, MIGRATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: operational_projection
+    ownership: {creates: EXECUTOR, updates: EXECUTOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: required, owner: false}
+    appliesTo:
+      - canonical coordd cutover planning
+    notApplicableTo:
+      - live const-gate flips
+      - live cutover acts
+  - id: schema-v5-v6-migration-runbook
+    path: docs/operations/SCHEMA-V5-V6-MIGRATION-RUNBOOK.md
+    class: operations
+    status: active
+    purpose:
+      - operator runbook for v5 snapshot opened by a v6 binary
+      - schema advance is not cutover; O-1 trust boundary recorded
+    usedBy: [COORDINATOR, EXECUTOR, REVIEWER, AUDITOR, OPERATOR]
+    readWhen: [IMPLEMENTATION, REVIEW, AUDIT, RUNTIME_START, MIGRATION]
+    updateWhen: [RUNTIME_BEHAVIOR_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: operational_projection
+    ownership: {creates: EXECUTOR, updates: EXECUTOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: required, owner: false}
+    appliesTo:
+      - canonical.json schema 5 opened by schema-6 coordd
+    notApplicableTo:
+      - assignment-ledger operational cutover
+      - CoordinatorDelegationEnabled enablement
+  - id: cutover-two-acts-checklist
+    path: docs/operations/CUTOVER-TWO-ACTS-CHECKLIST.md
+    class: operations
+    status: active
+    purpose:
+      - checklist for the two OWNER-accepted cutover acts (NQ-6)
+      - not an authorization to perform the acts
+    usedBy: [COORDINATOR, EXECUTOR, REVIEWER, AUDITOR, OPERATOR]
+    readWhen: [IMPLEMENTATION, REVIEW, AUDIT, RUNTIME_START, MIGRATION]
+    updateWhen: [PROCESS_NORM_CHANGED]
+    currentOperationalAuthority: false
+    canonicalProductionAuthority: false
+    normativeAuthority: operational_projection
+    ownership: {creates: EXECUTOR, updates: EXECUTOR, accountable: COORDINATOR}
+    acceptance: {reviewer: required, auditor: required, owner: false}
+    appliesTo:
+      - canonical coordd cutover planning
+    notApplicableTo:
+      - live const-gate flips
+      - live OfferAssignment without Owner command
   - id: r153-coverage-matrix
     path: docs/R153-COVERAGE-MATRIX.md
     class: architecture_status
@@ -4419,6 +4479,38 @@ documents:
       - MIGRATION
     updateWhen:
       - PRODUCT_NORM_CHANGED
+    currentOperationalAuthority: true
+    canonicalProductionAuthority: false
+    currentNormativeAuthority: true
+    normativeAuthority: process
+    ownership:
+      creates: COORDINATOR
+      updates: COORDINATOR
+      accountable: OWNER
+    acceptance:
+      reviewer: required
+      auditor: required
+      owner: only_for_class_R
+  - id: owner-decision-cutover-nq-2-3-4-6
+    path: docs/decisions/OWNER-DECISION-CUTOVER-NQ-2-3-4-6.yaml
+    class: process
+    status: accepted
+    purpose:
+      - "OWNER 2026-10-26 answers for cutover NQ-2 FREEZE_RUN_OUTBOX_ADAPTER_BY_ADR, NQ-3 FAIL_CLOSED_LEGACY_STORE_IN_PRODUCTION_BUILDS, NQ-4 SCHEMA_ADVANCE_IS_NOT_CUTOVER_O1_SEPARATE, NQ-6 TWO_ACTS"
+      - "does not flip const gates, perform cutover acts, or declare S0Exit"
+    decisionRef: OWNER-DECISION-CUTOVER-NQ-2-3-4-6
+    usedBy:
+      - COORDINATOR
+      - EXECUTOR
+      - REVIEWER
+      - AUDITOR
+    readWhen:
+      - SESSION_START
+      - ASSIGNMENT_START
+      - OWNER_BOUNDARY_CHECK
+      - MIGRATION
+    updateWhen:
+      - PROCESS_NORM_CHANGED
     currentOperationalAuthority: true
     canonicalProductionAuthority: false
     currentNormativeAuthority: true
