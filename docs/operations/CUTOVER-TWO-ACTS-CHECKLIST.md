@@ -40,8 +40,9 @@ Both const flips ride existing typed writers. They are one act.
       `CoordinatorDelegationEnabled` on the same authorized change.
 - [ ] Production composition mounts authenticated agent RESULT v2.
 - [ ] v1 RESULT is withdrawn from the production path as part of this act.
-- [ ] Bounded delegation remains scoped to ADR-0010; cutover of delegation
-      is still a separate recorded enablement, not implied by schema 6.
+- [ ] Bounded delegation remains scoped to ADR-0010. Delegation enablement
+      happens only as part of act 2 (recorded with it); schema 6 does not
+      imply it.
 - [ ] Do not flip `orchestrationEnabled` as part of this act unless OWNER
       later authorizes it.
 

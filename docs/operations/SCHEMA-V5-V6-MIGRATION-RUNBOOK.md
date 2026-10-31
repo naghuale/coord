@@ -10,8 +10,10 @@ Subject decoder SHA: `757d6a1822dfff62546ea504ceb638fde88df8e6`.
 
 On `757d6a1`, `NewCanonical` loads schema 3, 4, 5, or 6 (`ValidateCanonicalState`).
 The first mutating commit writes `next.SchemaVersion = CanonicalSchemaVersion`
-(6) after backup-equivalent durable Save. Schema 7+ fails closed. Schema 5
-cannot contain `CoordinatorDelegations`. No downgrade from a loaded v6 snapshot.
+(6) through an atomic durable Save (`atomicfile.Write`); the code does not
+make a backup — the backup is the operator's precondition 4. Schema 7+ fails
+closed. Schema 5 cannot contain `CoordinatorDelegations`. No downgrade from a
+loaded v6 snapshot.
 
 Tests that name this rule include
 `TestSchemaFiveLoadsReadOnlyAndNextCommitPublishesSix` and

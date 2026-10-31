@@ -1,5 +1,10 @@
 # История изменений
 
+## 2026-10-31 — AND-15 review recovery: runbook backup wording and NQ-6 act 2 (Refs AND-15)
+
+- v5→v6 runbook: the first mutating commit publishes schema 6 through `atomicfile.Write`; the binary does not create a backup. Operator backup remains precondition 4. (документация)
+- Two-act checklist: delegation enablement happens only as part of act 2 (recorded with it); schema 6 does not imply it. (документация)
+
 ## 2026-10-26 — AND-15 technical follow-ups (Refs AND-15 / #93b)
 
 - ADR-0010 header records implementation IMPLEMENTED, production DISABLED (`CoordinatorDelegationEnabled=false`), cutover NOT_PERFORMED. Accepted ADR body and norms are unchanged. (документация)
